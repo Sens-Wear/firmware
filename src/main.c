@@ -16,14 +16,15 @@
 #include <zephyr/bluetooth/conn.h>
 
 #include "app/led_ble_bridge.h"
+#include "app/imu_ble_bridge.h"
 
 #include "drivers/sensors/pressure/fdc1004.h"
 #include "drivers/memory/eeprom/m95p.h"
 #include "drivers/power/charger/bq25180.h"
-#include "drivers/sensors/imu/bhi360.h"
 #include "drivers/sensors/touch/mtch6102.h"
 #include "drivers/sensors/temperature/max30208.h"
 #include "drivers/sensors/ppg/max30101.h"
+#include "drivers/sensors/imu/bhi360.h"
 #include "drivers/actuators/haptic/drv2605.h"
 
 static const struct bt_le_adv_param *adv_param = BT_LE_ADV_PARAM(
@@ -120,7 +121,8 @@ int main(void)
 	// led_controller_init();
 	// led_controller_configure();
 
-    led_ble_bridge_init();
+	led_ble_bridge_init();
+    imu_ble_bridge_init();
 
 
 	// sys_memory_init();
@@ -128,7 +130,6 @@ int main(void)
 	
 	// charger_power_init();
 	
-	imu_sensor_init();
 
 	/* 1) Turn regulator on */
     // ret = regulator_enable(reg);
@@ -185,7 +186,5 @@ int main(void)
 
 	return ret;
 }
-
-
 
 

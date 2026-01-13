@@ -3,6 +3,7 @@
 #include <zephyr/drivers/spi.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/atomic.h>
 #include <stdio.h>
 #include <zephyr/drivers/spi.h>
 #include <assert.h>
@@ -16,6 +17,7 @@
 
 LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 
+//TODO: Implement loading the firmware from external flash
 /* Uncomment to upload firmware to flash instead of RAM */
 /*#define UPLOAD_FIRMWARE_TO_FLASH*/
 
@@ -30,6 +32,10 @@ LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 #define LACC_SENSOR_ID    BHY2_SENSOR_ID_ACC  // Use Linear Acceleration sensor ID
 
 #define MAX_IMU_COUNT 1  // Maximum number of IMUs supported
+
+/* IMU worker thread for init + FIFO processing */
+#define IMU_THREAD_STACK_SIZE 4096
+#define IMU_THREAD_PRIORITY 5
 
 // Structure to hold IMU specific data
 typedef struct {
@@ -68,6 +74,11 @@ static imu_quat_cb_t imu_quat_callback;
 static void *imu_quat_callback_user_data;
 static imu_lacc_cb_t imu_lacc_callback;
 static void *imu_lacc_callback_user_data;
+static atomic_t imu_streaming_enabled;
+static K_THREAD_STACK_DEFINE(imu_thread_stack, IMU_THREAD_STACK_SIZE);
+static struct k_thread imu_thread;
+static bool imu_thread_started;
+static atomic_t imu_thread_should_run;
 
 int imu_register_quaternion_callback(imu_quat_cb_t cb, void *user_data)
 {
@@ -81,6 +92,11 @@ int imu_register_linear_accel_callback(imu_lacc_cb_t cb, void *user_data)
 	imu_lacc_callback = cb;
 	imu_lacc_callback_user_data = user_data;
 	return 0;
+}
+
+void imu_set_streaming_enabled(bool enabled)
+{
+	atomic_set(&imu_streaming_enabled, enabled ? 1 : 0);
 }
 
 static inline void bhi360_cs_high(imu_device_t *imu) {
@@ -424,24 +440,24 @@ static bool initialize_imu(imu_device_t *imu) {
     return false;
 }
 
-void imu_sensor_init(void)
+static void imu_thread_fn(void *p1, void *p2, void *p3)
 {
-    LOG_INF("Starting BHI360 firmware upload application");
+    ARG_UNUSED(p1);
+    ARG_UNUSED(p2);
+    ARG_UNUSED(p3);
+    while (atomic_get(&imu_thread_should_run)) {
+        if (!atomic_get(&imu_streaming_enabled)) {
+            k_msleep(100);
+            continue;
+        }
 
-    // Initialize all IMUs
-    for (int i = 0; i < NUM_IMUS; i++) {
-        setup_SPI(&imu_devices[i]);  // Setup SPI for each IMU
-        initialize_imu(&imu_devices[i]);
-    }
-
-    while (1) {
         for (int i = 0; i < NUM_IMUS; i++) {
             if (!imu_devices[i].initialized) {
                 continue;
             }
 
             uint8_t work_buffer[WORK_BUFFER_SIZE];
-            int8_t rslt = bhy2_get_and_process_fifo(work_buffer, 
+            int8_t rslt = bhy2_get_and_process_fifo(work_buffer,
                                                    sizeof(work_buffer),
                                                    &imu_devices[i].bhy2);
             if (rslt != BHY2_OK) {
@@ -450,6 +466,49 @@ void imu_sensor_init(void)
         }
         k_msleep(10);
     }
+}
+
+int imu_start(void)
+{
+    if (imu_thread_started) {
+        return 0;
+    }
+    atomic_set(&imu_thread_should_run, 1);
+    LOG_INF("Starting BHI360 firmware upload application");
+
+    // Initialize all IMUs
+    //TODO: Do not initialize IMU everytime you start reading the sensors values
+    for (int i = 0; i < NUM_IMUS; i++) {
+        setup_SPI(&imu_devices[i]);  // Setup SPI for each IMU
+        initialize_imu(&imu_devices[i]);
+    }
+    k_thread_create(&imu_thread,
+                    imu_thread_stack,
+                    K_THREAD_STACK_SIZEOF(imu_thread_stack),
+                    imu_thread_fn,
+                    NULL, NULL, NULL,
+                    IMU_THREAD_PRIORITY,
+                    0,
+                    K_NO_WAIT);
+
+    imu_thread_started = true;
+    return 0;
+}
+
+void imu_stop(void)
+{
+    atomic_set(&imu_streaming_enabled, 0);
+    atomic_set(&imu_thread_should_run, 0);
+    
+    if (imu_thread_started) {
+        k_thread_abort(&imu_thread);
+        imu_thread_started = false;
+    }
+}
+
+void imu_sensor_init(void)
+{
+    imu_start();
 }
 
 // Update callback functions to use IMU context
