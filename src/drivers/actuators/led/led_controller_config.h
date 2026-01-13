@@ -1,0 +1,47 @@
+/*
+ * pingpib_led_controller_config.h
+ *
+ *  Created on: Jul 19, 2017
+ *      Author: yusei
+ */
+
+#ifndef _PINGBIT_LED_CONTROLLER_CONFIG_H_
+#define _PINGBIT_LED_CONTROLLER_CONFIG_H_
+
+#ifndef RED_LED_MAX_CURRENT
+#define RED_LED_MAX_CURRENT 50
+#endif
+
+#ifndef GREEN_LED_MAX_CURRENT
+#define GREEN_LED_MAX_CURRENT 50
+#endif
+
+#ifndef BLUE_LED_MAX_CURRENT
+#define BLUE_LED_MAX_CURRENT 50
+#endif
+
+#ifndef WHITE_LED_MAX_CURRENT
+#define WHITE_LED_MAX_CURRENT 1
+#endif
+
+#ifndef PINGBIT_LED_DRIVER_CURRENT_SCALE
+#define PINGBIT_LED_DRIVER_CURRENT_SCALE 5
+#endif
+
+#ifndef PINGBIT_LED_USE_LOG_PWM
+#define PINGBIT_LED_USE_LOG_PWM 1
+#endif
+
+#ifndef PINGBIT_LED_ENABLE_POWERSAVE
+#define PINGBIT_LED_ENABLE_POWERSAVE 0
+#endif
+
+#ifndef PINGBIT_LED_ENABLE_PWM_HF
+#define PINGBIT_LED_ENABLE_PWM_HF 0
+#endif
+
+#ifndef PINGBIT_LED_FORCE_INTERNAL_CLOCK
+#define PINGBIT_LED_FORCE_INTERNAL_CLOCK 1
+#endif
+
+#endif //_PINGBIT_LED_CONTROLLER_CONFIG_H_

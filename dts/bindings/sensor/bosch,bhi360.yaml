@@ -1,0 +1,21 @@
+description: Bosch BHI360 IMU (SPI)
+
+compatible: "bosch,bhi360"
+
+include:
+  - name: spi-device.yaml
+
+properties:
+  reg:
+    required: true
+
+  spi-max-frequency:
+    required: true
+
+  int-gpios:
+    type: phandle-array
+    required: false
+
+  reset-gpios:
+    type: phandle-array
+    required: false
