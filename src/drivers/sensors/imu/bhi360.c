@@ -464,7 +464,6 @@ static void imu_thread_fn(void *p1, void *p2, void *p3)
                 LOG_WRN("%s: FIFO processing error", imu_devices[i].name);
             }
         }
-        k_msleep(10);
     }
 }
 
@@ -540,15 +539,15 @@ static void parse_quaternion(const struct bhy2_fifo_parse_data_info *callback_in
     s = (uint32_t)(timestamp / UINT64_C(1000000000));
     ns = (uint32_t)(timestamp - (s * UINT64_C(1000000000)));
 
-    LOG_INF("SID: %u; T: %u.%09u; x: %f, y: %f, z: %f, w: %f; acc: %.2f",
-            callback_info->sensor_id,
-            s,
-            ns,
-            data.x / 16384.0f,
-            data.y / 16384.0f,
-            data.z / 16384.0f,
-            data.w / 16384.0f,
-            ((data.accuracy * 180.0f) / 16384.0f) / 3.141592653589793f);
+    // LOG_INF("SID: %u; T: %u.%09u; x: %f, y: %f, z: %f, w: %f; acc: %.2f",
+    //         callback_info->sensor_id,
+    //         s,
+    //         ns,
+    //         data.x / 16384.0f,
+    //         data.y / 16384.0f,
+    //         data.z / 16384.0f,
+    //         data.w / 16384.0f,
+    //         ((data.accuracy * 180.0f) / 16384.0f) / 3.141592653589793f);
 }
 
 static void parse_linear_acceleration(const struct bhy2_fifo_parse_data_info *callback_info, void *callback_ref) {
@@ -565,11 +564,11 @@ static void parse_linear_acceleration(const struct bhy2_fifo_parse_data_info *ca
         imu_lacc_callback(&imu_data, imu_lacc_callback_user_data);
     }
 
-    LOG_INF("%s Linear Acceleration: x: %d, y: %d, z: %d",
-            imu->name,
-            data.x,
-            data.y,
-            data.z);
+    // LOG_INF("%s Linear Acceleration: x: %d, y: %d, z: %d",
+    //         imu->name,
+    //         data.x,
+    //         data.y,
+    //         data.z);
 }
 
 static void parse_meta_event(const struct bhy2_fifo_parse_data_info *callback_info, void *callback_ref)
