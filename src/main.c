@@ -41,6 +41,9 @@ LOG_MODULE_REGISTER(SENSE_WEAR_LOGGER);
 #define DEVICE_NAME_LEN (sizeof(DEVICE_NAME) - 1)
 #define BT_UUID_LBS_VAL BT_UUID_128_ENCODE(0x56966294, 0x9cb8, 0x4c92, 0x9d74, 0x834187f486de)
 
+static void adv_restart_work_fn(struct k_work *work);
+K_WORK_DELAYABLE_DEFINE(adv_restart_work, adv_restart_work_fn);
+
 /* 1000 msec = 1 sec */
 #define SLEEP_TIME_MS   100
 
@@ -54,6 +57,27 @@ static const struct bt_data ad[] = {
 static const struct bt_data sd[] = {
 	BT_DATA_BYTES(BT_DATA_UUID128_ALL, BT_UUID_LBS_VAL),
 };
+
+static void adv_restart_work_fn(struct k_work *work)
+{
+    int err;
+
+    /* If advertising might still be on for any reason, stop it first.
+     * Ignore "not advertising" type errors.
+     */
+    err = bt_le_adv_stop();
+    if (err && err != -EALREADY && err != -EINVAL) {
+        LOG_WRN("bt_le_adv_stop returned %d", err);
+    }
+
+    err = bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+    if (err) {
+        LOG_ERR("Advertising restart failed (err %d)", err);
+    } else {
+        LOG_INF("Advertising restarted");
+    }
+}
+
 
 void on_connected(struct bt_conn *conn, uint8_t err) {
     if (err) {
@@ -69,10 +93,19 @@ void on_connected(struct bt_conn *conn, uint8_t err) {
     }
 }
 
-void on_disconnected(struct bt_conn *conn, uint8_t reason) {
-    LOG_INF("Disconnected. Reason %d", reason);
-    bt_conn_unref(current_conn);
+void on_disconnected(struct bt_conn *conn, uint8_t reason)
+{
+    LOG_INF("Disconnected. Reason %u", reason);
+
+    if (current_conn) {
+        bt_conn_unref(current_conn);
+        current_conn = NULL;
+    }
+
+    /* Defer restart (0–50 ms are typical; 10 ms is fine) */
+    k_work_schedule(&adv_restart_work, K_MSEC(10));
 }
+
 
 struct bt_conn_cb connection_callbacks = {
     .connected              = on_connected,
