@@ -10,6 +10,7 @@ LOG_MODULE_REGISTER(SENSE_WEAR_IMU_BLUETOOTH_LOGGER);
 
 static bool notify_quat_enabled;
 static bool notify_lacc_enabled;
+static struct bt_conn *imu_lbs_conn;
 
 static imu_lbs_notify_state_cb_t quat_notify_cb;
 static void *quat_notify_user_data;
@@ -51,6 +52,27 @@ void imu_lbs_register_lacc_notify_cb(imu_lbs_notify_state_cb_t cb, void *user_da
 	lacc_notify_user_data = user_data;
 }
 
+void imu_lbs_set_conn(struct bt_conn *conn)
+{
+	if (conn == NULL) {
+		return;
+	}
+
+	if (imu_lbs_conn != NULL) {
+		bt_conn_unref(imu_lbs_conn);
+	}
+
+	imu_lbs_conn = bt_conn_ref(conn);
+}
+
+void imu_lbs_clear_conn(void)
+{
+	if (imu_lbs_conn != NULL) {
+		bt_conn_unref(imu_lbs_conn);
+		imu_lbs_conn = NULL;
+	}
+}
+
 int imu_lbs_notify_quat(const struct imu_lbs_quat *data)
 {
 	if (data == NULL) {
@@ -61,7 +83,11 @@ int imu_lbs_notify_quat(const struct imu_lbs_quat *data)
 		return -EACCES;
 	}
 
-	return bt_gatt_notify(NULL, &imu_lbs_svc.attrs[2], data, sizeof(*data));
+	if (imu_lbs_conn == NULL) {
+		return -ENOTCONN;
+	}
+
+	return bt_gatt_notify(imu_lbs_conn, &imu_lbs_svc.attrs[2], data, sizeof(*data));
 }
 
 int imu_lbs_notify_lacc(const struct imu_lbs_lacc *data)
@@ -74,5 +100,9 @@ int imu_lbs_notify_lacc(const struct imu_lbs_lacc *data)
 		return -EACCES;
 	}
 
-	return bt_gatt_notify(NULL, &imu_lbs_svc.attrs[5], data, sizeof(*data));
+	if (imu_lbs_conn == NULL) {
+		return -ENOTCONN;
+	}
+
+	return bt_gatt_notify(imu_lbs_conn, &imu_lbs_svc.attrs[5], data, sizeof(*data));
 }

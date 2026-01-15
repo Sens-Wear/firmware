@@ -15,6 +15,7 @@
 LOG_MODULE_REGISTER(SENSE_WEAR_LED_SENSOR_BLUETOOTH_LOGGER);
 static uint32_t led_color_state;
 static const struct led_lbs_ops *led_ops;
+static struct bt_conn *led_lbs_conn;
 static ssize_t update_color(struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, uint16_t len, uint16_t offset, uint8_t flags)
 {
     LOG_DBG("Attribute write, handle: %u, conn: %p", attr->handle, (void *)conn);
@@ -57,4 +58,25 @@ BT_GATT_SERVICE_DEFINE(
 void led_lbs_register_ops(const struct led_lbs_ops *ops)
 {
     led_ops = ops;
+}
+
+void led_lbs_set_conn(struct bt_conn *conn)
+{
+    if (conn == NULL) {
+        return;
+    }
+
+    if (led_lbs_conn != NULL) {
+        bt_conn_unref(led_lbs_conn);
+    }
+
+    led_lbs_conn = bt_conn_ref(conn);
+}
+
+void led_lbs_clear_conn(void)
+{
+    if (led_lbs_conn != NULL) {
+        bt_conn_unref(led_lbs_conn);
+        led_lbs_conn = NULL;
+    }
 }

@@ -503,6 +503,21 @@ void imu_stop(void)
         k_thread_abort(&imu_thread);
         imu_thread_started = false;
     }
+
+    /* Disable virtual sensors so the device stops producing FIFO data. */
+    for (int i = 0; i < NUM_IMUS; i++) {
+        if (!imu_devices[i].initialized) {
+            continue;
+        }
+
+        (void)bhy2_set_virt_sensor_cfg(QUAT_SENSOR_ID, 0.0f, 0, &imu_devices[i].bhy2);
+        (void)bhy2_set_virt_sensor_cfg(LACC_SENSOR_ID, 0.0f, 0, &imu_devices[i].bhy2);
+
+        /* Flush any pending FIFO data and reset the device to a clean state. */
+        (void)bhy2_flush_fifo(QUAT_SENSOR_ID, &imu_devices[i].bhy2);
+        (void)bhy2_flush_fifo(LACC_SENSOR_ID, &imu_devices[i].bhy2);
+        (void)bhy2_soft_reset(&imu_devices[i].bhy2);
+    }
 }
 
 void imu_sensor_init(void)

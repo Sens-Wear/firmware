@@ -17,6 +17,8 @@
 
 #include "app/led_ble_bridge.h"
 #include "app/imu_ble_bridge.h"
+#include "bluetooth/services/imu/imu_lbs.h"
+#include "bluetooth/services/led/led_lbs.h"
 
 #include "drivers/sensors/pressure/fdc1004.h"
 #include "drivers/memory/eeprom/m95p.h"
@@ -86,6 +88,8 @@ void on_connected(struct bt_conn *conn, uint8_t err) {
     }
     LOG_INF("Connected");
     current_conn = bt_conn_ref(conn);
+	imu_lbs_set_conn(conn);
+	led_lbs_set_conn(conn);
 
     err = bt_conn_set_security(conn, BT_SECURITY_L2);
     if (err) {
@@ -101,9 +105,11 @@ void on_disconnected(struct bt_conn *conn, uint8_t reason)
         bt_conn_unref(current_conn);
         current_conn = NULL;
     }
+	imu_lbs_clear_conn();
+	led_lbs_clear_conn();
 
     /* Defer restart (0–50 ms are typical; 10 ms is fine) */
-    k_work_schedule(&adv_restart_work, K_MSEC(10));
+    k_work_schedule(&adv_restart_work, K_MSEC(1000));
 }
 
 
@@ -219,5 +225,4 @@ int main(void)
 
 	return ret;
 }
-
 
