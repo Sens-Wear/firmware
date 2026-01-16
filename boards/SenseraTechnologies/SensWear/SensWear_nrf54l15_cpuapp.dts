@@ -1,6 +1,7 @@
 /dts-v1/;
 #include <nordic/nrf54l15_cpuapp.dtsi>
 #include "SensWear-pinctrl.dtsi"
+#include <nordic/nrf54l15_partition.dtsi>
 
 / {
 	model = "SensWear board";
@@ -72,9 +73,6 @@
 &clock {
 	status = "okay";
 };
-
-
-#include <nordic/nrf54l15_partition.dtsi>
 
 &gpiote20 {
 	status = "okay";
@@ -158,6 +156,13 @@
 		reg = <0x21>;
 		constant-charge-current-max-microamp = <500000>;
 	};
+
+	bq27427: bq27427@55{
+        compatible = "i2c-device";
+		status = "okay";
+        reg = < 0x55 >;
+        label = "BQ27427";
+    };
 
 	tpsm83102: tpsm83102@6a {
 		compatible = "ti,tpsm83102";

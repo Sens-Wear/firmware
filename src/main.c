@@ -23,6 +23,7 @@
 #include "drivers/sensors/pressure/fdc1004.h"
 #include "drivers/memory/eeprom/m95p.h"
 #include "drivers/power/charger/bq25180.h"
+#include "drivers/power/gauge/bq27427.h"
 #include "drivers/sensors/touch/mtch6102.h"
 #include "drivers/sensors/temperature/max30208.h"
 #include "drivers/sensors/ppg/max30101.h"
@@ -146,6 +147,15 @@ int main(void)
 		LOG_ERR("Advertising failed to start (err %d)\n", err);
 		return -1;
 	}
+
+	static struct bq27427_config_t bq27427_config_val;
+	bq27427_init();
+	bq27427_get_default_config(&bq27427_config_val);
+	bq27427_config_val.battery_capacity = 450;
+	// bq27427_config_val.battery_type = bq27427_chemistry_Lipo4V35;
+	bq27427_config(&bq27427_config_val);
+	bq27427_update_state(NULL);
+	bq27427_print_state();
 
 	// Initialize touch sensor
     // touch_sensor_init();

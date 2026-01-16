@@ -1,10 +1,10 @@
 #include "bq27427.h"
-#include "sys_debug.h"
-#include "system.h"
-
+#include <zephyr/logging/log.h>
 #include <assert.h>
 #include <stdbool.h>
 #include <string.h>
+#include <zephyr/sys/byteorder.h>
+
 
 // --------------------------------------------------------------------------
  // #define BQ27427_I2C_DRIVER (hi2c1)
@@ -22,9 +22,12 @@
  // };
  // #pragma pack()
 // --------------------------------------------------------------------------
+LOG_MODULE_REGISTER(bq27427, CONFIG_REGULATOR_LOG_LEVEL);
+
+#define BQ27427_NODE DT_NODELABEL(bq27427)
+static const struct i2c_dt_spec dev_i2c = I2C_DT_SPEC_GET(BQ27427_NODE);
 
 static struct bq27427_t bq27427 = {0};
-extern I2C_HandleTypeDef BQ27427_I2C_DRIVER;
 
 static inline uint16_t swap_bytes16(uint16_t val) {
 	uint8_t* pVal = (uint8_t*) &val;
@@ -36,84 +39,83 @@ static inline uint16_t swap_bytes16(uint16_t val) {
 
 static inline
 void bq27427_i2c_write_2byte_increment(uint8_t address, uint16_t value) {
-	volatile uint16_t val = value;
-	const HAL_StatusTypeDef ret = HAL_I2C_Mem_Write(bq27427.device,
-													BQ27427_I2C_ADDRESS,
-													(uint8_t) address,
-													(uint16_t) sizeof(uint8_t),
-													(uint8_t*) &val,
-													(uint16_t) sizeof(uint16_t),
-													BQ27427_I2C_TIMEOUT);
-	assert(ret == HAL_OK);
-	HAL_Delay(1);
+	/* Most TI gauges use little-endian for 16-bit registers; confirm in datasheet. */
+    uint8_t tx[3];
+    tx[0] = address;
+    sys_put_le16(value, &tx[1]);
+
+    int err = i2c_write_dt(&bq27427.i2c, tx, sizeof(tx));
+    if (err) {
+        return err;
+    }
+
+    /* k_msleep(1) -> Zephyr sleep (don’t busy-wait unless required). */
+    k_msleep(1);
+    return 0;
 }
 
 void bq27427_i2c_write_control(enum bq27427_control_subcommand_type subcommand) {
-	uint16_t subcommandValue = (uint16_t) subcommand;
-	const HAL_StatusTypeDef ret = HAL_I2C_Mem_Write(bq27427.device,
-													BQ27427_I2C_ADDRESS,
-													(uint8_t) bq27427_command_Control,
-													(uint16_t) sizeof(uint8_t),
-													(uint8_t*) &subcommandValue,
-													(uint16_t) sizeof(uint16_t),
-													BQ27427_I2C_TIMEOUT);
-	assert(ret == HAL_OK);
-	HAL_Delay(1);
+	uint8_t payload[2];
+    sys_put_le16((uint16_t)subcommand, payload);  /* use sys_put_be16 if required */
+
+    int err = i2c_burst_write_dt(&bq27427.i2c,
+                                 (uint8_t)bq27427_command_Control,
+                                 payload,
+                                 sizeof(payload));
+    if (err) {
+        return err;
+    }
+
+    k_msleep(1);
+    return 0;
 }
 
 static inline
 uint16_t bq27427_i2c_read_w_command(enum bq27427_command_type command) {
-	uint16_t value;
+	uint8_t buf[2];
+    uint16_t value = 0;
+	int err = i2c_burst_read_dt(&bq27427.i2c,
+                                (uint8_t)command,
+                                buf,
+                                sizeof(buf));
+    if (err) {
+        return 0;
+    }
 
-	const HAL_StatusTypeDef ret = HAL_I2C_Mem_Read(bq27427.device,
-												   BQ27427_I2C_ADDRESS,
-												   (uint16_t) command,
-												   (uint16_t) sizeof(uint8_t),
-												   (void*) &value,
-												   (uint16_t) sizeof(uint16_t),
-												   BQ27427_I2C_TIMEOUT);
-	assert(ret == HAL_OK);
-	//    HAL_Delay(1);
-	return value; // swap_bytes16(value);
+    value = sys_get_le16(buf);  /* or sys_get_be16 */
+
+    return value;
 }
 
 static inline
 uint16_t bq27427_i2c_read_control(const enum bq27427_control_subcommand_type subcommand) {
-	uint16_t subcommandValue = (uint16_t) subcommand;
-	uint16_t value;
+	uint8_t wr[2];
+    sys_put_le16((uint16_t)subcommand, wr);
 
-	HAL_StatusTypeDef ret = HAL_I2C_Mem_Write(bq27427.device,
-											  BQ27427_I2C_ADDRESS,
-											  (uint16_t) bq27427_command_Control,
-											  (uint16_t) sizeof(uint8_t),
-											  (void*) &subcommandValue,
-											  (uint16_t) sizeof(uint16_t),
-											  BQ27427_I2C_TIMEOUT);
-	assert(ret == HAL_OK);
-	HAL_Delay(1);
-	ret = HAL_I2C_Mem_Read(bq27427.device,
-						   BQ27427_I2C_ADDRESS,
-						   (uint16_t) bq27427_command_Control,
-						   (uint16_t) sizeof(uint8_t),
-						   (void*) &value,
-						   (uint16_t) sizeof(uint16_t),
-						   BQ27427_I2C_TIMEOUT);
-	assert(ret == HAL_OK);
-	//	HAL_Delay(1);
-	return value; // swap_bytes16(value);
+    if (i2c_burst_write_dt(&bq27427.i2c, (uint8_t)bq27427_command_Control, wr, sizeof(wr)) != 0) {
+        return 0;
+    }
+
+    k_msleep(1);
+
+    uint8_t rd[2];
+    if (i2c_burst_read_dt(&bq27427.i2c, (uint8_t)bq27427_command_Control, rd, sizeof(rd)) != 0) {
+        return 0;
+    }
+
+    return sys_get_le16(rd);
 }
 
 static inline void bq27427_i2c_write_byte(const uint8_t address, uint16_t value) {
-	HAL_StatusTypeDef ret;
-	ret = HAL_I2C_Mem_Write(bq27427.device,
-							BQ27427_I2C_ADDRESS,
-							(uint16_t) address,
-							(uint16_t) sizeof(uint8_t),
-							(uint8_t*) &value,
-							(uint16_t) sizeof(uint8_t),
-							BQ27427_I2C_TIMEOUT);
-	assert(ret == HAL_OK);
-	HAL_Delay(1);
+	uint8_t v8 = (uint8_t)value;
+
+    int err = i2c_burst_write_dt(&bq27427.i2c, address, &v8, 1);
+    if (err) {
+        return err;
+    }
+
+    k_msleep(1);
+    return 0;
 }
 
 static inline uint16_t bq27427_i2c_read_memory(const uint8_t address, const size_t size) {
@@ -121,18 +123,19 @@ static inline uint16_t bq27427_i2c_read_memory(const uint8_t address, const size
 	assert((address >= bq27427_extended_command_BlockDataStart && address <= bq27427_extended_command_BlockDataEnd) ||
 		   (address == bq27427_extended_command_BlockDataChecksum));
 	assert(size > 0 && size < 3);
-	assert(size > 0 && size < 3);
-	HAL_StatusTypeDef ret = HAL_I2C_Mem_Read(bq27427.device,
-											 BQ27427_I2C_ADDRESS,
-											 address,
-											 (uint16_t) sizeof(uint8_t),
-											 (void*) &value,
-											 (uint16_t) size,
-											 BQ27427_I2C_TIMEOUT);
-	assert(ret == HAL_OK);
-	HAL_Delay(1);
-	// if read size is not 1, we must swap the bytes
-	return size == 1 ? value : swap_bytes16(value);
+	uint8_t buf[2] = { 0 };
+
+    int err = i2c_burst_read_dt(&bq27427.i2c, address, buf, size);
+    if (err) {
+        return 0;
+    }
+
+    k_msleep(1);
+	 if (size == 1) {
+        return buf[0];
+    } 
+	uint16_t v = ((uint16_t)buf[0]) | ((uint16_t)buf[1] << 8);
+	return swap_bytes16(v);
 }
 
 static inline union bq27427_control_status_register_t bq27427_i2c_read_control_status(void) {
@@ -147,7 +150,7 @@ static inline void clear_port_or_reset(void) {
 	while(flags.bits.bPOROrReset != 0) {
 		// exit from configuration mode
 		bq27427_i2c_write_control(bq27427_control_subcommand_SoftReset);
-		HAL_Delay(2);
+		k_msleep(2);
 		flags.value = bq27427_i2c_read_w_command(bq27427_command_Flags);
 	}
 }
@@ -159,16 +162,16 @@ static inline void unseal_gauge(void) {
 	flags.value = bq27427_i2c_read_w_command(bq27427_command_Flags);
 	if(flags.bits.bPOROrReset != 0) {
 		clear_port_or_reset();
-		HAL_Delay(1200);
+		k_msleep(1200);
 	}
 	flags.value = bq27427_i2c_read_w_command(bq27427_command_Flags);
 	controlStatus.value = bq27427_i2c_read_control(bq27427_control_subcommand_ControlStatus);
 	while(controlStatus.bits.bSealedMode != 0) {
-		HAL_Delay(10);
+		k_msleep(10);
 		bq27427_i2c_write_2byte_increment(bq27427_command_Control, BQ27427_UNSEAL_KEY);
-		HAL_Delay(10);
+		k_msleep(10);
 		bq27427_i2c_write_2byte_increment(bq27427_command_Control, BQ27427_UNSEAL_KEY);
-		HAL_Delay(100);
+		k_msleep(100);
 		controlStatus.value = bq27427_i2c_read_control(bq27427_control_subcommand_ControlStatus);
 	}
 }
@@ -209,7 +212,7 @@ static inline void enter_configuration_update_mode(void) {
 	int cntr = 0;
 	union bq27427_flags_register_t flags = {.value = 0};
 	do {
-		HAL_Delay(10);
+		k_msleep(10);
 		flags.value = bq27427_i2c_read_w_command(bq27427_command_Flags);
 		cntr++;
 	} while(flags.bits.bConfigUpdateMode == 0 && cntr < 120);
@@ -222,7 +225,7 @@ static inline void exit_configuration_update_mode(void) {
 	// exit from configuration mode
 	bq27427_i2c_write_control(bq27427_control_subcommand_SoftReset);
 	do {
-		HAL_Delay(10);
+		k_msleep(10);
 		flags.value = bq27427_i2c_read_w_command(bq27427_command_Flags);
 	} while(flags.bits.bConfigUpdateMode != 0);
 }
@@ -237,7 +240,7 @@ static inline void update_chemistry_id(const enum bq27427_control_subcommand_typ
 		controlStatus = bq27427_i2c_read_control_status();
 		cntr ++;
 		uint16_t chemId = bq27427_i2c_read_control(bq27427_control_subcommand_ChemistryIdentifier);
-		sys_debug_print("BQ27427: Chemistry ID: %04x Required: %04x\r\n", chemId, chemistryId);
+		LOG_INF("BQ27427: Chemistry ID: %04x Required: %04x\r\n", chemId, chemistryId);
 		if(chemId == chemistryId) {
 			return;
 		}
@@ -318,7 +321,7 @@ static inline void write_data_memory(uint8_t offset, const uint16_t* pBuffer, si
 				uint16Array.value = newValue;
 				checksum += uint16Array.array[0];
 				checksum += uint16Array.array[1];
-				HAL_Delay(2);
+				k_msleep(2);
 			}
 			// update the loop parameters
 			pBuffer += 1;
@@ -333,7 +336,7 @@ static inline void write_data_memory(uint8_t offset, const uint16_t* pBuffer, si
 				// update the checksum
 				checksum -= prevValue;
 				checksum += newValue;
-				HAL_Delay(2);
+				k_msleep(2);
 			}
 		}
 		size -= wrSize;
@@ -351,31 +354,11 @@ static inline void write_data_memory(uint8_t offset, const uint16_t* pBuffer, si
  * \param i2c I2C device to be used by the driver
  */
 bool bq27427_init(void) {
-	if(bq27427.state.bits.bInitialized == 0) {
-		BQ27427_I2C_DRIVER.Instance = BQ27427_I2C_PORT; // --> make sure that the correct I2C port is selected
-
-		bq27427.i2c_config.Timing = BQ27427_I2C_TIMING;
-		bq27427.i2c_config.OwnAddress1 = 0;
-		bq27427.i2c_config.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-		bq27427.i2c_config.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-		bq27427.i2c_config.OwnAddress2 = 0;
-		bq27427.i2c_config.OwnAddress2Masks = I2C_OA2_NOMASK;
-		bq27427.i2c_config.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-		bq27427.i2c_config.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+	bq27427.i2c = dev_i2c;
+	if (!device_is_ready(bq27427.i2c.bus)) {
+		LOG_ERR("I2C bus not ready");
+		return -ENODEV;
 	}
-
-	bool bRet = BQ27427_I2C_LOCK(&bq27427, &bq27427.i2c_config, BQ27427_I2C_TIMEOUT);
-	if(bRet == false) {
-		return false;
-	}
-	const HAL_StatusTypeDef ret =
-		HAL_I2C_IsDeviceReady(&BQ27427_I2C_DRIVER, BQ27427_I2C_ADDRESS, 3, BQ27427_I2C_TIMEOUT);
-	sys_debug_print("BQ27427_I2C_IsDeviceReady ret = %d\n", ret);
-	assert(ret == HAL_OK);
-	BQ27427_I2C_UNLOCK(&bq27427);
-
-	bq27427.device = &BQ27427_I2C_DRIVER;
-
 	bq27427_get_default_config(&(bq27427.config));
 	// since we can access the device, we can assume that battery presents
 	battery_insert();
@@ -416,7 +399,7 @@ static inline void bq27427_program_chemistry_id(const enum bq27427_chemistry_typ
 	do {
 		// update the chemistry identifier
 		update_chemistry_id(subcommand, chemistryType);
-		HAL_Delay(100);
+		k_msleep(100);
 		// check the chemistry identifier
 		prevChemistry =
 			(enum bq27427_chemistry_type) bq27427_i2c_read_control(bq27427_control_subcommand_ChemistryIdentifier);
@@ -438,7 +421,7 @@ static inline void program_2_byte_parameter_in_memory(enum bq27427_flash_class_t
 	uint16_t prevVal = 0;
 	do {
 		write_data_memory(offset, &value, sizeof(uint16_t));
-		//		HAL_Delay(1200);
+		//		k_msleep(1200);
 		read_data_memory(offset, &prevVal, sizeof(uint16_t));
 		prevVal = swap_bytes16(prevVal);
 	} while(prevVal != value);
@@ -457,7 +440,7 @@ static inline void program_byte_parameter_in_memory(enum bq27427_flash_class_typ
 	uint8_t prevVal = 0;
 	do {
 		write_data_memory(offset, (uint16_t*) &value, sizeof(uint8_t));
-		//		HAL_Delay(1200);
+		//		k_msleep(1200);
 		read_data_memory(offset, (uint16_t*) &prevVal, sizeof(uint8_t));
 	} while(prevVal != value);
 }
@@ -550,7 +533,7 @@ static inline void gauge_initialization_configure(struct bq27427_config_t* confi
 		unseal_gauge();
 	}
 	enter_configuration_update_mode();
-	HAL_Delay(1200);
+	k_msleep(1200);
 	// now put the device into config update mode
 
 	// we must first check the chemistry id. It is crucial to update the chemistry identifier before
@@ -569,15 +552,15 @@ bool bq27427_config(struct bq27427_config_t* config) {
 	bool resetDetected = false;
 	bool configure = false;
 	bool initializing = false;
-	bool ret = BQ27427_I2C_LOCK(&bq27427, &bq27427.i2c_config, BQ27427_I2C_TIMEOUT);
-	if(ret == false) {
-		return false;
-	}
+	// bool ret = BQ27427_I2C_LOCK(&bq27427, &bq27427.i2c_config, BQ27427_I2C_TIMEOUT);
+	// if(ret == false) {
+	// 	return false;
+	// }
 
 	union bq27427_control_status_register_t controlStatus = {.value = 0};
 	union bq27427_flags_register_t flags = {.value = 0};
 	enum bq27427_chemistry_type prevChemistry = read_chemistry_id();
-	sys_debug_print("BQ27427: Chemistry ID 0x%04X required 0x%04X\r\n", prevChemistry, config->battery_type);
+	LOG_INF("BQ27427: Chemistry ID 0x%04X required 0x%04X\r\n", prevChemistry, config->battery_type);
 	// check whether the battery is just inserted
 	flags.value = bq27427_i2c_read_w_command(bq27427_command_Flags);
 	// check the state
@@ -601,18 +584,16 @@ bool bq27427_config(struct bq27427_config_t* config) {
 	if(configure != false){
 		gauge_initialization_configure(config);
 		battery_remove();
-		HAL_Delay(4000);
+		k_msleep(4000);
 		battery_insert();
-		HAL_Delay(2000);
+		k_msleep(2000);
 	}
 	flags.value = bq27427_i2c_read_w_command(bq27427_command_Flags);
 	if(flags.bits.bBatteryDetected == 0 && resetDetected == false) {
-		sys_debug_print("BQ27427: battery not detected\r\n");
+		LOG_INF("BQ27427: battery not detected\r\n");
 		bq27427_reset(NULL);
-		sys_debug_print("BQ27427: Gauge Reset\r\n");
-		HAL_Delay(2000);
-		sys_debug_print("BQ27427: Resetting the system\r\n");
-		system_reset();
+		LOG_INF("BQ27427: Gauge Reset\r\n");
+		k_msleep(2000);
 	}
 	if(initializing != false) {
 		// check whether the gauge is in initialization state
@@ -623,7 +604,7 @@ bool bq27427_config(struct bq27427_config_t* config) {
 
 	memcpy(&(bq27427.config), config, sizeof(struct bq27427_config_t));
 	bq27427.state.bits.bConfigured = 1;
-	BQ27427_I2C_UNLOCK(&bq27427);
+	// BQ27427_I2C_UNLOCK(&bq27427);
 	return true;
 }
 
@@ -668,10 +649,10 @@ void bq27427_get_default_config(struct bq27427_config_t* config) {
 
 bool bq27427_update_state(struct bq27427_battery_state_t* state) {
 	assert(bq27427.state.bits.bConfigured != 0);
-	bool ret = BQ27427_I2C_LOCK(&bq27427, &bq27427.i2c_config, BQ27427_I2C_TIMEOUT);
-	if(ret == false) {
-		return false;
-	}
+	// bool ret = BQ27427_I2C_LOCK(&bq27427, &bq27427.i2c_config, BQ27427_I2C_TIMEOUT);
+	// if(ret == false) {
+	// 	return false;
+	// }
 	// bool configure = false;
 	union bq27427_flags_register_t flags = {.value = 0};
 
@@ -682,7 +663,7 @@ bool bq27427_update_state(struct bq27427_battery_state_t* state) {
 		// we are in the POR state, so we must clear this bit by sending soft reset command
 		clear_port_or_reset();
 		// configure = true;
-		sys_debug_print("BQ27427: POR detected while reading the state --- This CANNIT happen!!!!\r\n");
+		LOG_INF("BQ27427: POR detected while reading the state --- This CANNIT happen!!!!\r\n");
 		assert(false);
 	}
 	// configure if needed
@@ -706,7 +687,7 @@ bool bq27427_update_state(struct bq27427_battery_state_t* state) {
 
 	bq27427.battery_state.nominal_available_capacity =
 		bq27427_i2c_read_w_command(bq27427_command_NominalAvailableCapacity);
-	BQ27427_I2C_UNLOCK(&bq27427);
+	// BQ27427_I2C_UNLOCK(&bq27427);
 	if(state != NULL) {
 		memcpy(state, &(bq27427.battery_state), sizeof(struct bq27427_battery_state_t));
 	}
@@ -721,7 +702,8 @@ void bq27427_print_state(void) {
 	controlStatus.value = bq27427_i2c_read_control(bq27427_control_subcommand_ControlStatus);
 	union bq27427_flags_register_t flags;
 	flags.value = bq27427_i2c_read_w_command(bq27427_command_Flags);
-	sys_debug_print("Battery state: T=%d V=%d A=%d P=%d SOC=%d AvailCap=%d "
+	LOG_INF("%d", flags.value);
+	LOG_INF("Battery state: T=%d V=%d A=%d P=%d SOC=%d AvailCap=%d "
 					"FullCap=%d RemainingCap=%d FLAGS: 0x%04x CS: 0x%04x\r\n",
 					bq27427.battery_state.temperature,
 					bq27427.battery_state.voltage,
@@ -743,24 +725,25 @@ bool bq27427_reset(struct bq27427_config_t* config) {
 	/* ---------------------------------------------------------------------
 	 * 1. Issue the RESET (0x0041) control sub-command
 	 * -------------------------------------------------------------------*/
-	bool ret = BQ27427_I2C_LOCK(&bq27427, &bq27427.i2c_config, BQ27427_I2C_TIMEOUT);
-	if(ret == false) {
-		return false;
-	}
+	// bool ret = BQ27427_I2C_LOCK(&bq27427, &bq27427.i2c_config, BQ27427_I2C_TIMEOUT);
+	// if(ret == false) {
+	// 	return false;
+	// }
 
 	/* Write the reset control word (helper takes care of endianess) */
 	bq27427_i2c_write_control(bq27427_control_subcommand_Reset);
-	HAL_Delay(10000); /* ~1 ms is sufficient */
+	k_msleep(10000); /* ~1 ms is sufficient */
 	flags.value = bq27427_i2c_read_w_command(bq27427_command_Flags);
 
 	/* ---------------------------------------------------------------------
 	 * 2. Give the fuel-gauge a brief moment to reboot and become ready
 	 * -------------------------------------------------------------------*/
-	HAL_Delay(2); /* ~1 ms is sufficient */
-	HAL_StatusTypeDef ready;
+	k_msleep(2); /* ~1 ms is sufficient */
+	int ready;
 	do {
-		ready = HAL_I2C_IsDeviceReady(bq27427.device, BQ27427_I2C_ADDRESS, 1, BQ27427_I2C_TIMEOUT);
-	} while(ready != HAL_OK);
+		ready = device_is_ready(bq27427.i2c.bus);
+		k_msleep(2); /* ~1 ms is sufficient */
+	} while(!ready);
 
 	/* ---------------------------------------------------------------------
 	 * 3. Local bookkeeping
@@ -773,7 +756,7 @@ bool bq27427_reset(struct bq27427_config_t* config) {
 	if(config != NULL) {
 		union bq27427_control_status_register_t controlStatus = {.value = 0};
 		enum bq27427_chemistry_type prevChemistry = read_chemistry_id();
-		sys_debug_print("BQ27427: Chemistry ID 0x%04X required 0x%04X\r\n", prevChemistry, config->battery_type);
+		LOG_INF("BQ27427: Chemistry ID 0x%04X required 0x%04X\r\n", prevChemistry, config->battery_type);
 		// check whether the battery is just inserted
 		flags.value = bq27427_i2c_read_w_command(bq27427_command_Flags);
 		// check the state
@@ -784,13 +767,13 @@ bool bq27427_reset(struct bq27427_config_t* config) {
 		// configure
 		gauge_initialization_configure(config);
 		battery_remove();
-		HAL_Delay(4000);
+		k_msleep(4000);
 		battery_insert();
-		HAL_Delay(2000);
+		k_msleep(2000);
 		flags.value = bq27427_i2c_read_w_command(bq27427_command_Flags);
 		while(flags.bits.bBatteryDetected == 0) {
-			sys_debug_print("BQ27427: battery not detected\r\n");
-			HAL_Delay(2000);
+			LOG_INF("BQ27427: battery not detected\r\n");
+			k_msleep(2000);
 			flags.value = bq27427_i2c_read_w_command(bq27427_command_Flags);
 		}
 		// check whether the gauge is in initialization state
@@ -801,6 +784,6 @@ bool bq27427_reset(struct bq27427_config_t* config) {
 		memcpy(&(bq27427.config), config, sizeof(struct bq27427_config_t));
 		bq27427.state.bits.bConfigured = 1;
 	}
-	BQ27427_I2C_UNLOCK(&bq27427);
+	// BQ27427_I2C_UNLOCK(&bq27427);
 	return true;
 }

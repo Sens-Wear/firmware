@@ -28,6 +28,7 @@ target_sources(app PRIVATE
     src/drivers/sensors/touch/mtch6102.c
     src/drivers/sensors/ppg/max30101.c
     src/drivers/power/regulator/tpsm83102.c
+    src/drivers/power/gauge/bq27427.c
     src/bluetooth/services/pressure/pressure_lbs.c
     ${BHY2_SOURCES}
 )

@@ -3,12 +3,16 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <zephyr/drivers/i2c.h>
 
-
-#define BQ27427_I2C_ADDRESS (0xAA)
 #ifndef BQ27427_I2C_TIMEOUT
 #define BQ27427_I2C_TIMEOUT (100)
 #endif
+
+union uint16_array_t {
+ 	uint8_t array[sizeof(uint16_t)];
+ 	uint16_t value;
+};
 
 enum bq27427_chemistry_type {
 	bq27427_chemistry_Lipo4V35 = 0x3230, // Chemistry A
@@ -214,8 +218,7 @@ struct bq27427_battery_state_t {
 };
 
 struct bq27427_t {
-	I2C_HandleTypeDef* device;
-	I2C_InitTypeDef i2c_config;
+	struct i2c_dt_spec i2c;
 
 	struct bq27427_config_t config;
 	union bq27427_state_t state;
