@@ -22,7 +22,7 @@
  // };
  // #pragma pack()
 // --------------------------------------------------------------------------
-LOG_MODULE_REGISTER(bq27427, CONFIG_REGULATOR_LOG_LEVEL);
+LOG_MODULE_REGISTER(bq27427, CONFIG_LOG_DEFAULT_LEVEL);
 
 #define BQ27427_NODE DT_NODELABEL(bq27427)
 static const struct i2c_dt_spec dev_i2c = I2C_DT_SPEC_GET(BQ27427_NODE);

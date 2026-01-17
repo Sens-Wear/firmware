@@ -81,7 +81,6 @@ static void adv_restart_work_fn(struct k_work *work)
     }
 }
 
-
 void on_connected(struct bt_conn *conn, uint8_t err) {
     if (err) {
         LOG_INF("Connection error %d", err);
@@ -148,8 +147,21 @@ int main(void)
 		return -1;
 	}
 
+	static struct bq25180_config_t bq25180_config_val;
+	static union bq25180_charger_state_t bq25180_state;
+	bq25180_init();
+	bq25180_reset(NULL);
+	bq25180_get_default_lipo_usb_charger_config(&bq25180_config_val);
+	bq25180_config_val.battery_uvlo = bq25180_battery_UVLO_threshold_2V8;
+
+	bq25180_config(&bq25180_config_val);
+	bq25180_update_state(&bq25180_state);
+	bq25180_print_state();
+
+	// Initialize battery gauge
 	static struct bq27427_config_t bq27427_config_val;
 	bq27427_init();
+	bq27427_reset(NULL);
 	bq27427_get_default_config(&bq27427_config_val);
 	bq27427_config_val.battery_capacity = 450;
 	// bq27427_config_val.battery_type = bq27427_chemistry_Lipo4V35;
@@ -176,8 +188,6 @@ int main(void)
 
 	// sys_memory_init();
 	// test_memory();
-	
-	// charger_power_init();
 	
 
 	/* 1) Turn regulator on */
@@ -235,4 +245,3 @@ int main(void)
 
 	return ret;
 }
-

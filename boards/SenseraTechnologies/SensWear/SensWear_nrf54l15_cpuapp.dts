@@ -48,6 +48,11 @@
 			spi-max-frequency = <1000000>;
 		};
 	};
+
+	bq25180_irq: bq25180_irq {
+		compatible = "sensewear,bq25180-irq";
+		interrupt-gpios = <&gpio2 9 GPIO_ACTIVE_LOW>;
+	};
 };
 
 &uart30 {
@@ -151,10 +156,11 @@
 		enable-gpios = <&gpio2 6 GPIO_ACTIVE_HIGH>;
 	};
 
-	bq25180: bq25180@21 {
-		compatible = "ti,bq25180";
-		reg = <0x21>;
-		constant-charge-current-max-microamp = <500000>;
+	bq25180: bq25180@6a {
+		compatible = "i2c-device";
+		status = "okay";
+		reg = <0x6a>;
+		label = "BQ25180";
 	};
 
 	bq27427: bq27427@55{
@@ -164,9 +170,10 @@
         label = "BQ27427";
     };
 
-	tpsm83102: tpsm83102@6a {
+	// This is mixing up with the bq25180 and both are using 6a
+	tpsm83102: tpsm83102@21 {
 		compatible = "ti,tpsm83102";
-		reg = <0x6a>;
+		reg = <0x21>;
 		enable-gpios = <&gpio2 5 GPIO_ACTIVE_LOW>;
 		regulator-name = "VDD_DAUGHTER";
 		regulator-min-microvolt = <1000000>;
@@ -233,11 +240,11 @@
         line-name = "EEPROM_CS";
     };
 
-	led_en_hog: led_en_hog {
+	charger_pwr_kill_hog: charger_pwr_kill_hog {
         gpio-hog;
-        gpios = <6 GPIO_ACTIVE_HIGH>;
-        output-high;           /* keep /CS deasserted */
-        line-name = "LED_EN";
+        gpios = <4 GPIO_ACTIVE_LOW>;
+        output-high;
+        line-name = "CHARGER_POWER_KILL";
     };
 
 	// tpsm83102_en_hog: tpsm83102_en_hog {
