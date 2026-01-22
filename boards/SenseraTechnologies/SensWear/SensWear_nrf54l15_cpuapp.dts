@@ -156,10 +156,10 @@
 		enable-gpios = <&gpio2 6 GPIO_ACTIVE_HIGH>;
 	};
 
-	bq25180: bq25180@6a {
+	bq25180: bq25180@21 {
 		compatible = "i2c-device";
 		status = "okay";
-		reg = <0x6a>;
+		reg = <0x21>;
 		label = "BQ25180";
 	};
 
@@ -171,10 +171,10 @@
     };
 
 	// This is mixing up with the bq25180 and both are using 6a
-	tpsm83102: tpsm83102@21 {
+	tpsm83102: tpsm83102@6a {
 		compatible = "ti,tpsm83102";
-		reg = <0x21>;
-		enable-gpios = <&gpio2 5 GPIO_ACTIVE_LOW>;
+		reg = <0x6a>;
+		enable-gpios = <&gpio2 5 GPIO_ACTIVE_HIGH>;
 		regulator-name = "VDD_DAUGHTER";
 		regulator-min-microvolt = <1000000>;
 		regulator-max-microvolt = <5500000>;
@@ -246,13 +246,6 @@
         output-high;
         line-name = "CHARGER_POWER_KILL";
     };
-
-	// tpsm83102_en_hog: tpsm83102_en_hog {
-    //     gpio-hog;
-    //     gpios = <5 GPIO_ACTIVE_HIGH>;
-    //     output-high;
-    //     line-name = "TPSM_EN";
-    // };
 };
 
 &uicr {

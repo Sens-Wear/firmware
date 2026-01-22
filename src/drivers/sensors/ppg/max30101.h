@@ -268,6 +268,13 @@ struct max30101_t {
 void ppg_sensor_init();
 
 /**
+ * \brief Enable or disable PPG streaming.
+ *
+ * \param enabled True to enable streaming, false to disable.
+ */
+void ppg_set_streaming_enabled(bool enabled);
+
+/**
  * \brief Configures MAX30101
  */
 void max30101_config(void);

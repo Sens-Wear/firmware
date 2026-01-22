@@ -9,20 +9,34 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/sys/atomic.h>
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>
 
 #include "max30101.h"
 #include "max30101_config.h"
+#include "bluetooth/services/ppg/ppg_lbs.h"
 
 LOG_MODULE_REGISTER(SENS_WEAR_PPG_SENSOR_LOGGER);
 
 
 #define MAX30101_NODE DT_NODELABEL(max30101)
 #define MAX_SENSOR_READING_SIZE 32
+#define PPG_STREAM_SLEEP_MS 100
+#define PPG_IDLE_SLEEP_MS 250
 static const struct i2c_dt_spec dev_i2c = I2C_DT_SPEC_GET(MAX30101_NODE);
 static struct max30101_t max30101 = {0};
+static atomic_t ppg_streaming_enabled;
+static bool ppg_thread_started;
+
+K_THREAD_STACK_DEFINE(ppg_sensor_stack, 4096);
+static struct k_thread ppg_sensor_thread;
+
+static uint32_t max30101_unpack_sample(const uint8_t *sample)
+{
+  return ((uint32_t)sample[0] << 16 | (uint32_t)sample[1] << 8 | (uint32_t)sample[2]) & 0x03FFFF;
+}
 
 __STATIC_INLINE void
 max30101_i2c_write_registers(enum max30101_register_type startAddress,
@@ -66,9 +80,43 @@ static void sensor_data_work_handler()
   /* Read the FIFO data registers */
   uint8_t buffer[MAX_SENSOR_READING_SIZE * 9] = {0};
   size_t actualSize = max30101_read_fifo(buffer, MAX_SENSOR_READING_SIZE * max30101.led_count * 3);
-  size_t sampleCount = actualSize / 9; // 3 bytes per LED x 3 LEDs = 9 bytes per sample set
   LOG_INF("FIFO data: ");
   LOG_HEXDUMP_INF(buffer, actualSize, "");
+
+  if (actualSize >= (size_t)(max30101.led_count * MAX30101_BYTES_PER_CHANNEL)) {
+    size_t sample_size = (size_t)max30101.led_count * MAX30101_BYTES_PER_CHANNEL;
+    size_t last_sample_offset = actualSize - sample_size;
+    const uint8_t *sample = &buffer[last_sample_offset];
+
+    if (max30101.led_count >= 1) {
+      uint32_t ir = max30101_unpack_sample(sample);
+      (void)ppg_lbs_notify_ir(ir);
+      sample += MAX30101_BYTES_PER_CHANNEL;
+    }
+
+    if (max30101.led_count >= 2) {
+      uint32_t red = max30101_unpack_sample(sample);
+      (void)ppg_lbs_notify_red(red);
+      sample += MAX30101_BYTES_PER_CHANNEL;
+    }
+
+    if (max30101.led_count >= 3) {
+      uint32_t green = max30101_unpack_sample(sample);
+      (void)ppg_lbs_notify_green(green);
+    }
+  }
+}
+
+static void ppg_sensor_thread_fn(void *p1, void *p2, void *p3)
+{
+  ARG_UNUSED(p1);
+  ARG_UNUSED(p2);
+  ARG_UNUSED(p3);
+
+  while (atomic_get(&ppg_streaming_enabled)) {
+    sensor_data_work_handler();
+    k_msleep(PPG_STREAM_SLEEP_MS);
+  }
 }
 
 // Function to update BLE reporting frequency dynamically
@@ -89,15 +137,43 @@ void ppg_sensor_init()
     LOG_ERR("I2C bus %s is not ready!\n\r", dev_i2c.bus->name);
     return;
   }
-
   max30101.device = &dev_i2c;
   max30101.state.bits.bInitialized = 1;
-  max30101_config();
-  max30101_enable_wrist_hr_sampling();
-  while(1) {
-    sensor_data_work_handler();
-    k_msleep(100);
-  } 
+}
+
+void ppg_set_streaming_enabled(bool enabled)
+{
+  if (enabled) {
+    if (atomic_get(&ppg_streaming_enabled)) {
+      return;
+    }
+    max30101_config();
+    max30101_enable_wrist_hr_sampling();
+
+    atomic_set(&ppg_streaming_enabled, 1);
+
+    if (!ppg_thread_started) {
+      ppg_thread_started = true;
+      k_thread_create(&ppg_sensor_thread, ppg_sensor_stack,
+                      K_THREAD_STACK_SIZEOF(ppg_sensor_stack),
+                      ppg_sensor_thread_fn, NULL, NULL, NULL,
+                      K_PRIO_PREEMPT(5), 0, K_NO_WAIT);
+    }
+  } else {
+    if (!atomic_get(&ppg_streaming_enabled)) {
+      return;
+    }
+
+    atomic_set(&ppg_streaming_enabled, 0);
+    if (ppg_thread_started) {
+      k_thread_abort(&ppg_sensor_thread);
+      ppg_thread_started = false;
+    }
+
+    if (max30101.state.bits.bSampling) {
+      max30101_shutdown();
+    }
+  }
 }
 
 void max30101_config(void)

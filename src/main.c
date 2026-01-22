@@ -17,6 +17,7 @@
 
 #include "app/led_ble_bridge.h"
 #include "app/imu_ble_bridge.h"
+#include "app/ppg_ble_bridge.h"
 #include "app/power_ble_bridge.h"
 #include "bluetooth/services/imu/imu_lbs.h"
 #include "bluetooth/services/led/led_lbs.h"
@@ -126,11 +127,11 @@ int main(void)
 {
 	int ret;
 	int err;
-	// const struct device *reg = DEVICE_DT_GET(REG_NODE);
-	// if (!device_is_ready(reg)) {
-    //     LOG_ERR("Regulator not ready");
-    //     return 0;
-    // }
+	const struct device *reg = DEVICE_DT_GET(REG_NODE);
+	if (!device_is_ready(reg)) {
+        LOG_ERR("Regulator not ready");
+        return 0;
+    }
 	err = bt_enable(NULL);
 	if (err) {
 		LOG_ERR("Bluetooth init failed (err %d)\n", err);
@@ -151,27 +152,27 @@ int main(void)
 		return -1;
 	}
 
-	static struct bq25180_config_t bq25180_config_val;
-	static union bq25180_charger_state_t bq25180_state;
-	bq25180_init();
-	bq25180_reset(NULL);
-	bq25180_get_default_lipo_usb_charger_config(&bq25180_config_val);
-	bq25180_config_val.battery_uvlo = bq25180_battery_UVLO_threshold_2V8;
+	// static struct bq25180_config_t bq25180_config_val;
+	// static union bq25180_charger_state_t bq25180_state;
+	// bq25180_init();
+	// bq25180_reset(NULL);
+	// bq25180_get_default_lipo_usb_charger_config(&bq25180_config_val);
+	// bq25180_config_val.battery_uvlo = bq25180_battery_UVLO_threshold_2V8;
 
-	bq25180_config(&bq25180_config_val);
-	bq25180_update_state(&bq25180_state);
-	bq25180_print_state();
+	// bq25180_config(&bq25180_config_val);
+	// bq25180_update_state(&bq25180_state);
+	// bq25180_print_state();
 
-	// Initialize battery gauge
-	static struct bq27427_config_t bq27427_config_val;
-	bq27427_init();
-	bq27427_reset(NULL);
-	bq27427_get_default_config(&bq27427_config_val);
-	bq27427_config_val.battery_capacity = 450;
-	// bq27427_config_val.battery_type = bq27427_chemistry_Lipo4V35;
-	bq27427_config(&bq27427_config_val);
-	bq27427_update_state(NULL);
-	bq27427_print_state();
+	// // Initialize battery gauge
+	// static struct bq27427_config_t bq27427_config_val;
+	// bq27427_init();
+	// bq27427_reset(NULL);
+	// bq27427_get_default_config(&bq27427_config_val);
+	// bq27427_config_val.battery_capacity = 450;
+	// // bq27427_config_val.battery_type = bq27427_chemistry_Lipo4V35;
+	// bq27427_config(&bq27427_config_val);
+	// bq27427_update_state(NULL);
+	// bq27427_print_state();
 
 	// Initialize touch sensor
     // touch_sensor_init();
@@ -188,7 +189,7 @@ int main(void)
 
 	led_ble_bridge_init();
     imu_ble_bridge_init();
-	power_ble_bridge_init();
+	// power_ble_bridge_init();
 
 
 	// sys_memory_init();
@@ -196,21 +197,21 @@ int main(void)
 	
 
 	/* 1) Turn regulator on */
-    // ret = regulator_enable(reg);
-    // if (ret) {
-    //     LOG_ERR("enable failed: %d", ret);
-    //     return 0;
-    // }
+    ret = regulator_enable(reg);
+    if (ret) {
+        LOG_ERR("enable failed: %d", ret);
+        return 0;
+    }
 
     /* 2) Program 1.8 V exactly */
-    // ret = regulator_set_voltage(reg, 3300000, 3300000);
-    // if (ret) {
-    //     LOG_ERR("set_voltage failed: %d", ret);
-    //     return 0;
-    // }
+    ret = regulator_set_voltage(reg, 5000000, 5000000);
+    if (ret) {
+        LOG_ERR("set_voltage failed: %d", ret);
+        return 0;
+    }
 
     /* Optional: give it time to ramp */
-    // k_msleep(10);
+    k_msleep(10);
 
 	// haptic_actuator_init();
 
@@ -218,7 +219,7 @@ int main(void)
 
 	// touch_sensor_init();
 
-	// ppg_sensor_init();
+	ppg_ble_bridge_init();
 	
 	// uint8_t colorInd = 1;
 	// union led_color_t color = {.color = 0};
