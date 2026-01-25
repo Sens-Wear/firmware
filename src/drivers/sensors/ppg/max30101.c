@@ -80,9 +80,9 @@ static void sensor_data_work_handler()
   /* Read the FIFO data registers */
   uint8_t buffer[MAX_SENSOR_READING_SIZE * 9] = {0};
   size_t actualSize = max30101_read_fifo(buffer, MAX_SENSOR_READING_SIZE * max30101.led_count * 3);
+  LOG_INF("max30101.led_count: %d", max30101.led_count);
   LOG_INF("FIFO data: ");
   LOG_HEXDUMP_INF(buffer, actualSize, "");
-
   if (actualSize >= (size_t)(max30101.led_count * MAX30101_BYTES_PER_CHANNEL)) {
     size_t sample_size = (size_t)max30101.led_count * MAX30101_BYTES_PER_CHANNEL;
     size_t last_sample_offset = actualSize - sample_size;
@@ -402,19 +402,16 @@ size_t max30101_read_fifo(void *buffer, size_t bufferSize)
                                 (void *)&value,
                                 3);
     uint8_t *bytes = (void *)&value;
-    uint8_t writePtr = bytes[0];
-    uint8_t readPtr = bytes[2];
+    uint8_t writePtr = bytes[0] & 0x1F;
+    uint8_t readPtr = bytes[2] & 0x1F;
+    uint8_t availableSamples = (writePtr - readPtr) & 0x1F;
 
-    if (writePtr > readPtr)
-    {
-      byteCount = (writePtr - readPtr) * MAX30101_BYTES_PER_CHANNEL *
-                  max30101.led_count;
+    if (availableSamples == 0) {
+      return 0;
     }
-    else
-    {
-      byteCount = (32 + writePtr - readPtr) * MAX30101_BYTES_PER_CHANNEL *
-                  max30101.led_count;
-    }
+
+    byteCount = (size_t)availableSamples * MAX30101_BYTES_PER_CHANNEL *
+                max30101.led_count;
   }
 
   // adjust what we can read

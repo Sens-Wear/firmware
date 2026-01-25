@@ -1,0 +1,5 @@
+{
+    "cortex-debug.pyocdPath": "pyocd",
+    "cortex-debug.variableUseNaturalFormat": true,
+    "cortex-debug.gdbPath": "C:\\ncs\\toolchains\\66cdf9b75e\\opt\\zephyr-sdk\\arm-zephyr-eabi\\bin\\arm-zephyr-eabi-gdb.exe",
+}

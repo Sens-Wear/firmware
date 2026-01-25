@@ -5,6 +5,8 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(firmware)
 
+set(BOARD_FLASH_RUNNER pyocd)
+
 # Add BHY2 sensor API source files
 file(GLOB BHY2_SOURCES 
     "${CMAKE_CURRENT_SOURCE_DIR}/src/BHY2-Sensor-API/*.c"
