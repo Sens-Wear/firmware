@@ -23,7 +23,7 @@ LOG_MODULE_REGISTER(SENS_WEAR_PPG_SENSOR_LOGGER);
 
 #define MAX30101_NODE DT_NODELABEL(max30101)
 #define MAX_SENSOR_READING_SIZE 32
-#define PPG_STREAM_SLEEP_MS 100
+#define PPG_STREAM_SLEEP_MS 5
 #define PPG_IDLE_SLEEP_MS 250
 static const struct i2c_dt_spec dev_i2c = I2C_DT_SPEC_GET(MAX30101_NODE);
 static struct max30101_t max30101 = {0};
@@ -80,9 +80,9 @@ static void sensor_data_work_handler()
   /* Read the FIFO data registers */
   uint8_t buffer[MAX_SENSOR_READING_SIZE * 9] = {0};
   size_t actualSize = max30101_read_fifo(buffer, MAX_SENSOR_READING_SIZE * max30101.led_count * 3);
-  LOG_INF("max30101.led_count: %d", max30101.led_count);
-  LOG_INF("FIFO data: ");
-  LOG_HEXDUMP_INF(buffer, actualSize, "");
+  // LOG_INF("max30101.led_count: %d", max30101.led_count);
+  // LOG_INF("FIFO data: ");
+  // LOG_HEXDUMP_INF(buffer, actualSize, "");
   if (actualSize >= (size_t)(max30101.led_count * MAX30101_BYTES_PER_CHANNEL)) {
     size_t sample_size = (size_t)max30101.led_count * MAX30101_BYTES_PER_CHANNEL;
     size_t last_sample_offset = actualSize - sample_size;
@@ -247,22 +247,17 @@ void max30101_config(void)
 
   /* Write the LED pulse amplitude registers */
   {
-    uint8_t *ledPulseAmplitudes = (void *)&value;
-    value = 0;
-    ledPulseAmplitudes[(int)max30101_led_Red] =
-        MAX30101_RED_LED_PULSE_AMPLITUDE;
-    ledPulseAmplitudes[(int)max30101_led_IR] =
-        MAX30101_IR_LED_PULSE_AMPLITUDE;
-    ledPulseAmplitudes[(int)max30101_led_Red] =
-        MAX30101_GREEN_LED_PULSE_AMPLITUDE;
+    uint8_t ledPulseAmplitudes[3] = {0};
+    ledPulseAmplitudes[0] = MAX30101_RED_LED_PULSE_AMPLITUDE;
+    ledPulseAmplitudes[1] = MAX30101_IR_LED_PULSE_AMPLITUDE;
+    ledPulseAmplitudes[2] = MAX30101_GREEN_LED_PULSE_AMPLITUDE;
     max30101_i2c_write_registers(max30101_register_LED1_PA,
-                                 (void *)&value,
-                                 3);
+                                 ledPulseAmplitudes,
+                                 sizeof(ledPulseAmplitudes));
 
-    value = 0;
-    ledPulseAmplitudes[0] = MAX30101_PROXIMITY_MODE_LED_PULSE_AMPLITUDE;
+    uint8_t proximityAmplitude = MAX30101_PROXIMITY_MODE_LED_PULSE_AMPLITUDE;
     max30101_i2c_write_registers(max30101_register_ProxModeLED_PA,
-                                 (void *)&value,
+                                 &proximityAmplitude,
                                  1);
   }
   /* Write the Multi-LED mode register */
