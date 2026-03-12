@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/byteorder.h>
+#include <zephyr/sys/util.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/bluetooth/bluetooth.h>
@@ -20,9 +21,11 @@ static bool notify_red_enabled;
 static bool notify_ir_enabled;
 static bool notify_green_enabled;
 
-static uint32_t ppg_red_state;
-static uint32_t ppg_ir_state;
-static uint32_t ppg_green_state;
+static struct ppg_sample_notification_t ppg_red_state;
+static struct ppg_sample_notification_t ppg_ir_state;
+static struct ppg_sample_notification_t ppg_green_state;
+BUILD_ASSERT(sizeof(struct ppg_sample_notification_t) == 12U,
+	     "PPG notification payload must be 12 bytes");
 
 static ppg_lbs_notify_state_cb_t red_notify_cb;
 static void *red_notify_user_data;
@@ -143,31 +146,67 @@ BT_GATT_SERVICE_DEFINE(
     BT_GATT_CCC(green_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE));
 
 
-int ppg_lbs_notify_red(uint32_t value)
+int ppg_lbs_notify_red(uint64_t unix_ms, uint32_t value)
 {
-  ppg_red_state = value;
+  ppg_red_state.unix_ms = unix_ms;
+  ppg_red_state.value = value;
   if (!notify_red_enabled) {
     return -EACCES;
   }
   return bt_gatt_notify(NULL, &ppg_lbs_svc.attrs[6], &ppg_red_state, sizeof(ppg_red_state));
 }
 
-int ppg_lbs_notify_ir(uint32_t value)
+int ppg_lbs_notify_ir(uint64_t unix_ms, uint32_t value)
 {
-  ppg_ir_state = value;
+  ppg_ir_state.unix_ms = unix_ms;
+  ppg_ir_state.value = value;
   if (!notify_ir_enabled) {
     return -EACCES;
   }
   return bt_gatt_notify(NULL, &ppg_lbs_svc.attrs[9], &ppg_ir_state, sizeof(ppg_ir_state));
 }
 
-int ppg_lbs_notify_green(uint32_t value)
+int ppg_lbs_notify_green(uint64_t unix_ms, uint32_t value)
 {
-  ppg_green_state = value;
+  ppg_green_state.unix_ms = unix_ms;
+  ppg_green_state.value = value;
   if (!notify_green_enabled) {
     return -EACCES;
   }
   return bt_gatt_notify(NULL, &ppg_lbs_svc.attrs[12], &ppg_green_state, sizeof(ppg_green_state));
+}
+
+int ppg_lbs_notify_red_batch(const struct ppg_sample_notification_t *samples, size_t count)
+{
+  if (!notify_red_enabled) {
+    return -EACCES;
+  }
+  if ((samples == NULL) || (count == 0U)) {
+    return -EINVAL;
+  }
+  return bt_gatt_notify(NULL, &ppg_lbs_svc.attrs[6], samples, count * sizeof(struct ppg_sample_notification_t));
+}
+
+int ppg_lbs_notify_ir_batch(const struct ppg_sample_notification_t *samples, size_t count)
+{
+  if (!notify_ir_enabled) {
+    return -EACCES;
+  }
+  if ((samples == NULL) || (count == 0U)) {
+    return -EINVAL;
+  }
+  return bt_gatt_notify(NULL, &ppg_lbs_svc.attrs[9], samples, count * sizeof(struct ppg_sample_notification_t));
+}
+
+int ppg_lbs_notify_green_batch(const struct ppg_sample_notification_t *samples, size_t count)
+{
+  if (!notify_green_enabled) {
+    return -EACCES;
+  }
+  if ((samples == NULL) || (count == 0U)) {
+    return -EINVAL;
+  }
+  return bt_gatt_notify(NULL, &ppg_lbs_svc.attrs[12], samples, count * sizeof(struct ppg_sample_notification_t));
 }
 
 void ppg_lbs_register_red_notify_cb(ppg_lbs_notify_state_cb_t cb, void *user_data)

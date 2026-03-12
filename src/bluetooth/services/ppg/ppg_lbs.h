@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 
+#include <stddef.h>
 #include <zephyr/types.h>
 #include <stdbool.h>
 #define BT_UUID_LBS_PPG_SERVICE_VAL BT_UUID_128_ENCODE(0x029ca54e, 0xd022, 0x4583, 0xb483, 0x91e9ea77034a)
@@ -23,15 +24,23 @@ extern "C" {
 
 typedef void (*ppg_lbs_notify_state_cb_t)(bool enabled, void *user_data);
 
+struct ppg_sample_notification_t {
+	uint64_t unix_ms;
+	uint32_t value;
+} __packed;
+
 void ppg_lbs_register_red_notify_cb(ppg_lbs_notify_state_cb_t cb, void *user_data);
 void ppg_lbs_register_ir_notify_cb(ppg_lbs_notify_state_cb_t cb, void *user_data);
 void ppg_lbs_register_green_notify_cb(ppg_lbs_notify_state_cb_t cb, void *user_data);
 void register_ppg_transfer_interval_callback(void (*callback)(uint16_t));
 void register_ppg_operation_mode_callback(void (*callback)(uint16_t));
 
-int ppg_lbs_notify_red(uint32_t value);
-int ppg_lbs_notify_ir(uint32_t value);
-int ppg_lbs_notify_green(uint32_t value);
+int ppg_lbs_notify_red(uint64_t unix_ms, uint32_t value);
+int ppg_lbs_notify_ir(uint64_t unix_ms, uint32_t value);
+int ppg_lbs_notify_green(uint64_t unix_ms, uint32_t value);
+int ppg_lbs_notify_red_batch(const struct ppg_sample_notification_t *samples, size_t count);
+int ppg_lbs_notify_ir_batch(const struct ppg_sample_notification_t *samples, size_t count);
+int ppg_lbs_notify_green_batch(const struct ppg_sample_notification_t *samples, size_t count);
 
 #ifdef __cplusplus
 }

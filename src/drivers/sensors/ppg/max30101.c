@@ -13,6 +13,7 @@
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>
+#include <time.h>
 
 #include "max30101.h"
 #include "max30101_config.h"
@@ -23,12 +24,24 @@ LOG_MODULE_REGISTER(SENS_WEAR_PPG_SENSOR_LOGGER);
 
 #define MAX30101_NODE DT_NODELABEL(max30101)
 #define MAX_SENSOR_READING_SIZE 32
-#define PPG_STREAM_SLEEP_MS 5
+#define PPG_STREAM_SLEEP_MS 1
 #define PPG_IDLE_SLEEP_MS 250
+#define PPG_BATCH_MIN_SAMPLES 10
+#define PPG_BATCH_TARGET_SAMPLES 12
+#define PPG_BATCH_MAX_SAMPLES 15
 static const struct i2c_dt_spec dev_i2c = I2C_DT_SPEC_GET(MAX30101_NODE);
 static struct max30101_t max30101 = {0};
 static atomic_t ppg_streaming_enabled;
 static bool ppg_thread_started;
+
+struct ppg_channel_batch_t {
+  struct ppg_sample_notification_t samples[PPG_BATCH_MAX_SAMPLES];
+  size_t count;
+};
+
+static struct ppg_channel_batch_t red_batch;
+static struct ppg_channel_batch_t ir_batch;
+static struct ppg_channel_batch_t green_batch;
 
 K_THREAD_STACK_DEFINE(ppg_sensor_stack, 4096);
 static struct k_thread ppg_sensor_thread;
@@ -36,6 +49,50 @@ static struct k_thread ppg_sensor_thread;
 static uint32_t max30101_unpack_sample(const uint8_t *sample)
 {
   return ((uint32_t)sample[0] << 16 | (uint32_t)sample[1] << 8 | (uint32_t)sample[2]) & 0x03FFFF;
+}
+
+static uint64_t ppg_get_unix_ms(void)
+{
+  time_t now_sec = time(NULL);
+
+  if ((int64_t)now_sec > 1700000000LL) {
+    return ((uint64_t)now_sec * 1000ULL) + ((uint64_t)k_uptime_get() % 1000ULL);
+  }
+
+  return (uint64_t)k_uptime_get();
+}
+
+static void ppg_batch_reset(struct ppg_channel_batch_t *batch)
+{
+  batch->count = 0;
+}
+
+static void ppg_batch_push(struct ppg_channel_batch_t *batch, uint64_t unix_ms, uint32_t value)
+{
+  if (batch->count >= PPG_BATCH_MAX_SAMPLES) {
+    return;
+  }
+
+  batch->samples[batch->count].unix_ms = unix_ms;
+  batch->samples[batch->count].value = value;
+  batch->count++;
+}
+
+static void ppg_batch_flush_channel(struct ppg_channel_batch_t *batch, int (*notify_fn)(const struct ppg_sample_notification_t *, size_t))
+{
+  if (batch->count == 0U) {
+    return;
+  }
+
+  (void)notify_fn(batch->samples, batch->count);
+  ppg_batch_reset(batch);
+}
+
+static void ppg_batch_flush_all(void)
+{
+  ppg_batch_flush_channel(&red_batch, ppg_lbs_notify_red_batch);
+  ppg_batch_flush_channel(&ir_batch, ppg_lbs_notify_ir_batch);
+  ppg_batch_flush_channel(&green_batch, ppg_lbs_notify_green_batch);
 }
 
 __STATIC_INLINE void
@@ -80,30 +137,46 @@ static void sensor_data_work_handler()
   /* Read the FIFO data registers */
   uint8_t buffer[MAX_SENSOR_READING_SIZE * 9] = {0};
   size_t actualSize = max30101_read_fifo(buffer, MAX_SENSOR_READING_SIZE * max30101.led_count * 3);
-  // LOG_INF("max30101.led_count: %d", max30101.led_count);
+  // LOG_INF("actualSize: %d", actualSize);
   // LOG_INF("FIFO data: ");
   // LOG_HEXDUMP_INF(buffer, actualSize, "");
   if (actualSize >= (size_t)(max30101.led_count * MAX30101_BYTES_PER_CHANNEL)) {
     size_t sample_size = (size_t)max30101.led_count * MAX30101_BYTES_PER_CHANNEL;
-    size_t last_sample_offset = actualSize - sample_size;
-    const uint8_t *sample = &buffer[last_sample_offset];
+    size_t offset = 0;
 
-    if (max30101.led_count >= 1) {
-      uint32_t ir = max30101_unpack_sample(sample);
-      (void)ppg_lbs_notify_ir(ir);
-      sample += MAX30101_BYTES_PER_CHANNEL;
-    }
+    // Drain all complete samples from FIFO in order (oldest to newest).
+    while (offset + sample_size <= actualSize) {
+      const uint8_t *sample = &buffer[offset];
+      uint64_t unix_ms = ppg_get_unix_ms();
 
-    if (max30101.led_count >= 2) {
-      uint32_t red = max30101_unpack_sample(sample);
-      (void)ppg_lbs_notify_red(red);
-      sample += MAX30101_BYTES_PER_CHANNEL;
-    }
+      if (max30101.led_count >= 1) {
+        uint32_t ir = max30101_unpack_sample(sample);
+        ppg_batch_push(&ir_batch, unix_ms, ir);
+        LOG_INF("Timestamp: %llu, IR: %u", unix_ms, ir);
+        sample += MAX30101_BYTES_PER_CHANNEL;
+      }
 
-    if (max30101.led_count >= 3) {
-      uint32_t green = max30101_unpack_sample(sample);
-      (void)ppg_lbs_notify_green(green);
+      if (max30101.led_count >= 2) {
+        uint32_t red = max30101_unpack_sample(sample);
+        ppg_batch_push(&red_batch, unix_ms, red);
+        sample += MAX30101_BYTES_PER_CHANNEL;
+      }
+
+      if (max30101.led_count >= 3) {
+        uint32_t green = max30101_unpack_sample(sample);
+        ppg_batch_push(&green_batch, unix_ms, green);
+      }
+
+      offset += sample_size;
     }
+  }
+  if ((red_batch.count >= PPG_BATCH_TARGET_SAMPLES && red_batch.count >= PPG_BATCH_MIN_SAMPLES) ||
+      (ir_batch.count >= PPG_BATCH_TARGET_SAMPLES && ir_batch.count >= PPG_BATCH_MIN_SAMPLES) ||
+      (green_batch.count >= PPG_BATCH_TARGET_SAMPLES && green_batch.count >= PPG_BATCH_MIN_SAMPLES) ||
+      red_batch.count >= PPG_BATCH_MAX_SAMPLES ||
+      ir_batch.count >= PPG_BATCH_MAX_SAMPLES ||
+      green_batch.count >= PPG_BATCH_MAX_SAMPLES) {
+    ppg_batch_flush_all();
   }
 }
 
@@ -114,8 +187,10 @@ static void ppg_sensor_thread_fn(void *p1, void *p2, void *p3)
   ARG_UNUSED(p3);
 
   while (atomic_get(&ppg_streaming_enabled)) {
-    sensor_data_work_handler();
+    // Wait for FIFO almost-full interrupt instead of polling
+    // OR poll at a rate matching FIFO fill rate (not fixed 5ms)
     k_msleep(PPG_STREAM_SLEEP_MS);
+    sensor_data_work_handler();
   }
 }
 
@@ -149,6 +224,9 @@ void ppg_set_streaming_enabled(bool enabled)
     }
     max30101_config();
     max30101_enable_wrist_hr_sampling();
+    ppg_batch_reset(&red_batch);
+    ppg_batch_reset(&ir_batch);
+    ppg_batch_reset(&green_batch);
 
     atomic_set(&ppg_streaming_enabled, 1);
 
@@ -165,6 +243,7 @@ void ppg_set_streaming_enabled(bool enabled)
     }
 
     atomic_set(&ppg_streaming_enabled, 0);
+    ppg_batch_flush_all();
     if (ppg_thread_started) {
       k_thread_abort(&ppg_sensor_thread);
       ppg_thread_started = false;
@@ -248,8 +327,8 @@ void max30101_config(void)
   /* Write the LED pulse amplitude registers */
   {
     uint8_t ledPulseAmplitudes[3] = {0};
-    ledPulseAmplitudes[0] = MAX30101_RED_LED_PULSE_AMPLITUDE;
-    ledPulseAmplitudes[1] = MAX30101_IR_LED_PULSE_AMPLITUDE;
+    ledPulseAmplitudes[0] = MAX30101_IR_LED_PULSE_AMPLITUDE;
+    ledPulseAmplitudes[1] = MAX30101_RED_LED_PULSE_AMPLITUDE;
     ledPulseAmplitudes[2] = MAX30101_GREEN_LED_PULSE_AMPLITUDE;
     max30101_i2c_write_registers(max30101_register_LED1_PA,
                                  ledPulseAmplitudes,
@@ -265,12 +344,11 @@ void max30101_config(void)
     union max30101_multi_led_mode_control_t *multiLedModeConfig =
         (void *)&value;
     multiLedModeConfig->value = 0;
-    // first slot is for IR LED that is used for proximity detection
-    multiLedModeConfig->bits.slot1 = ((int)max30101_led_IR) | 0x04;
-    // second slot is for RED LED
+    // Enable all three LEDs in FIFO sample order: IR, Red, Green.
+    multiLedModeConfig->bits.slot1 = (int)max30101_led_IR;
     multiLedModeConfig->bits.slot2 = (int)max30101_led_Red;
-    // third one is for Green LED
     multiLedModeConfig->bits.slot3 = (int)max30101_led_Green;
+    multiLedModeConfig->bits.slot4 = 0;
 
     max30101_i2c_write_registers(max30101_register_ModeControlReg1,
                                  (void *)&value,
@@ -283,7 +361,7 @@ void max30101_config(void)
     modeConfig->value = 0;
     modeConfig->bits.reset = 0;
     modeConfig->bits.mode = max30101_mode_MultiLed;
-    modeConfig->bits.shdn = 1;
+    modeConfig->bits.shdn = 0;
     max30101_i2c_write_registers(max30101_register_ModeConfiguration,
                                  (void *)&value,
                                  1);
@@ -388,26 +466,29 @@ size_t max30101_read_fifo(void *buffer, size_t bufferSize)
     LOG_ERR("Buffer size is too small\n\r");
     return -1;
   }
-  int value;
+  uint8_t value[4] = {0};
   size_t byteCount = 0;
 
   // calculate number of bytes to read
-  {
-    max30101_i2c_read_registers(max30101_register_FIFO_WritePointer,
-                                (void *)&value,
-                                3);
-    uint8_t *bytes = (void *)&value;
-    uint8_t writePtr = bytes[0] & 0x1F;
-    uint8_t readPtr = bytes[2] & 0x1F;
-    uint8_t availableSamples = (writePtr - readPtr) & 0x1F;
+  max30101_i2c_read_registers(max30101_register_FIFO_WritePointer,
+                              value,
+                              3);
+  uint8_t writePtr = value[0] & 0x1F;
+  uint8_t overFlowCounter = value[1] & 0x1F;
+  uint8_t readPtr = value[2] & 0x1F;
+  uint8_t availableSamples = (writePtr - readPtr) & 0x1F;
 
-    if (availableSamples == 0) {
-      return 0;
-    }
-
-    byteCount = (size_t)availableSamples * MAX30101_BYTES_PER_CHANNEL *
-                max30101.led_count;
+  if (overFlowCounter > 0) {
+    LOG_WRN("FIFO overflow detected: overFlowCounter=%d, readPtr=%d, writePtr=%d\n\r", overFlowCounter, readPtr, writePtr);
+    availableSamples = 32; // FIFO is full
   }
+
+  if (availableSamples == 0) {
+    return 0;
+  }
+
+  byteCount = (size_t)availableSamples * MAX30101_BYTES_PER_CHANNEL *
+              max30101.led_count;
 
   // adjust what we can read
   while (bufferSize < byteCount)
@@ -419,6 +500,14 @@ size_t max30101_read_fifo(void *buffer, size_t bufferSize)
                               buffer,
                               byteCount);
 
+  if (overFlowCounter > 0) {
+    byteCount = 0; // discard data if overflow occurred, as it may be corrupted
+  }
+
+  *(uint32_t*)value = 0;
+  //max30101_i2c_write_registers(max30101_register_FIFO_WritePointer,
+  //                             value,
+  //                             3); // reset read pointer to clear overflow condition
   return byteCount;
 }
 
@@ -447,7 +536,7 @@ bool max30101_enable_wrist_hr_sampling(void)
     modeConfig->value = 0;
     modeConfig->bits.reset = 0;
     modeConfig->bits.mode = max30101_mode_MultiLed;
-    modeConfig->bits.shdn = 1;
+    modeConfig->bits.shdn = 0;
     max30101_i2c_write_registers(max30101_register_ModeConfiguration,
                                  (void *)&value,
                                  1);
@@ -462,6 +551,16 @@ bool max30101_enable_wrist_hr_sampling(void)
     max30101_i2c_write_registers(max30101_register_SpO2Configuration,
                                  (void *)&value,
                                  1);
+  }
+  /* Configure LED pulse amplitude for all three channels */
+  {
+    uint8_t ledPulseAmplitudes[3] = {0};
+    ledPulseAmplitudes[0] = MAX30101_IR_LED_PULSE_AMPLITUDE;
+    ledPulseAmplitudes[1] = MAX30101_RED_LED_PULSE_AMPLITUDE;
+    ledPulseAmplitudes[2] = MAX30101_GREEN_LED_PULSE_AMPLITUDE;
+    max30101_i2c_write_registers(max30101_register_LED1_PA,
+                                 ledPulseAmplitudes,
+                                 sizeof(ledPulseAmplitudes));
   }
   /* Write the FIFO configuration register */
   {
@@ -480,10 +579,11 @@ bool max30101_enable_wrist_hr_sampling(void)
     union max30101_multi_led_mode_control_t *multiLedModeConfig =
         (void *)&value;
     multiLedModeConfig->value = 0;
-    // first slot is for IR LED that is used for proximity detection
+    // Enable all three LEDs in FIFO sample order: IR, Red, Green.
     multiLedModeConfig->bits.slot1 = (int)max30101_led_IR;
     multiLedModeConfig->bits.slot2 = (int)max30101_led_Red;
     multiLedModeConfig->bits.slot3 = (int)max30101_led_Green;
+    multiLedModeConfig->bits.slot4 = 0;
 
     max30101_i2c_write_registers(max30101_register_ModeControlReg1,
                                  (void *)&value,
