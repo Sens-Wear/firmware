@@ -18,10 +18,12 @@ target_sources(app PRIVATE
     src/app/imu_ble_bridge.c
     src/app/ppg_ble_bridge.c
     src/app/power_ble_bridge.c
+    src/app/temperature_ble_bridge.c
     src/bluetooth/services/led/led_lbs.c
     src/bluetooth/services/imu/imu_lbs.c
     src/bluetooth/services/ppg/ppg_lbs.c
     src/bluetooth/services/power/power_lbs.c
+    src/bluetooth/services/temperature/temperature_lbs.c
     src/drivers/sensors/pressure/fdc1004.c
     src/drivers/actuators/led/led_controller.c
     src/drivers/actuators/led/LP5562/lp5562.c

@@ -19,9 +19,11 @@
 #include "app/imu_ble_bridge.h"
 #include "app/ppg_ble_bridge.h"
 #include "app/power_ble_bridge.h"
+#include "app/temperature_ble_bridge.h"
 #include "bluetooth/services/imu/imu_lbs.h"
 #include "bluetooth/services/led/led_lbs.h"
 #include "bluetooth/services/power/power_lbs.h"
+#include "bluetooth/services/temperature/temperature_lbs.h"
 
 #include "drivers/sensors/pressure/fdc1004.h"
 #include "drivers/memory/eeprom/m95p.h"
@@ -94,6 +96,7 @@ void on_connected(struct bt_conn *conn, uint8_t err) {
 	imu_lbs_set_conn(conn);
 	led_lbs_set_conn(conn);
 	power_lbs_set_conn(conn);
+	temperature_lbs_set_conn(conn);
 
     err = bt_conn_set_security(conn, BT_SECURITY_L2);
     if (err) {
@@ -112,6 +115,7 @@ void on_disconnected(struct bt_conn *conn, uint8_t reason)
 	imu_lbs_clear_conn();
 	led_lbs_clear_conn();
 	power_lbs_clear_conn();
+	temperature_lbs_clear_conn();
 
     /* Defer restart (0–50 ms are typical; 10 ms is fine) */
     k_work_schedule(&adv_restart_work, K_MSEC(1000));
@@ -189,6 +193,7 @@ int main(void)
 
 	led_ble_bridge_init();
     imu_ble_bridge_init();
+	temperature_ble_bridge_init();
 	// power_ble_bridge_init();
 
 
@@ -204,7 +209,7 @@ int main(void)
     }
 
     /* 2) Program 1.8 V exactly */
-    ret = regulator_set_voltage(reg, 5000000, 5000000);
+    ret = regulator_set_voltage(reg, 3700000, 3700000);
     if (ret) {
         LOG_ERR("set_voltage failed: %d", ret);
         return 0;
@@ -214,8 +219,6 @@ int main(void)
     k_msleep(10);
 
 	// haptic_actuator_init();
-
-	// temperature_init();
 
 	// touch_sensor_init();
 
