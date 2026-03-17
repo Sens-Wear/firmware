@@ -16,6 +16,7 @@
 #include <zephyr/bluetooth/conn.h>
 
 #include "app/led_ble_bridge.h"
+#include "app/haptic_ble_bridge.h"
 #include "app/imu_ble_bridge.h"
 #include "app/ppg_ble_bridge.h"
 #include "app/power_ble_bridge.h"
@@ -33,7 +34,6 @@
 #include "drivers/sensors/temperature/max30208.h"
 #include "drivers/sensors/ppg/max30101.h"
 #include "drivers/sensors/imu/bhi360.h"
-#include "drivers/actuators/haptic/drv2605.h"
 
 static const struct bt_le_adv_param *adv_param = BT_LE_ADV_PARAM(
 	(BT_LE_ADV_OPT_CONN |
@@ -194,6 +194,7 @@ int main(void)
 	led_ble_bridge_init();
     imu_ble_bridge_init();
 	temperature_ble_bridge_init();
+	ppg_ble_bridge_init();
 	// power_ble_bridge_init();
 
 
@@ -218,35 +219,13 @@ int main(void)
     /* Optional: give it time to ramp */
     k_msleep(10);
 
-	// haptic_actuator_init();
+	err = haptic_ble_bridge_init();
+	if (err) {
+		LOG_ERR("Haptic BLE bridge init failed: %d", err);
+	}
 
 	// touch_sensor_init();
-
-	ppg_ble_bridge_init();
 	
-	// uint8_t colorInd = 1;
-	// union led_color_t color = {.color = 0};
-	// led_controller_turn_off_leds(0);
-	// while (1) {
-	// 	k_msleep(500); // Main loop does nothing, sensors run in threads
-	// 	if(colorInd == 1){
-	// 		color.color = 0;
-	// 		color.leds.red = 0xff;
-	// 		colorInd = 2;
-	// 	}else if(colorInd == 2) {
-	// 		color.color = 0;
-	// 		color.leds.green = 0xff;
-	// 		colorInd = 3;
-	// 	}else if(colorInd == 3){
-	// 		color.color = 0;
-	// 		color.leds.blue = 0xff;
-	// 		colorInd = 1;
-	// 	}
-
-	// 	led_controller_turn_on_leds(0, color);
-	// 	k_msleep(500); // Main loop does nothing, sensors run in threads
-	// 	led_controller_turn_off_leds(0);
-    // }
 
 	while (1) {
 		k_sleep(K_FOREVER);

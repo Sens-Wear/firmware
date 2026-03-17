@@ -348,12 +348,7 @@ static void sensor_data_work_handler()
 	} else {
 		LOG_ERR("Touch read failed: %d", ret);
 	}
-  MTCH6102_set_Touch(&dev_i2c, MTCH6102__TOUCH_STATE, 0x00);
-  MTCH6102_set_Touch(&dev_i2c, MTCH6102__TOUCH_X, 0x00);
-  MTCH6102_set_Touch(&dev_i2c, MTCH6102__TOUCH_Y, 0x00);
-  MTCH6102_set_Touch(&dev_i2c, MTCH6102__TOUCH_LSB, 0x00);
-  MTCH6102_set_Touch(&dev_i2c, MTCH6102__GESTURE_STATE, 0x00);
-  MTCH6102_set_Touch(&dev_i2c, MTCH6102__GESTURE_DIAG, 0x00);
+
 }
 
 // Initialize the sensor thread

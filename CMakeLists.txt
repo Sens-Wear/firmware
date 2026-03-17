@@ -14,11 +14,13 @@ file(GLOB BHY2_SOURCES
 
 target_sources(app PRIVATE
     src/main.c
+    src/app/haptic_ble_bridge.c
     src/app/led_ble_bridge.c
     src/app/imu_ble_bridge.c
     src/app/ppg_ble_bridge.c
     src/app/power_ble_bridge.c
     src/app/temperature_ble_bridge.c
+    src/bluetooth/services/haptic/haptic_lbs.c
     src/bluetooth/services/led/led_lbs.c
     src/bluetooth/services/imu/imu_lbs.c
     src/bluetooth/services/ppg/ppg_lbs.c
