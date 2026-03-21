@@ -2,6 +2,8 @@
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/sys/atomic.h>
+#include <zephyr/sys/util.h>
 
 #include "mtch6102.h"
 
@@ -9,8 +11,16 @@ LOG_MODULE_REGISTER(SENS_WEAR_TOUCH_SENSOR_LOGGER);
 
 #define MTCH6102_NODE DT_NODELABEL(mtch6102)
 #define MAX_CHANNEL_NUMBER 15
+#define TOUCH_DEFAULT_SAMPLING_RATE_HZ 10U
 static const struct i2c_dt_spec dev_i2c = I2C_DT_SPEC_GET(MTCH6102_NODE);
 static uint8_t touch_sensor_buf[3];
+static struct k_work_delayable touch_sample_work;
+static touch_sensor_sample_cb_t touch_callback;
+static void *touch_callback_user_data;
+static atomic_t touch_streaming_enabled;
+static bool touch_initialized;
+static bool touch_work_started;
+static uint16_t touch_sampling_rate_hz = TOUCH_DEFAULT_SAMPLING_RATE_HZ;
 
 int mtch6102_get_position(const struct i2c_dt_spec *i2c, struct mtch6102_position *pos)
 {
@@ -92,7 +102,7 @@ uint8_t MTCH6102_get_Touch(const struct i2c_dt_spec *i2c, MTCH6102_Touch_Ram_Mem
   if (ret != 0)
 	{
 		LOG_ERR("I2C bus %s: Error while reading registers", i2c->bus->name);
-		return;
+		return 0U;
 	}
   return status[0];
 }
@@ -112,7 +122,7 @@ uint8_t MTCH6102_get_Compensation(const struct i2c_dt_spec *i2c, MTCH6102_Compen
   if (ret != 0)
 	{
 		LOG_ERR("I2C bus %s: Error while reading registers", i2c->bus->name);
-		return;
+		return 0U;
 	}
   return status[0];
 }
@@ -131,7 +141,7 @@ uint8_t MTCH6102_get_Acquisition(const struct i2c_dt_spec *i2c, MTCH6102_Acquisi
   if (ret != 0)
 	{
 		LOG_ERR("I2C bus %s: Error while reading registers", i2c->bus->name);
-		return;
+		return 0U;
 	}
   return touch_sensor_buf[0];
 }
@@ -273,95 +283,130 @@ void MTCH6102_Initialize(const struct i2c_dt_spec *i2c)
   MTCH6102_set_Touch(i2c, MTCH6102__GESTURE_DIAG, 0x00);
 }
 
-// Sensor thread function
-static void sensor_data_work_handler()
+static uint32_t touch_sample_period_ms(void)
 {
-  uint8_t touch_state = MTCH6102_get_Touch(&dev_i2c, MTCH6102__TOUCH_STATE);
-  uint8_t gesture_state = MTCH6102_get_Touch(&dev_i2c, MTCH6102__GESTURE_STATE);
-  // if (touch_state & 0x01)
-  // {
-  //   LOG_INF("Touch is present!");
-  // }
-  // if (touch_state & 0x02)
-  // {
-  //   LOG_INF("Gesture is present!");
-  //   if (gesture_state == 0x00)
-  //   {
-  //     LOG_INF("No gesture is present!");
-  //   }
-  //   else if (gesture_state == 0x10)
-  //   {
-  //     LOG_INF("Single Click is present!");
-  //   }
-  //   else if (gesture_state == 0x11)
-  //   {
-  //     LOG_INF("Click and Hold is present!");
-  //   }
-  //   else if (gesture_state == 0x20)
-  //   {
-  //     LOG_INF("Double Click is present!");
-  //   }
-  //   else if (gesture_state == 0x31)
-  //   {
-  //     LOG_INF("Down Swipe is present!");
-  //   }
-  //   else if (gesture_state == 0x32)
-  //   {
-  //     LOG_INF("Down Swipe and Hold is present!");
-  //   }
-  //   else if (gesture_state == 0x41)
-  //   {
-  //     LOG_INF("Right Swipe is present!");
-  //   }
-  //   else if (gesture_state == 0x42)
-  //   {
-  //     LOG_INF("Right Swipe and Hold is present!");
-  //   }
-  //   else if (gesture_state == 0x51)
-  //   {
-  //     LOG_INF("Up Swipe is present!");
-  //   }
-  //   else if (gesture_state == 0x52)
-  //   {
-  //     LOG_INF("Up Swipe and Hold is present!");
-  //   }
-  //   else if (gesture_state == 0x61)
-  //   {
-  //     LOG_INF("Left Swipe is present!");
-  //   }
-  //   else if (gesture_state == 0x62)
-  //   {
-  //     LOG_INF("Left Swipe and Hold is present!");
-  //   }
-  // }
-  // if (touch_state & 0x04)
-  // {
-  //   LOG_INF("Large Activation is present!");
-  // }
-  struct mtch6102_position p;
+	uint32_t hz = touch_sampling_rate_hz;
 
-	int ret = mtch6102_get_position(&dev_i2c, &p);
+	if (hz == 0U) {
+		hz = TOUCH_DEFAULT_SAMPLING_RATE_HZ;
+	}
+
+	return MAX(1U, 1000U / hz);
+}
+
+static int touch_sensor_read_sample(struct touch_sensor_sample *sample)
+{
+	int ret;
+
+	if (sample == NULL) {
+		return -EINVAL;
+	}
+
+	sample->position.touch_state = MTCH6102_get_Touch(&dev_i2c, MTCH6102__TOUCH_STATE);
+	sample->gesture_state = MTCH6102_get_Touch(&dev_i2c, MTCH6102__GESTURE_STATE);
+	ret = mtch6102_get_position(&dev_i2c, &sample->position);
+	if (ret == -ENODATA) {
+		return 0;
+	}
+
+	return ret;
+}
+
+static void touch_sample_work_fn(struct k_work *work)
+{
+	struct touch_sensor_sample sample;
+	int ret;
+
+	ARG_UNUSED(work);
+
+	if (!atomic_get(&touch_streaming_enabled)) {
+		return;
+	}
+
+	ret = touch_sensor_read_sample(&sample);
 	if (ret == 0) {
-		LOG_INF("Touch: x=%u y=%u (state=0x%02x)", p.x, p.y, p.touch_state);
-	} else if (ret == -ENODATA) {
-		/* no touch; ignore */
+		if (touch_callback != NULL) {
+			touch_callback(&sample, touch_callback_user_data);
+		}
 	} else {
 		LOG_ERR("Touch read failed: %d", ret);
 	}
 
+	k_work_schedule(&touch_sample_work, K_MSEC(touch_sample_period_ms()));
 }
 
-// Initialize the sensor thread
-void touch_sensor_init(void)
+int touch_sensor_register_callback(touch_sensor_sample_cb_t cb, void *user_data)
 {
-  if (!device_is_ready(dev_i2c.bus))
-  {
-    LOG_ERR("I2C bus %s is not ready!\n\r", dev_i2c.bus->name);
-    return;
-  }
-  MTCH6102_InitializeDEFAULT(&dev_i2c);
-  while(1) {
-    sensor_data_work_handler();
-    k_msleep(100);
-  }
+	touch_callback = cb;
+	touch_callback_user_data = user_data;
+	return 0;
+}
+
+void touch_sensor_set_streaming_enabled(bool enabled)
+{
+	atomic_set(&touch_streaming_enabled, enabled ? 1 : 0);
+}
+
+void touch_sensor_set_sampling_rate(uint16_t new_sampling_rate)
+{
+	if (new_sampling_rate == 0U) {
+		return;
+	}
+
+	touch_sampling_rate_hz = new_sampling_rate;
+
+	if (touch_work_started && atomic_get(&touch_streaming_enabled)) {
+		k_work_reschedule(&touch_sample_work, K_NO_WAIT);
+	}
+}
+
+void touch_sensor_set_transfer_interval(uint16_t new_transfer_interval)
+{
+	ARG_UNUSED(new_transfer_interval);
+}
+
+int touch_sensor_start(void)
+{
+	if (!touch_initialized) {
+		int err = touch_sensor_init();
+
+		if (err != 0) {
+			return err;
+		}
+	}
+
+	touch_work_started = true;
+	k_work_reschedule(&touch_sample_work, K_NO_WAIT);
+	return 0;
+}
+
+void touch_sensor_stop(void)
+{
+	k_work_cancel_delayable(&touch_sample_work);
+	touch_work_started = false;
+}
+
+void touch_sensor_deinit(void)
+{
+	touch_sensor_stop();
+	atomic_set(&touch_streaming_enabled, 0);
+	touch_initialized = false;
+}
+
+int touch_sensor_init(void)
+{
+	if (touch_initialized) {
+		return 0;
+	}
+
+	if (!device_is_ready(dev_i2c.bus)) {
+		LOG_ERR("I2C bus %s is not ready!", dev_i2c.bus->name);
+		return -ENODEV;
+	}
+
+	MTCH6102_InitializeDEFAULT(&dev_i2c);
+	k_work_init_delayable(&touch_sample_work, touch_sample_work_fn);
+	atomic_set(&touch_streaming_enabled, 0);
+	touch_initialized = true;
+	return 0;
 }

@@ -15,15 +15,19 @@ LOG_MODULE_REGISTER(SENSE_WEAR_POWER_SENSOR_BLUETOOTH_LOGGER);
 
 static struct power_lbs_charger_state charger_state_cache;
 static struct power_lbs_gauge_state gauge_state_cache;
+static struct power_lbs_daughter_state daughter_state_cache;
 static const struct power_lbs_ops *power_ops;
 static struct bt_conn *power_lbs_conn;
 
 static bool notify_charger_enabled;
 static bool notify_gauge_enabled;
+static bool notify_daughter_enabled;
 static power_lbs_notify_state_cb_t charger_notify_cb;
 static void *charger_notify_user_data;
 static power_lbs_notify_state_cb_t gauge_notify_cb;
 static void *gauge_notify_user_data;
+static power_lbs_notify_state_cb_t daughter_notify_cb;
+static void *daughter_notify_user_data;
 
 static void charger_notify_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
 {
@@ -38,6 +42,14 @@ static void gauge_notify_cfg_changed(const struct bt_gatt_attr *attr, uint16_t v
 	notify_gauge_enabled = (value == BT_GATT_CCC_NOTIFY);
 	if (gauge_notify_cb) {
 		gauge_notify_cb(notify_gauge_enabled, gauge_notify_user_data);
+	}
+}
+
+static void daughter_notify_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
+{
+	notify_daughter_enabled = (value == BT_GATT_CCC_NOTIFY);
+	if (daughter_notify_cb) {
+		daughter_notify_cb(notify_daughter_enabled, daughter_notify_user_data);
 	}
 }
 
@@ -69,6 +81,20 @@ static ssize_t read_gauge_state(struct bt_conn *conn, const struct bt_gatt_attr 
 				 sizeof(gauge_state_cache));
 }
 
+static ssize_t read_daughter_state(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+				   void *buf, uint16_t len, uint16_t offset)
+{
+	if (power_ops && power_ops->get_daughter_state) {
+		struct power_lbs_daughter_state current;
+		if (power_ops->get_daughter_state(&current) == 0) {
+			daughter_state_cache = current;
+		}
+	}
+
+	return bt_gatt_attr_read(conn, attr, buf, len, offset, &daughter_state_cache,
+				 sizeof(daughter_state_cache));
+}
+
 BT_GATT_SERVICE_DEFINE(
 	power_lbs_svc,
 	BT_GATT_PRIMARY_SERVICE(BT_UUID_LBS_POWER_SERVICE),
@@ -79,7 +105,11 @@ BT_GATT_SERVICE_DEFINE(
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_POWER_GAUGE_STATE,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
 			       BT_GATT_PERM_READ, read_gauge_state, NULL, NULL),
-	BT_GATT_CCC(gauge_notify_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE));
+	BT_GATT_CCC(gauge_notify_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_POWER_DAUGHTER_STATE,
+			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+			       BT_GATT_PERM_READ, read_daughter_state, NULL, NULL),
+	BT_GATT_CCC(daughter_notify_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE));
 
 void power_lbs_register_ops(const struct power_lbs_ops *ops)
 {
@@ -96,6 +126,12 @@ void power_lbs_register_gauge_notify_cb(power_lbs_notify_state_cb_t cb, void *us
 {
 	gauge_notify_cb = cb;
 	gauge_notify_user_data = user_data;
+}
+
+void power_lbs_register_daughter_notify_cb(power_lbs_notify_state_cb_t cb, void *user_data)
+{
+	daughter_notify_cb = cb;
+	daughter_notify_user_data = user_data;
 }
 
 void power_lbs_set_conn(struct bt_conn *conn)
@@ -144,5 +180,19 @@ int power_lbs_notify_gauge_state(const struct power_lbs_gauge_state *state)
 	}
 
 	return bt_gatt_notify(power_lbs_conn, &power_lbs_svc.attrs[5], state,
+			      sizeof(*state));
+}
+
+int power_lbs_notify_daughter_state(const struct power_lbs_daughter_state *state)
+{
+	if (!notify_daughter_enabled) {
+		return -EACCES;
+	}
+
+	if (power_lbs_conn == NULL) {
+		return -ENOTCONN;
+	}
+
+	return bt_gatt_notify(power_lbs_conn, &power_lbs_svc.attrs[8], state,
 			      sizeof(*state));
 }

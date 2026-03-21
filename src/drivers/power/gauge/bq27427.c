@@ -28,6 +28,46 @@ LOG_MODULE_REGISTER(bq27427, CONFIG_LOG_DEFAULT_LEVEL);
 static const struct i2c_dt_spec dev_i2c = I2C_DT_SPEC_GET(BQ27427_NODE);
 
 static struct bq27427_t bq27427 = {0};
+static bool bq27427_available;
+
+static bool bq27427_probe(void)
+{
+	uint8_t wr[2];
+	uint8_t rd[2];
+
+	sys_put_le16((uint16_t)bq27427_control_subcommand_DeviceType, wr);
+
+	if (i2c_burst_write_dt(&bq27427.i2c,
+			       (uint8_t)bq27427_command_Control,
+			       wr,
+			       sizeof(wr)) != 0) {
+		LOG_WRN("BQ27427 not detected on I2C bus");
+		return false;
+	}
+
+	k_msleep(1);
+
+	if (i2c_burst_read_dt(&bq27427.i2c,
+			      (uint8_t)bq27427_command_Control,
+			      rd,
+			      sizeof(rd)) != 0) {
+		LOG_WRN("BQ27427 did not respond to device-type probe");
+		return false;
+	}
+
+	if (sys_get_le16(rd) != BQ27427_DEVICE_TYPE) {
+		LOG_WRN("BQ27427 probe returned unexpected device type 0x%04x",
+			sys_get_le16(rd));
+		return false;
+	}
+
+	return true;
+}
+
+bool bq27427_is_available(void)
+{
+	return bq27427_available;
+}
 
 static inline uint16_t swap_bytes16(uint16_t val) {
 	uint8_t* pVal = (uint8_t*) &val;
@@ -355,16 +395,24 @@ static inline void write_data_memory(uint8_t offset, const uint16_t* pBuffer, si
  */
 bool bq27427_init(void) {
 	bq27427.i2c = dev_i2c;
+	bq27427_available = false;
+
 	if (!device_is_ready(bq27427.i2c.bus)) {
 		LOG_ERR("I2C bus not ready");
-		return -ENODEV;
+		return false;
 	}
+
+	if (!bq27427_probe()) {
+		return false;
+	}
+
 	bq27427_get_default_config(&(bq27427.config));
 	// since we can access the device, we can assume that battery presents
 	battery_insert();
 	// reset the device
 	bq27427_i2c_write_control(bq27427_control_subcommand_SoftReset);
 	bq27427.state.bits.bInitialized = 1;
+	bq27427_available = true;
 
 	return true;
 }
@@ -548,7 +596,9 @@ static inline void gauge_initialization_configure(struct bq27427_config_t* confi
 }
 
 bool bq27427_config(struct bq27427_config_t* config) {
-	assert(bq27427.state.bits.bInitialized != 0);
+	if (!bq27427_available || (bq27427.state.bits.bInitialized == 0)) {
+		return false;
+	}
 	bool resetDetected = false;
 	bool configure = false;
 	bool initializing = false;
@@ -648,7 +698,12 @@ void bq27427_get_default_config(struct bq27427_config_t* config) {
 }
 
 bool bq27427_update_state(struct bq27427_battery_state_t* state) {
-	assert(bq27427.state.bits.bConfigured != 0);
+	if (!bq27427_available || (bq27427.state.bits.bConfigured == 0)) {
+		if (state != NULL) {
+			memset(state, 0, sizeof(*state));
+		}
+		return false;
+	}
 	// bool ret = BQ27427_I2C_LOCK(&bq27427, &bq27427.i2c_config, BQ27427_I2C_TIMEOUT);
 	// if(ret == false) {
 	// 	return false;
@@ -664,7 +719,10 @@ bool bq27427_update_state(struct bq27427_battery_state_t* state) {
 		clear_port_or_reset();
 		// configure = true;
 		LOG_INF("BQ27427: POR detected while reading the state --- This CANNIT happen!!!!\r\n");
-		assert(false);
+		if (state != NULL) {
+			memset(state, 0, sizeof(*state));
+		}
+		return false;
 	}
 	// configure if needed
 	// if(configure != false){
@@ -698,6 +756,11 @@ bool bq27427_update_state(struct bq27427_battery_state_t* state) {
  * \brief Prints the latest battery state
  */
 void bq27427_print_state(void) {
+	if (!bq27427_available || (bq27427.state.bits.bConfigured == 0)) {
+		LOG_INF("BQ27427 unavailable");
+		return;
+	}
+
 	union bq27427_control_status_register_t controlStatus = {.value = 0};
 	controlStatus.value = bq27427_i2c_read_control(bq27427_control_subcommand_ControlStatus);
 	union bq27427_flags_register_t flags;
@@ -720,7 +783,9 @@ void bq27427_print_state(void) {
 bool bq27427_reset(struct bq27427_config_t* config) {
 	union bq27427_flags_register_t flags = {.value = 0};
 	/* Driver must be initialised before we can issue a reset */
-	assert(bq27427.state.bits.bInitialized != 0);
+	if (!bq27427_available || (bq27427.state.bits.bInitialized == 0)) {
+		return false;
+	}
 
 	/* ---------------------------------------------------------------------
 	 * 1. Issue the RESET (0x0041) control sub-command

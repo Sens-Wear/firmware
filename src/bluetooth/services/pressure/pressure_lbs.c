@@ -17,6 +17,7 @@
 LOG_MODULE_REGISTER(SENSE_WEAR_PRESSURE_SENSOR_BLUETOOTH_LOGGER);
 
 static bool notify_pressure_enabled;
+static struct bt_conn *pressure_lbs_conn;
 
 static void (*pressure_status_callback)(bool enabled) = NULL;
 static void (*update_sampling_rate_callback)(uint16_t new_sampling_rate) = NULL;
@@ -109,8 +110,12 @@ int pressure_lbs_send_sensor_notify(uint8_t *sensor_value, size_t size)
   {
     return -EACCES;
   }
+  if (pressure_lbs_conn == NULL)
+  {
+    return -ENOTCONN;
+  }
   LOG_INF("Pressure data sent over BLE!.");
-  return bt_gatt_notify(NULL, &pressure_lbs_svc.attrs[5], sensor_value, size);
+  return bt_gatt_notify(pressure_lbs_conn, &pressure_lbs_svc.attrs[5], sensor_value, size);
 }
 
 void register_pressure_status_callback(void (*callback)(bool))
@@ -126,4 +131,25 @@ void register_pressure_sampling_rate_callback(void (*callback)(uint16_t))
 void register_pressure_transfer_interval_callback(void (*callback)(uint16_t))
 {
   update_transfer_interval_callback = callback;
+}
+
+void pressure_lbs_set_conn(struct bt_conn *conn)
+{
+  if (conn == NULL) {
+    return;
+  }
+
+  if (pressure_lbs_conn != NULL) {
+    bt_conn_unref(pressure_lbs_conn);
+  }
+
+  pressure_lbs_conn = bt_conn_ref(conn);
+}
+
+void pressure_lbs_clear_conn(void)
+{
+  if (pressure_lbs_conn != NULL) {
+    bt_conn_unref(pressure_lbs_conn);
+    pressure_lbs_conn = NULL;
+  }
 }

@@ -13,6 +13,7 @@
 
 LOG_MODULE_REGISTER(bq25180, CONFIG_LOG_DEFAULT_LEVEL);
 static struct bq25180_t bq25180 = {0};
+static bool bq25180_available;
 
 #define BQ25180_NODE DT_NODELABEL(bq25180)
 #define BQ25180_IRQ_NODE DT_NODELABEL(bq25180_irq)
@@ -114,6 +115,27 @@ bq25180_i2c_read_register(enum bq25180_register_type address, uint8_t *value) {
                              sizeof(*value));
 }
 
+static bool bq25180_probe(void)
+{
+    uint8_t mask_id = 0U;
+    int ret = i2c_burst_read_dt(&dev_i2c,
+                                (uint8_t)bq25180_register_MASK_ID,
+                                &mask_id,
+                                sizeof(mask_id));
+
+    if (ret != 0) {
+        LOG_WRN("BQ25180 not detected on I2C bus (%d)", ret);
+        return false;
+    }
+
+    return true;
+}
+
+bool bq25180_is_available(void)
+{
+    return bq25180_available;
+}
+
 /*
  * \brief Returns the default configuration of BQ25180. This configuration
  * is composed of values loaded to the registers.
@@ -188,12 +210,20 @@ void bq25180_get_default_lipo_usb_charger_config(struct bq25180_config_t *config
 
 bool bq25180_init(void) {
     bq25180.device = dev_i2c;
+    bq25180_available = false;
+
     if (!device_is_ready(bq25180.device.bus)) {
             LOG_ERR("I2C bus not ready");
-            return -ENODEV;
+            return false;
     }
+
+    if (!bq25180_probe()) {
+        return false;
+    }
+
     bq25180_get_default_config(&(bq25180.config));
     bq25180.state.bits.bInitialized = 1;
+    bq25180_available = true;
     return true;
 }
 
@@ -224,7 +254,9 @@ bool bq25180_config(struct bq25180_config_t *config) {
             .value = BQ25180_TS_CONTROL_DEFAULT};
     //	union bq25180_MASK_ID_register_t maskId = {.value = BQ25180_MASK_ID_DEFAULT};
 
-    assert(bq25180.state.bits.bInitialized != 0);
+    if (!bq25180_available || (bq25180.state.bits.bInitialized == 0)) {
+        return false;
+    }
     if (config == NULL) {
         bq25180_get_default_lipo_usb_charger_config(&(bq25180.config));
     } else {
@@ -270,17 +302,19 @@ bool bq25180_config(struct bq25180_config_t *config) {
     //     return false;
     // }
 
-    bq25180_i2c_write_register(bq25180_register_VBAT_CTRL,
-                               (uint8_t) vbatCtrl.value);
-    bq25180_i2c_write_register(bq25180_register_ICHG_CTRL,
-                               (uint8_t) ichgCtrl.value);
-    bq25180_i2c_write_register(bq25180_register_CHARGECTRL0, chrgctrl0.value);
-    bq25180_i2c_write_register(bq25180_register_CHARGECTRL1, chrgctrl1.value);
-    bq25180_i2c_write_register(bq25180_register_IC_CTRL, icCtrl.value);
-    bq25180_i2c_write_register(bq25180_register_TMR_ILIM, tmrIlim.value);
-    bq25180_i2c_write_register(bq25180_register_SHIP_RST, shipRst.value);
-    bq25180_i2c_write_register(bq25180_register_TS_CONTROL, tsControlReg.value);
-    bq25180_i2c_write_register(bq25180_register_SYS_REG, sysReg.value);
+    if ((bq25180_i2c_write_register(bq25180_register_VBAT_CTRL,
+                                    (uint8_t)vbatCtrl.value) != 0) ||
+        (bq25180_i2c_write_register(bq25180_register_ICHG_CTRL,
+                                    (uint8_t)ichgCtrl.value) != 0) ||
+        (bq25180_i2c_write_register(bq25180_register_CHARGECTRL0, chrgctrl0.value) != 0) ||
+        (bq25180_i2c_write_register(bq25180_register_CHARGECTRL1, chrgctrl1.value) != 0) ||
+        (bq25180_i2c_write_register(bq25180_register_IC_CTRL, icCtrl.value) != 0) ||
+        (bq25180_i2c_write_register(bq25180_register_TMR_ILIM, tmrIlim.value) != 0) ||
+        (bq25180_i2c_write_register(bq25180_register_SHIP_RST, shipRst.value) != 0) ||
+        (bq25180_i2c_write_register(bq25180_register_TS_CONTROL, tsControlReg.value) != 0) ||
+        (bq25180_i2c_write_register(bq25180_register_SYS_REG, sysReg.value) != 0)) {
+        return false;
+    }
 
     bq25180.state.bits.bConfigured = 1;
 
@@ -308,8 +342,14 @@ bool bq25180_config(struct bq25180_config_t *config) {
  * \return The detected event as a result of handled IRQ
  */
 bool bq25180_update_state(union bq25180_charger_state_t *state) {
-    assert(bq25180.state.bits.bInitialized != 0);
-    assert(bq25180.state.bits.bConfigured != 0);
+    if (!bq25180_available ||
+        (bq25180.state.bits.bInitialized == 0) ||
+        (bq25180.state.bits.bConfigured == 0)) {
+        if (state != NULL) {
+            state->value = 0;
+        }
+        return false;
+    }
 
     union bq25180_STAT0_register_t stat0;
     union bq25180_STAT1_register_t stat1;
@@ -326,14 +366,19 @@ bool bq25180_update_state(union bq25180_charger_state_t *state) {
     //     return false;
     // }
 
-    bq25180_i2c_read_register(bq25180_register_STAT0,
-                              (uint8_t *) &(stat0.value));
-    bq25180_i2c_read_register(bq25180_register_STAT1,
-                              (uint8_t *) &(stat1.value));
-    bq25180_i2c_read_register(bq25180_register_FLAG0,
-                              (uint8_t *) &(flag0.value));
-    bq25180_i2c_read_register(bq25180_register_SHIP_RST,
-                              (uint8_t *) &(shipRst.value));
+    if ((bq25180_i2c_read_register(bq25180_register_STAT0,
+                                   (uint8_t *)&(stat0.value)) != 0) ||
+        (bq25180_i2c_read_register(bq25180_register_STAT1,
+                                   (uint8_t *)&(stat1.value)) != 0) ||
+        (bq25180_i2c_read_register(bq25180_register_FLAG0,
+                                   (uint8_t *)&(flag0.value)) != 0) ||
+        (bq25180_i2c_read_register(bq25180_register_SHIP_RST,
+                                   (uint8_t *)&(shipRst.value)) != 0)) {
+        if (state != NULL) {
+            state->value = 0;
+        }
+        return false;
+    }
     // BQ25180_I2C_UNLOCK(&bq25180);
 
     chargingStatus = (enum bq25180_charging_status_type) stat0.bits.bChgStat;
@@ -410,18 +455,24 @@ bool bq25180_update_state(union bq25180_charger_state_t *state) {
  */
 bool bq25180_shipment_mode_enable(void) {
     union bq25180_SHIP_RST_register_t shipRst;
-    assert(bq25180.state.bits.bConfigured != 0);
+    if (!bq25180_available || (bq25180.state.bits.bConfigured == 0)) {
+        return false;
+    }
     // bool ret = BQ25180_I2C_LOCK(&bq25180, &bq25180.i2c_config, BQ25180_I2C_TIMEOUT);
     // if (ret == false) {
     //     return false;
     // }
-    bq25180_i2c_read_register(bq25180_register_SHIP_RST,
-                              (uint8_t *) &(shipRst.value));
+    if (bq25180_i2c_read_register(bq25180_register_SHIP_RST,
+                                  (uint8_t *)&(shipRst.value)) != 0) {
+        return false;
+    }
     shipRst.bits.bEnablePush = 1;
     shipRst.bits.bPushbuttonLongPressAction =
             bq25180_long_press_action_ShipMode;
     shipRst.bits.bEnableShipModeAndReset = bq25180_reset_shipment_mode_ShipMode;
-    bq25180_i2c_write_register(bq25180_register_SHIP_RST, shipRst.value);
+    if (bq25180_i2c_write_register(bq25180_register_SHIP_RST, shipRst.value) != 0) {
+        return false;
+    }
     // BQ25180_I2C_UNLOCK(&bq25180);
     return true;
 }
@@ -432,19 +483,25 @@ bool bq25180_shipment_mode_enable(void) {
  */
 bool bq25180_shipment_mode_disable(void) {
     union bq25180_SHIP_RST_register_t shipRst;
-    assert(bq25180.state.bits.bConfigured != 0);
+    if (!bq25180_available || (bq25180.state.bits.bConfigured == 0)) {
+        return false;
+    }
     // bool ret = BQ25180_I2C_LOCK(&bq25180, &bq25180.i2c_config, BQ25180_I2C_TIMEOUT);
     // if (ret == false) {
     //     return false;
     // }
-    bq25180_i2c_read_register(bq25180_register_SHIP_RST,
-                              (uint8_t *) &(shipRst.value));
+    if (bq25180_i2c_read_register(bq25180_register_SHIP_RST,
+                                  (uint8_t *)&(shipRst.value)) != 0) {
+        return false;
+    }
     shipRst.bits.bEnablePush = 0;
     shipRst.bits.bPushbuttonLongPressAction =
             bq25180_long_press_action_DoNothing;
     shipRst.bits.bEnableShipModeAndReset =
             bq25180_reset_shipment_mode_DoNothing;
-    bq25180_i2c_write_register(bq25180_register_SHIP_RST, shipRst.value);
+    if (bq25180_i2c_write_register(bq25180_register_SHIP_RST, shipRst.value) != 0) {
+        return false;
+    }
     // BQ25180_I2C_UNLOCK(&bq25180);
     return true;
 }
@@ -455,18 +512,24 @@ bool bq25180_shipment_mode_disable(void) {
  */
 bool bq25180_shutdown_enable(void) {
     union bq25180_SHIP_RST_register_t shipRst;
-    assert(bq25180.state.bits.bConfigured != 0);
+    if (!bq25180_available || (bq25180.state.bits.bConfigured == 0)) {
+        return false;
+    }
     // bool ret = BQ25180_I2C_LOCK(&bq25180, &bq25180.i2c_config, BQ25180_I2C_TIMEOUT);
     // if (ret == false) {
     //     return false;
     // }
-    bq25180_i2c_read_register(bq25180_register_SHIP_RST,
-                              (uint8_t *) &(shipRst.value));
+    if (bq25180_i2c_read_register(bq25180_register_SHIP_RST,
+                                  (uint8_t *)&(shipRst.value)) != 0) {
+        return false;
+    }
     shipRst.bits.bEnablePush = 1;
     shipRst.bits.bPushbuttonLongPressAction =
             bq25180_long_press_action_Shutdown;
     //	shipRst.bits.bEnableShipModeAndReset = bq25180_reset_shipment_mode_Shutdown;
-    bq25180_i2c_write_register(bq25180_register_SHIP_RST, shipRst.value);
+    if (bq25180_i2c_write_register(bq25180_register_SHIP_RST, shipRst.value) != 0) {
+        return false;
+    }
     // BQ25180_I2C_UNLOCK(&bq25180);
 
     return true;
@@ -478,19 +541,25 @@ bool bq25180_shutdown_enable(void) {
  */
 bool bq25180_shutdown_disable(void) {
     union bq25180_SHIP_RST_register_t shipRst;
-    assert(bq25180.state.bits.bConfigured != 0);
+    if (!bq25180_available || (bq25180.state.bits.bConfigured == 0)) {
+        return false;
+    }
     // bool ret = BQ25180_I2C_LOCK(&bq25180, &bq25180.i2c_config, BQ25180_I2C_TIMEOUT);
     // if (ret == false) {
     //     return false;
     // }
-    bq25180_i2c_read_register(bq25180_register_SHIP_RST,
-                              (uint8_t *) &(shipRst.value));
+    if (bq25180_i2c_read_register(bq25180_register_SHIP_RST,
+                                  (uint8_t *)&(shipRst.value)) != 0) {
+        return false;
+    }
     shipRst.bits.bEnablePush = 0;
     shipRst.bits.bPushbuttonLongPressAction =
             bq25180_long_press_action_DoNothing;
     shipRst.bits.bEnableShipModeAndReset =
             bq25180_reset_shipment_mode_DoNothing;
-    bq25180_i2c_write_register(bq25180_register_SHIP_RST, shipRst.value);
+    if (bq25180_i2c_write_register(bq25180_register_SHIP_RST, shipRst.value) != 0) {
+        return false;
+    }
     // BQ25180_I2C_UNLOCK(&bq25180);
     return true;
 }
@@ -537,7 +606,9 @@ void bq25180_print_state(void) {
 bool bq25180_reset(struct bq25180_config_t *config)
 {
     /* 1. Ensure the driver was already initialised */
-    assert(bq25180.state.bits.bInitialized != 0);
+    if (!bq25180_available || (bq25180.state.bits.bInitialized == 0)) {
+        return false;
+    }
 
     /* 2. Prepare the SHIP_RST register value
      *      – keep previously configured options
@@ -554,10 +625,15 @@ bool bq25180_reset(struct bq25180_config_t *config)
     //     return false;
     // }
 
-    bq25180_i2c_read_register(bq25180_register_SHIP_RST, (uint8_t *) &(ship_rst.value));
+    if (bq25180_i2c_read_register(bq25180_register_SHIP_RST,
+                                  (uint8_t *)&(ship_rst.value)) != 0) {
+        return false;
+    }
     ship_rst.bits.bEnablePush                  = 1; /* keep push-button */
-    bq25180_i2c_write_register(bq25180_register_SHIP_RST,
-                               (uint8_t)ship_rst.value);
+    if (bq25180_i2c_write_register(bq25180_register_SHIP_RST,
+                                   (uint8_t)ship_rst.value) != 0) {
+        return false;
+    }
 
     // BQ25180_I2C_UNLOCK(&bq25180);
 
@@ -571,8 +647,11 @@ bool bq25180_reset(struct bq25180_config_t *config)
 bool bq25180_enable_charging(bool enable) {
 
     /* The driver has to be initialised & configured first */
-    assert(bq25180.state.bits.bInitialized != 0);
-    assert(bq25180.state.bits.bConfigured != 0);
+    if (!bq25180_available ||
+        (bq25180.state.bits.bInitialized == 0) ||
+        (bq25180.state.bits.bConfigured == 0)) {
+        return false;
+    }
 
     /* Obtain exclusive access to the I²C bus */
     // bool ret = BQ25180_I2C_LOCK(&bq25180, &bq25180.i2c_config, BQ25180_I2C_TIMEOUT);
@@ -582,15 +661,19 @@ bool bq25180_enable_charging(bool enable) {
 
     /* 1. Read current ICHG_CTRL value ---------------------------------- */
     uint8_t value = 0u;
-    bq25180_i2c_read_register(bq25180_register_ICHG_CTRL, &value);
+    if (bq25180_i2c_read_register(bq25180_register_ICHG_CTRL, &value) != 0) {
+        return false;
+    }
 
     union bq25180_ICHG_CTRL_register_t ctrlReg = {.value = value};
     bool prevValue = ctrlReg.bits.bChargeDisable != 0;
     /* 2. Toggle the Charge-Disable flag if it is set -------------------- */
     if (prevValue != enable) {
         ctrlReg.bits.bChargeDisable = (enable == false) ? 1u : 0u;
-        bq25180_i2c_write_register(bq25180_register_ICHG_CTRL,
-                                   (uint8_t) ctrlReg.value);
+        if (bq25180_i2c_write_register(bq25180_register_ICHG_CTRL,
+                                       (uint8_t)ctrlReg.value) != 0) {
+            return false;
+        }
     }
 
     // BQ25180_I2C_UNLOCK(&bq25180);

@@ -17,6 +17,7 @@ struct haptic_actuator_frame {
 };
 
 int haptic_actuator_init(void);
+void haptic_actuator_deinit(void);
 int haptic_actuator_play_pattern(const struct haptic_actuator_frame *frames, size_t frame_count);
 bool haptic_actuator_is_busy(void);
 

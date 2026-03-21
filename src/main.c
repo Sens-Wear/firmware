@@ -19,14 +19,18 @@
 #include "app/haptic_ble_bridge.h"
 #include "app/imu_ble_bridge.h"
 #include "app/ppg_ble_bridge.h"
+#include "app/daughter_board_manager.h"
 #include "app/power_ble_bridge.h"
 #include "app/temperature_ble_bridge.h"
+#include "app/touch_ble_bridge.h"
 #include "bluetooth/services/imu/imu_lbs.h"
 #include "bluetooth/services/led/led_lbs.h"
+#include "bluetooth/services/haptic/haptic_lbs.h"
 #include "bluetooth/services/power/power_lbs.h"
+#include "bluetooth/services/ppg/ppg_lbs.h"
 #include "bluetooth/services/temperature/temperature_lbs.h"
+#include "bluetooth/services/touch/touch_lbs.h"
 
-#include "drivers/sensors/pressure/fdc1004.h"
 #include "drivers/memory/eeprom/m95p.h"
 #include "drivers/power/charger/bq25180.h"
 #include "drivers/power/gauge/bq27427.h"
@@ -44,7 +48,6 @@ static const struct bt_le_adv_param *adv_param = BT_LE_ADV_PARAM(
 
 LOG_MODULE_REGISTER(SENSE_WEAR_LOGGER);
 
-#define REG_NODE DT_NODELABEL(tpsm83102)
 #define DEVICE_NAME CONFIG_BT_DEVICE_NAME
 #define DEVICE_NAME_LEN (sizeof(DEVICE_NAME) - 1)
 #define BT_UUID_LBS_VAL BT_UUID_128_ENCODE(0x56966294, 0x9cb8, 0x4c92, 0x9d74, 0x834187f486de)
@@ -95,13 +98,11 @@ void on_connected(struct bt_conn *conn, uint8_t err) {
     current_conn = bt_conn_ref(conn);
 	imu_lbs_set_conn(conn);
 	led_lbs_set_conn(conn);
+	haptic_lbs_set_conn(conn);
 	power_lbs_set_conn(conn);
+	ppg_lbs_set_conn(conn);
 	temperature_lbs_set_conn(conn);
-
-    err = bt_conn_set_security(conn, BT_SECURITY_L2);
-    if (err) {
-        LOG_WRN("Failed to set security (err %d)", err);
-    }
+	touch_lbs_set_conn(conn);
 }
 
 void on_disconnected(struct bt_conn *conn, uint8_t reason)
@@ -114,8 +115,11 @@ void on_disconnected(struct bt_conn *conn, uint8_t reason)
     }
 	imu_lbs_clear_conn();
 	led_lbs_clear_conn();
+	haptic_lbs_clear_conn();
 	power_lbs_clear_conn();
+	ppg_lbs_clear_conn();
 	temperature_lbs_clear_conn();
+	touch_lbs_clear_conn();
 
     /* Defer restart (0–50 ms are typical; 10 ms is fine) */
     k_work_schedule(&adv_restart_work, K_MSEC(1000));
@@ -129,13 +133,8 @@ struct bt_conn_cb connection_callbacks = {
 
 int main(void)
 {
-	int ret;
 	int err;
-	const struct device *reg = DEVICE_DT_GET(REG_NODE);
-	if (!device_is_ready(reg)) {
-        LOG_ERR("Regulator not ready");
-        return 0;
-    }
+
 	err = bt_enable(NULL);
 	if (err) {
 		LOG_ERR("Bluetooth init failed (err %d)\n", err);
@@ -181,9 +180,6 @@ int main(void)
 	// Initialize touch sensor
     // touch_sensor_init();
 
-	// Initialize pressure sensor
-    // pressure_sensor_init();
-
 	// Initialize PPG sensor
 	// ppg_sensor_init();
 
@@ -191,39 +187,23 @@ int main(void)
 	// led_controller_init();
 	// led_controller_configure();
 
+	err = daughter_board_manager_init();
+	if (err) {
+		LOG_ERR("Daughter board manager init failed: %d", err);
+	}
+
 	led_ble_bridge_init();
     imu_ble_bridge_init();
 	temperature_ble_bridge_init();
 	ppg_ble_bridge_init();
-	// power_ble_bridge_init();
+	power_ble_bridge_init();
+	touch_ble_bridge_init();
+	haptic_ble_bridge_init();
 
 
 	// sys_memory_init();
 	// test_memory();
 	
-
-	/* 1) Turn regulator on */
-    ret = regulator_enable(reg);
-    if (ret) {
-        LOG_ERR("enable failed: %d", ret);
-        return 0;
-    }
-
-    /* 2) Program 1.8 V exactly */
-    ret = regulator_set_voltage(reg, 3700000, 3700000);
-    if (ret) {
-        LOG_ERR("set_voltage failed: %d", ret);
-        return 0;
-    }
-
-    /* Optional: give it time to ramp */
-    k_msleep(10);
-
-	err = haptic_ble_bridge_init();
-	if (err) {
-		LOG_ERR("Haptic BLE bridge init failed: %d", err);
-	}
-
 	// touch_sensor_init();
 	
 
@@ -231,5 +211,5 @@ int main(void)
 		k_sleep(K_FOREVER);
 	}
 
-	return ret;
+	return 0;
 }

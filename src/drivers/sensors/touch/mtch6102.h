@@ -1,10 +1,17 @@
 #ifndef      MTCHh6102_H
 #define      MTCHh6102_H
+#include <stdbool.h>
 #include <zephyr/kernel.h>
 
 #include 	"mtch6102_registers.h"
 
+struct touch_sensor_sample {
+	struct mtch6102_position position;
+	uint8_t gesture_state;
+};
 
+typedef void (*touch_sensor_sample_cb_t)(const struct touch_sensor_sample *sample,
+					 void *user_data);
 
 int mtch6102_get_position(const struct i2c_dt_spec *i2c, struct mtch6102_position *pos);
 
@@ -81,7 +88,13 @@ void MTCH6102_InitializeDEFAULT(const struct i2c_dt_spec *i2c);
  */
 void MTCH6102_Initialize(const struct i2c_dt_spec *i2c);
 
-// Function to initialize sensor reading
-void touch_sensor_init(void);
+int touch_sensor_init(void);
+int touch_sensor_start(void);
+void touch_sensor_stop(void);
+void touch_sensor_deinit(void);
+void touch_sensor_set_streaming_enabled(bool enabled);
+void touch_sensor_set_sampling_rate(uint16_t new_sampling_rate);
+void touch_sensor_set_transfer_interval(uint16_t new_transfer_interval);
+int touch_sensor_register_callback(touch_sensor_sample_cb_t cb, void *user_data);
 
 #endif

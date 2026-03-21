@@ -20,6 +20,7 @@ LOG_MODULE_REGISTER(SENS_WEAR_PPG_SENSOR_BLUETOOTH_LOGGER);
 static bool notify_red_enabled;
 static bool notify_ir_enabled;
 static bool notify_green_enabled;
+static struct bt_conn *ppg_lbs_conn;
 
 static struct ppg_sample_notification_t ppg_red_state;
 static struct ppg_sample_notification_t ppg_ir_state;
@@ -153,7 +154,10 @@ int ppg_lbs_notify_red(uint64_t unix_ms, uint32_t value)
   if (!notify_red_enabled) {
     return -EACCES;
   }
-  return bt_gatt_notify(NULL, &ppg_lbs_svc.attrs[6], &ppg_red_state, sizeof(ppg_red_state));
+  if (ppg_lbs_conn == NULL) {
+    return -ENOTCONN;
+  }
+  return bt_gatt_notify(ppg_lbs_conn, &ppg_lbs_svc.attrs[6], &ppg_red_state, sizeof(ppg_red_state));
 }
 
 int ppg_lbs_notify_ir(uint64_t unix_ms, uint32_t value)
@@ -163,7 +167,10 @@ int ppg_lbs_notify_ir(uint64_t unix_ms, uint32_t value)
   if (!notify_ir_enabled) {
     return -EACCES;
   }
-  return bt_gatt_notify(NULL, &ppg_lbs_svc.attrs[9], &ppg_ir_state, sizeof(ppg_ir_state));
+  if (ppg_lbs_conn == NULL) {
+    return -ENOTCONN;
+  }
+  return bt_gatt_notify(ppg_lbs_conn, &ppg_lbs_svc.attrs[9], &ppg_ir_state, sizeof(ppg_ir_state));
 }
 
 int ppg_lbs_notify_green(uint64_t unix_ms, uint32_t value)
@@ -173,7 +180,10 @@ int ppg_lbs_notify_green(uint64_t unix_ms, uint32_t value)
   if (!notify_green_enabled) {
     return -EACCES;
   }
-  return bt_gatt_notify(NULL, &ppg_lbs_svc.attrs[12], &ppg_green_state, sizeof(ppg_green_state));
+  if (ppg_lbs_conn == NULL) {
+    return -ENOTCONN;
+  }
+  return bt_gatt_notify(ppg_lbs_conn, &ppg_lbs_svc.attrs[12], &ppg_green_state, sizeof(ppg_green_state));
 }
 
 int ppg_lbs_notify_red_batch(const struct ppg_sample_notification_t *samples, size_t count)
@@ -184,7 +194,10 @@ int ppg_lbs_notify_red_batch(const struct ppg_sample_notification_t *samples, si
   if ((samples == NULL) || (count == 0U)) {
     return -EINVAL;
   }
-  return bt_gatt_notify(NULL, &ppg_lbs_svc.attrs[6], samples, count * sizeof(struct ppg_sample_notification_t));
+  if (ppg_lbs_conn == NULL) {
+    return -ENOTCONN;
+  }
+  return bt_gatt_notify(ppg_lbs_conn, &ppg_lbs_svc.attrs[6], samples, count * sizeof(struct ppg_sample_notification_t));
 }
 
 int ppg_lbs_notify_ir_batch(const struct ppg_sample_notification_t *samples, size_t count)
@@ -195,7 +208,10 @@ int ppg_lbs_notify_ir_batch(const struct ppg_sample_notification_t *samples, siz
   if ((samples == NULL) || (count == 0U)) {
     return -EINVAL;
   }
-  return bt_gatt_notify(NULL, &ppg_lbs_svc.attrs[9], samples, count * sizeof(struct ppg_sample_notification_t));
+  if (ppg_lbs_conn == NULL) {
+    return -ENOTCONN;
+  }
+  return bt_gatt_notify(ppg_lbs_conn, &ppg_lbs_svc.attrs[9], samples, count * sizeof(struct ppg_sample_notification_t));
 }
 
 int ppg_lbs_notify_green_batch(const struct ppg_sample_notification_t *samples, size_t count)
@@ -206,7 +222,10 @@ int ppg_lbs_notify_green_batch(const struct ppg_sample_notification_t *samples, 
   if ((samples == NULL) || (count == 0U)) {
     return -EINVAL;
   }
-  return bt_gatt_notify(NULL, &ppg_lbs_svc.attrs[12], samples, count * sizeof(struct ppg_sample_notification_t));
+  if (ppg_lbs_conn == NULL) {
+    return -ENOTCONN;
+  }
+  return bt_gatt_notify(ppg_lbs_conn, &ppg_lbs_svc.attrs[12], samples, count * sizeof(struct ppg_sample_notification_t));
 }
 
 void ppg_lbs_register_red_notify_cb(ppg_lbs_notify_state_cb_t cb, void *user_data)
@@ -225,6 +244,27 @@ void ppg_lbs_register_green_notify_cb(ppg_lbs_notify_state_cb_t cb, void *user_d
 {
   green_notify_cb = cb;
   green_notify_user_data = user_data;
+}
+
+void ppg_lbs_set_conn(struct bt_conn *conn)
+{
+  if (conn == NULL) {
+    return;
+  }
+
+  if (ppg_lbs_conn != NULL) {
+    bt_conn_unref(ppg_lbs_conn);
+  }
+
+  ppg_lbs_conn = bt_conn_ref(conn);
+}
+
+void ppg_lbs_clear_conn(void)
+{
+  if (ppg_lbs_conn != NULL) {
+    bt_conn_unref(ppg_lbs_conn);
+    ppg_lbs_conn = NULL;
+  }
 }
 
 void register_ppg_transfer_interval_callback(void (*callback)(uint16_t))

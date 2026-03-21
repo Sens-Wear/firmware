@@ -15,6 +15,7 @@ LOG_MODULE_REGISTER(SENSE_WEAR_HAPTIC_BLUETOOTH_LOGGER);
 #define HAPTIC_LBS_PATTERN_FRAME_SIZE 3U
 
 static const struct haptic_lbs_ops *haptic_ops;
+static struct bt_conn *haptic_lbs_conn;
 
 static ssize_t update_pattern(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			      const void *buf, uint16_t len, uint16_t offset, uint8_t flags)
@@ -92,4 +93,25 @@ BT_GATT_SERVICE_DEFINE(
 void haptic_lbs_register_ops(const struct haptic_lbs_ops *ops)
 {
 	haptic_ops = ops;
+}
+
+void haptic_lbs_set_conn(struct bt_conn *conn)
+{
+	if (conn == NULL) {
+		return;
+	}
+
+	if (haptic_lbs_conn != NULL) {
+		bt_conn_unref(haptic_lbs_conn);
+	}
+
+	haptic_lbs_conn = bt_conn_ref(conn);
+}
+
+void haptic_lbs_clear_conn(void)
+{
+	if (haptic_lbs_conn != NULL) {
+		bt_conn_unref(haptic_lbs_conn);
+		haptic_lbs_conn = NULL;
+	}
 }

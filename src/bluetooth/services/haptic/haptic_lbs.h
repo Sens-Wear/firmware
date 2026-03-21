@@ -8,6 +8,7 @@ extern "C" {
 #include <stddef.h>
 #include <stdint.h>
 
+#include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/uuid.h>
 
 #define BT_UUID_LBS_HAPTIC_SERVICE_VAL BT_UUID_128_ENCODE(0xdaa05e91, 0xf514, 0x4a4e, 0x8fc5, 0xd1b80f25f24d)
@@ -37,6 +38,8 @@ struct haptic_lbs_ops {
 };
 
 void haptic_lbs_register_ops(const struct haptic_lbs_ops *ops);
+void haptic_lbs_set_conn(struct bt_conn *conn);
+void haptic_lbs_clear_conn(void);
 
 #ifdef __cplusplus
 }

@@ -6,8 +6,9 @@ extern "C" {
 #endif
 
 #include <stddef.h>
-#include <zephyr/types.h>
 #include <stdbool.h>
+#include <zephyr/types.h>
+#include <zephyr/bluetooth/conn.h>
 #define BT_UUID_LBS_PPG_SERVICE_VAL BT_UUID_128_ENCODE(0x029ca54e, 0xd022, 0x4583, 0xb483, 0x91e9ea77034a)
 #define BT_UUID_LBS_PPG_TRANSFER_INTERVAL_CONF_VAL BT_UUID_128_ENCODE(0x029ca54f, 0xd022, 0x4583, 0xb483, 0x91e9ea77034a)
 #define BT_UUID_LBS_PPG_OPERATION_MODE_CONF_VAL BT_UUID_128_ENCODE(0x029ca550, 0xd022, 0x4583, 0xb483, 0x91e9ea77034a)
@@ -32,6 +33,8 @@ struct ppg_sample_notification_t {
 void ppg_lbs_register_red_notify_cb(ppg_lbs_notify_state_cb_t cb, void *user_data);
 void ppg_lbs_register_ir_notify_cb(ppg_lbs_notify_state_cb_t cb, void *user_data);
 void ppg_lbs_register_green_notify_cb(ppg_lbs_notify_state_cb_t cb, void *user_data);
+void ppg_lbs_set_conn(struct bt_conn *conn);
+void ppg_lbs_clear_conn(void);
 void register_ppg_transfer_interval_callback(void (*callback)(uint16_t));
 void register_ppg_operation_mode_callback(void (*callback)(uint16_t));
 

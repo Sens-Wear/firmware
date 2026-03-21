@@ -19,6 +19,7 @@ LOG_MODULE_REGISTER(SENS_WEAR_TOUCH_SENSOR_BLUETOOTH_LOGGER);
 static bool notify_touch_state_enabled;
 static bool notify_gesture_state_enabled;
 static bool notify_raw_data_enabled;
+static struct bt_conn *touch_lbs_conn;
 
 static void (*touch_state_callback)(bool enabled) = NULL;
 static void (*gesture_state_callback)(bool enabled) = NULL;
@@ -138,8 +139,12 @@ int touch_lbs_send_touch_state_notify(uint8_t *sensor_value, size_t size)
   {
     return -EACCES;
   }
+  if (touch_lbs_conn == NULL)
+  {
+    return -ENOTCONN;
+  }
   LOG_INF("Touch state sent over BLE!.");
-  return bt_gatt_notify(NULL, &touch_lbs_svc.attrs[5], sensor_value, size);
+  return bt_gatt_notify(touch_lbs_conn, &touch_lbs_svc.attrs[5], sensor_value, size);
 }
 
 int touch_lbs_send_gesture_state_notify(uint8_t *sensor_value, size_t size)
@@ -148,8 +153,12 @@ int touch_lbs_send_gesture_state_notify(uint8_t *sensor_value, size_t size)
   {
     return -EACCES;
   }
+  if (touch_lbs_conn == NULL)
+  {
+    return -ENOTCONN;
+  }
   LOG_INF("Gesture state sent over BLE!.");
-  return bt_gatt_notify(NULL, &touch_lbs_svc.attrs[8], sensor_value, size);
+  return bt_gatt_notify(touch_lbs_conn, &touch_lbs_svc.attrs[8], sensor_value, size);
 }
 
 int touch_lbs_send_raw_data_notify(uint8_t *sensor_value, size_t size)
@@ -158,8 +167,12 @@ int touch_lbs_send_raw_data_notify(uint8_t *sensor_value, size_t size)
   {
     return -EACCES;
   }
+  if (touch_lbs_conn == NULL)
+  {
+    return -ENOTCONN;
+  }
   LOG_INF("Touch raw data sent over BLE!.");
-  return bt_gatt_notify(NULL, &touch_lbs_svc.attrs[11], sensor_value, size);
+  return bt_gatt_notify(touch_lbs_conn, &touch_lbs_svc.attrs[11], sensor_value, size);
 }
 
 void register_touch_touch_state_callback(void (*callback)(bool))
@@ -185,4 +198,25 @@ void register_touch_sampling_rate_callback(void (*callback)(uint16_t))
 void register_touch_transfer_interval_callback(void (*callback)(uint16_t))
 {
   update_transfer_interval_callback = callback;
+}
+
+void touch_lbs_set_conn(struct bt_conn *conn)
+{
+  if (conn == NULL) {
+    return;
+  }
+
+  if (touch_lbs_conn != NULL) {
+    bt_conn_unref(touch_lbs_conn);
+  }
+
+  touch_lbs_conn = bt_conn_ref(conn);
+}
+
+void touch_lbs_clear_conn(void)
+{
+  if (touch_lbs_conn != NULL) {
+    bt_conn_unref(touch_lbs_conn);
+    touch_lbs_conn = NULL;
+  }
 }

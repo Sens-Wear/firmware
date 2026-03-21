@@ -231,6 +231,7 @@ struct bq27427_t {
  * \param i2c I2C device to be used by the driver
  */
 bool bq27427_init(void);
+bool bq27427_is_available(void);
 
 /**
  * \brief Configures BQ27427 is with the specified configuration.

@@ -146,6 +146,14 @@ int temperature_sensor_start(void)
 void temperature_sensor_stop(void)
 {
 	k_work_cancel_delayable(&temperature_sample_work);
+	temperature_work_started = false;
+}
+
+void temperature_sensor_deinit(void)
+{
+	temperature_sensor_stop();
+	atomic_set(&temperature_streaming_enabled, 0);
+	temperature_initialized = false;
 }
 
 int temperature_sensor_init(void)

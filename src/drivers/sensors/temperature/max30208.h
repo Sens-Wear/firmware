@@ -100,6 +100,7 @@ double read_Temperature(double data_fifo);
 int temperature_sensor_init(void);
 int temperature_sensor_start(void);
 void temperature_sensor_stop(void);
+void temperature_sensor_deinit(void);
 void temperature_sensor_set_streaming_enabled(bool enabled);
 void temperature_sensor_set_sampling_rate(uint16_t new_sampling_rate);
 void temperature_sensor_set_transfer_interval(uint16_t new_transfer_interval);

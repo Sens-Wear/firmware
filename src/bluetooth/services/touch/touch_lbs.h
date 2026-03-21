@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <zephyr/types.h>
+#include <zephyr/bluetooth/conn.h>
 #define BT_UUID_LBS_TOUCH_SERVICE_VAL BT_UUID_128_ENCODE(0x33a5eb3f, 0x0e13, 0x424f, 0x8b7a, 0x942be0ee5cfc)
 #define BT_UUID_LBS_TOUCH_SAMPLING_RATE_CONF_VAL BT_UUID_128_ENCODE(0x33a5eb40, 0x0e13, 0x424f, 0x8b7a, 0x942be0ee5cfc)
 #define BT_UUID_LBS_TOUCH_TRANSFER_INTERVAL_CONF_VAL BT_UUID_128_ENCODE(0x33a5eb41, 0x0e13, 0x424f, 0x8b7a, 0x942be0ee5cfc)
@@ -26,6 +27,8 @@ void register_touch_raw_data_callback(void (*callback)(bool));
 
 void register_touch_sampling_rate_callback(void (*callback)(uint16_t));
 void register_touch_transfer_interval_callback(void (*callback)(uint16_t));
+void touch_lbs_set_conn(struct bt_conn *conn);
+void touch_lbs_clear_conn(void);
 
 int touch_lbs_send_touch_state_notify(uint8_t* sensor_value, size_t size);
 int touch_lbs_send_gesture_state_notify(uint8_t* sensor_value, size_t size);

@@ -30,6 +30,7 @@ static struct k_thread haptic_playback_thread_data;
 static K_SEM_DEFINE(haptic_playback_sem, 0, 1);
 static K_MUTEX_DEFINE(haptic_state_mutex);
 
+static bool haptic_initialized;
 static bool haptic_thread_started;
 static bool haptic_is_playing;
 static size_t haptic_queued_frame_count;
@@ -84,6 +85,10 @@ static void haptic_playback_thread(void *arg1, void *arg2, void *arg3)
 
 		k_sem_take(&haptic_playback_sem, K_FOREVER);
 
+		if (!haptic_initialized) {
+			continue;
+		}
+
 		k_mutex_lock(&haptic_state_mutex, K_FOREVER);
 		local_frame_count = haptic_queued_frame_count;
 		memcpy(local_frames, haptic_queued_frames,
@@ -97,6 +102,10 @@ static void haptic_playback_thread(void *arg1, void *arg2, void *arg3)
 		}
 
 		for (size_t i = 0; i < local_frame_count; i++) {
+			if (!haptic_initialized) {
+				break;
+			}
+
 			ret = haptic_drv2605_set_intensity(local_frames[i].intensity);
 			if (ret < 0) {
 				LOG_ERR("Failed to write RTP frame %u: %d", (unsigned int)i, ret);
@@ -148,7 +157,23 @@ int haptic_actuator_init(void)
 		haptic_thread_started = true;
 	}
 
+	haptic_initialized = true;
 	return 0;
+}
+
+void haptic_actuator_deinit(void)
+{
+	if (!haptic_initialized) {
+		return;
+	}
+
+	k_mutex_lock(&haptic_state_mutex, K_FOREVER);
+	haptic_is_playing = false;
+	haptic_queued_frame_count = 0U;
+	k_mutex_unlock(&haptic_state_mutex);
+
+	(void)haptic_drv2605_enter_idle();
+	haptic_initialized = false;
 }
 
 int haptic_actuator_play_pattern(const struct haptic_actuator_frame *frames, size_t frame_count)

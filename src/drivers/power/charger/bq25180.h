@@ -457,6 +457,7 @@ struct bq25180_t {
  * \param i2c I2C device to be used by the driver
  */
 bool bq25180_init(void);
+bool bq25180_is_available(void);
 
 /**
  * \brief Configures BQ25180 is with the specified configuration.
