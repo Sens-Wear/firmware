@@ -1,9 +1,6 @@
 #include <stdbool.h>
 #include <zephyr/kernel.h>
 
-#define BHI360_CS_GPIO_NODE DT_NODELABEL(gpio1)
-#define BHI360_CS_PIN (13)
-
 struct imu_quat_data {
 	int16_t x;
 	int16_t y;

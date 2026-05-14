@@ -201,8 +201,8 @@ int main(void)
 	haptic_ble_bridge_init();
 
 
-	// sys_memory_init();
-	// test_memory();
+	sys_memory_init();
+	test_memory();
 	
 	// touch_sensor_init();
 	

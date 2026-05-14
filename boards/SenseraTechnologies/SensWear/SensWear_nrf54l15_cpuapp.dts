@@ -17,41 +17,41 @@
 	};
 	
 
-	spi_bitbang: spi_bitbang {
-        compatible = "zephyr,spi-bitbang";
-		status = "okay";
-		#address-cells = <1>;
-		#size-cells = <0>;
+	// spi_bitbang: spi_bitbang {
+    //     compatible = "zephyr,spi-bitbang";
+	// 	status = "okay";
+	// 	#address-cells = <1>;
+	// 	#size-cells = <0>;
 		
-		clk-gpios = <&gpio2 1 GPIO_ACTIVE_HIGH>;  /* P2.01 */
-		miso-gpios = <&gpio2 2 GPIO_ACTIVE_HIGH>; /* P2.02 (Your requested mapping) */
-		mosi-gpios = <&gpio2 3 GPIO_ACTIVE_HIGH>; /* P2.03 (Your requested mapping) */
+	// 	clk-gpios = <&gpio2 1 GPIO_ACTIVE_HIGH>;  /* P2.01 */
+	// 	miso-gpios = <&gpio2 2 GPIO_ACTIVE_HIGH>; /* P2.02 (Your requested mapping) */
+	// 	mosi-gpios = <&gpio2 3 GPIO_ACTIVE_HIGH>; /* P2.03 (Your requested mapping) */
 		
-		/* Keep cs-gpios if needed */
-		// cs-gpios = <&gpio2 7 GPIO_ACTIVE_LOW>; 
+	// 	/* Keep cs-gpios if needed */
+	// 	// cs-gpios = <&gpio2 7 GPIO_ACTIVE_LOW>;
 
-		/* Define your SPI device here */
-		eeprom0: eeprom0@0 {
-			compatible = "st,m95p32", "st,m95xxx", "atmel,at25";
-			reg = <0>;
-			spi-max-frequency = <1000000>;
-			size = <0x400000>;
-			address-width = <24>;
-			pagesize = <512>;
-			timeout = <100>;
-		};
+	// 	/* Define your SPI device here */
+	// 	eeprom0: eeprom0@0 {
+	// 		compatible = "st,m95p32", "st,m95xxx", "atmel,at25";
+	// 		reg = <0>;
+	// 		spi-max-frequency = <1000000>;
+	// 		size = <0x400000>;
+	// 		address-width = <24>;
+	// 		pagesize = <512>;
+	// 		timeout = <100>;
+	// 	};
 
-		bhi360: bhi360@1 {
-			compatible = "bosch,bhi360";
-			reg = <1>;
-			status = "okay";
-			spi-max-frequency = <1000000>;
-		};
-	};
+	// 	bhi360: bhi360@1 {
+	// 		compatible = "bosch,bhi360";
+	// 		reg = <1>;
+	// 		status = "okay";
+	// 		spi-max-frequency = <1000000>;
+	// 	};
+	// };
 
 	bq25180_irq: bq25180_irq {
 		compatible = "sensewear,bq25180-irq";
-		interrupt-gpios = <&gpio2 9 GPIO_ACTIVE_LOW>;
+		interrupt-gpios = <&gpio1 5 GPIO_ACTIVE_LOW>;
 	};
 };
 
@@ -123,22 +123,22 @@
 		};
 	};
 
-	// spi20_default: spi20_default {
-	// 	group1 {
-	// 		psels = <NRF_PSEL(SPIM_MISO, 2, 2)>,
-	// 				<NRF_PSEL(SPIM_MOSI, 2, 3)>,
-	// 				<NRF_PSEL(SPIM_SCK, 2, 1)>;
-	// 	};
-	// };
+	spi00_default: spi00_default {
+		group1 {
+			psels = <NRF_PSEL(SPIM_MISO, 2, 4)>,
+					<NRF_PSEL(SPIM_MOSI, 2, 2)>,
+					<NRF_PSEL(SPIM_SCK, 2, 1)>;
+		};
+	};
 
-	// spi20_sleep: spi20_sleep {
-	// 	group1 {
-	// 		psels = <NRF_PSEL(SPIM_MISO, 2, 2)>,
-    //             <NRF_PSEL(SPIM_MOSI, 2, 3)>,
-    //             <NRF_PSEL(SPIM_SCK, 2, 1)>;
-    //     	low-power-enable;
-	// 	};
-	// };
+	spi00_sleep: spi00_sleep {
+		group1 {
+			psels = <NRF_PSEL(SPIM_MISO, 2, 4)>,
+				<NRF_PSEL(SPIM_MOSI, 2, 2)>,
+				<NRF_PSEL(SPIM_SCK, 2, 1)>;
+			low-power-enable;
+		};
+	};
 };
 
 &i2c21 {
@@ -153,13 +153,13 @@
 		compatible = "ti,lp5562";
 		reg = <0x30>;
 		status = "okay";
-		enable-gpios = <&gpio2 6 GPIO_ACTIVE_HIGH>;
+		enable-gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>;
 	};
 
-	bq25180: bq25180@21 {
+	bq25180: bq25180@6a {
 		compatible = "i2c-device";
 		status = "okay";
-		reg = <0x21>;
+		reg = <0x6a>;
 		label = "BQ25180";
 	};
 
@@ -170,11 +170,10 @@
         label = "BQ27427";
     };
 
-	// This is mixing up with the bq25180 and both are using 6a
-	tpsm83102: tpsm83102@6a {
+	tpsm83102: tpsm83102@68 {
 		compatible = "ti,tpsm83102";
-		reg = <0x6a>;
-		enable-gpios = <&gpio2 5 GPIO_ACTIVE_HIGH>;
+		reg = <0x68>;
+		enable-gpios = <&gpio1 6 GPIO_ACTIVE_HIGH>;
 		regulator-name = "VDD_DAUGHTER";
 		regulator-min-microvolt = <1000000>;
 		regulator-max-microvolt = <5500000>;
@@ -183,7 +182,7 @@
 	drv2605: drv2605@5a {
 		compatible = "ti,drv2605";
 		reg = <0x5a>;
-		en-gpios = <&gpio1 12 GPIO_ACTIVE_HIGH>;
+		en-gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>;
 		status = "okay";
 		actuator-mode = "LRA";
 		loop-gain = "HIGH";
@@ -216,55 +215,60 @@
 &gpio1 {
 	status = "okay";
 
-	bhi360_cs_hog: bhi360_cs_hog {
+	lp5562_en_hog: lp5562_en_hog {
         gpio-hog;
-        gpios = <13 GPIO_ACTIVE_HIGH>;
-        output-high;           /* keep /CS deasserted */
-        line-name = "BHI360_CS";
+        gpios = <4 GPIO_ACTIVE_HIGH>;  /* P1.04 */
+        output-high;
+        line-name = "LP5562_EN";
+    };
+
+	tpsm83102_en_hog: tpsm83102_en_hog {
+        gpio-hog;
+        gpios = <6 GPIO_ACTIVE_HIGH>;  /* P1.06 */
+        output-high;
+        line-name = "TPSM83102_EN";
+    };
+
+	charger_pwr_kill_hog: charger_pwr_kill_hog {
+        gpio-hog;
+        gpios = <8 GPIO_ACTIVE_LOW>;
+        output-high;
+        line-name = "CHARGER_POWER_KILL";
     };
 };
 
 &gpio2 {
     status = "okay";
-	lp5562_en_hog: lp5562_en_hog {
-        gpio-hog;
-        gpios = <6 GPIO_ACTIVE_HIGH>;  /* P2.06 */
-        output-high;
-        line-name = "LP5562_EN";
-    };
-
-	eeprom_cs_hog: eeprom_cs_hog {
-        gpio-hog;
-        gpios = <7 GPIO_ACTIVE_HIGH>;
-        output-high;           /* keep /CS deasserted */
-        line-name = "EEPROM_CS";
-    };
-
-	charger_pwr_kill_hog: charger_pwr_kill_hog {
-        gpio-hog;
-        gpios = <4 GPIO_ACTIVE_LOW>;
-        output-high;
-        line-name = "CHARGER_POWER_KILL";
-    };
 };
 
 &uicr {
     nfct-pins-as-gpios;
 };
 
-// &spi20 {
-// 	status = "okay";
-// 	pinctrl-0 = <&spi20_default>;
-// 	pinctrl-1 = <&spi20_sleep>;
-// 	pinctrl-names = "default", "sleep";
+&spi00 {
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	pinctrl-0 = <&spi00_default>;
+	pinctrl-1 = <&spi00_sleep>;
+	pinctrl-names = "default", "sleep";
+	cs-gpios = <&gpio2 3 GPIO_ACTIVE_LOW>, /* eeprom@0 /CS */
+		   <&gpio2 5 GPIO_ACTIVE_LOW>; /* bhi360@1 /CS */
 
-// 	eeprom0: eeprom@0 {
-// 		compatible = "st,m95p32", "st,m95xxx", "atmel,at25";
-// 		reg = <0>;
-// 		spi-max-frequency = <1000000>;
-// 		size = <0x400000>;
-// 		address-width = <24>;
-// 		pagesize = <512>;
-// 		timeout = <100>;
-// 	};
-// };
+	eeprom0: eeprom@0 {
+		compatible = "st,m95p32", "st,m95xxx", "atmel,at25";
+		reg = <0>;
+		spi-max-frequency = <8000000>;
+		size = <0x400000>;
+		address-width = <24>;
+		pagesize = <512>;
+		timeout = <100>;
+	};
+
+	bhi360: bhi360@1 {
+		compatible = "bosch,bhi360";
+		reg = <1>;
+		status = "okay";
+		spi-max-frequency = <8000000>;
+	};
+};

@@ -12,10 +12,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "m95p_organization.h"
-#include <zephyr/drivers/gpio.h>
-
-#define M95P_CS_GPIO_NODE DT_NODELABEL(gpio2)
-#define M95P_CS_PIN (7)
 
 #define M95P_MANUFACTURER_ID (0x20)
 #define M95P_FAMILY_CODE (0x00)

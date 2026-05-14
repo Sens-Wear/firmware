@@ -7,6 +7,10 @@
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(SENSE_WEAR_MEMORY_DRIVER_LOGGER);
+
+#define M95P_NODE DT_NODELABEL(eeprom0)
+BUILD_ASSERT(DT_SPI_DEV_HAS_CS_GPIOS(M95P_NODE), "eeprom0 is missing spi20 cs-gpios");
+
 #if HAVE_FATFS
 
 #include "ff.h"
@@ -86,7 +90,6 @@ bool M95P_SPI_UNLOCK (void*) {
  * \brief The m95p device driver structure
  */
 static struct m95p_t {
-    const struct device *cs_gpio;
     const struct spi_dt_spec *spi_driver; //! SPI driver
     const struct spi_config *spi_config;       //! SPI driver configuration
     union m95p_status_register_t status_register;
@@ -110,14 +113,6 @@ static inline void m95p_command_with_address(uint8_t *buffer,
     buffer[1] = address_union.bytes[2];
     buffer[2] = address_union.bytes[1];
     buffer[3] = address_union.bytes[0];
-}
-
-static inline void m95p_cs_high() {
-    gpio_pin_set(m95p.cs_gpio, M95P_CS_PIN, 1);
-}
-
-static inline void m95p_cs_low() {
-    gpio_pin_set(m95p.cs_gpio, M95P_CS_PIN, 0);
 }
 
 static inline void mp95p_spi_read(uint8_t *command,
@@ -187,62 +182,31 @@ static inline void mp95p_spi_write(uint8_t *command,
 
 static inline void m95p_spi_write_enable() {
     uint8_t command = m95p_instruction_WREN;
-    m95p_cs_low();
     mp95p_spi_write(&command, 1, NULL, 0);
-    m95p_cs_high();
 }
-/*
-static inline void m95p_spi_write_disable() {
-    uint8_t command = m95p_instruction_WRDI;
-    m95p_cs_low();
-    mp95p_spi_write(&command, 1, NULL, 0);
-    m95p_cs_high();
-}
-*/
+
 static inline void
 m95p_spi_read_status_register(union m95p_status_register_t *status) {
     uint8_t command = m95p_instruction_RDSR;
     uint8_t value;
-    m95p_cs_low();
     mp95p_spi_read(&command, 1, &value, 1);
     status->value = value;
-    m95p_cs_high();
 }
 
 static inline void m95p_spi_read_configuration_safety_register(
         struct m95p_configuration_safety_registers_t *config) {
     uint8_t buffer[2];
     uint8_t command = m95p_instruction_RDCR;
-    m95p_cs_low();
     mp95p_spi_read(&command, 1, buffer, 2);
-    m95p_cs_high();
     config->configuration_register.value = buffer[0];
     config->safety_register.value = buffer[1];
 }
 
 static inline void m95p_clear_safety_flags() {
     uint8_t command = m95p_instruction_CLRSF;
-    m95p_cs_low();
     mp95p_spi_write(&command, 1, NULL, 0);
-    m95p_cs_high();
-}
-/*
-static inline void
-m95p_read_volatile_register(union m95p_volatile_register_t *reg) {
-    uint8_t command = m95p_instruction_RDVR;
-    m95p_cs_low();
-    mp95p_spi_read(&command, 1, (uint8_t *) reg, 1);
-    m95p_cs_high();
 }
 
-static inline void
-m95p_write_volatile_register(union m95p_volatile_register_t *reg) {
-    uint8_t command = m95p_instruction_WRVR;
-    m95p_cs_low();
-    mp95p_spi_write(&command, 1, (uint8_t *) reg, 1);
-    m95p_cs_high();
-}
-*/
 static inline void m95p_write_status_and_configuration_register(union m95p_status_register_t statusRegister,
                                                                   union m95p_configuration_register_t configurationRegister,
                                                                   bool bStatusOnly) {
@@ -256,45 +220,23 @@ static inline void m95p_write_status_and_configuration_register(union m95p_statu
         buffer[3] = 0x00;
         size += 1;
     }
-    m95p_cs_low();
     mp95p_spi_write(&command, 1, buffer, size);
-    m95p_cs_high();
 }
 
 static inline void m95p_read_jedec_id(union m95p_jedec_id_t *id) {
     uint8_t command[4];
     m95p_command_with_address(command, m95p_instruction_RDID, 0);
-    m95p_cs_low();
     mp95p_spi_read(command, 4, id->data, 3);
-    m95p_cs_high();
-}
-/*
-static inline void m95p_deep_power_down_enter(void) {
-    uint8_t command = m95p_instruction_DPD;
-    m95p_cs_low();
-    mp95p_spi_write(&command, 1, NULL, 0);
-    m95p_cs_high();
 }
 
-static inline void m95p_deep_power_down_exit(void) {
-    uint8_t command = m95p_instruction_RDPD;
-    m95p_cs_low();
-    mp95p_spi_write(&command, 1, NULL, 0);
-    m95p_cs_high();
-}
-*/
 static inline void m95p_reset(void) {
     uint8_t command = m95p_instruction_RSTEN;
-    m95p_cs_low();
     mp95p_spi_write(&command, 1, NULL, 0);
-    m95p_cs_high();
     command = m95p_instruction_RESET;
     for (int i = 10; i > 0; i--) {
         __NOP();
     }
-    m95p_cs_low();
     mp95p_spi_write(&command, 1, NULL, 0);
-    m95p_cs_high();
 }
 
 static inline bool m95p_is_busy(void) {
@@ -335,20 +277,9 @@ static inline bool m95p_is_write_protected(void) {
 
 bool sys_memory_init(void *arg) {
     (void) arg;
-    if (m95p.cs_gpio == NULL) {
-        static const struct device *cs_gpio = DEVICE_DT_GET(M95P_CS_GPIO_NODE);
-        if (!device_is_ready(cs_gpio)) {
-            return -ENODEV;
-        }
-        int ret = gpio_pin_configure(cs_gpio,
-                              M95P_CS_PIN,
-                              GPIO_OUTPUT_ACTIVE);
-        assert(ret == 0);
-        m95p.cs_gpio = cs_gpio;
-    }
     if (m95p.spi_driver == NULL) {
         static const struct spi_dt_spec spi_dev =
-            SPI_DT_SPEC_GET(DT_NODELABEL(eeprom0),
+            SPI_DT_SPEC_GET(M95P_NODE,
                             SPI_OP_MODE_MASTER |
                             SPI_WORD_SET(8),
                             0);
@@ -405,9 +336,7 @@ static inline void m95p_chip_erase(void) {
     m95p_wait_until_not_busy();
     m95p_spi_write_enable();
     // start erase
-    m95p_cs_low();
     mp95p_spi_write(&command, 1, NULL, 0);
-    m95p_cs_high();
     // wait till it ends
     m95p_wait_until_not_busy();
 }
@@ -421,9 +350,7 @@ static inline void m95p_block_erase(uint32_t address) {
     m95p_wait_until_not_busy();
     m95p_spi_write_enable();
     // start erase
-    m95p_cs_low();
     mp95p_spi_write(command, 4, NULL, 0);
-    m95p_cs_high();
     // wait till it ends
     m95p_wait_until_not_busy();
 }
@@ -437,9 +364,7 @@ static inline void m95p_page_erase(uint32_t address) {
     m95p_wait_until_not_busy();
     m95p_spi_write_enable();
     // start erase
-    m95p_cs_low();
     mp95p_spi_write(command, 4, NULL, 0);
-    m95p_cs_high();
     // wait till it ends
     m95p_wait_until_not_busy();
 }
@@ -459,9 +384,7 @@ bool  sys_memory_program_page(uint32_t page, const void *data, size_t size) {
     m95p_spi_write_enable();
     // start write
     m95p_command_with_address(command, m95p_instruction_PGPR, address);
-    m95p_cs_low();
     mp95p_spi_write(command, 4, data, size);
-    m95p_cs_high();
     // wait till it ends
     m95p_wait_until_not_busy();
     // --------------------------------------------------------------------------------------------
@@ -478,9 +401,7 @@ static inline void   m95p_page_write(uint32_t address, const uint8_t *data, size
     m95p_spi_write_enable();
     // start write
     m95p_command_with_address(command, m95p_instruction_PGWR, address);
-    m95p_cs_low();
     mp95p_spi_write(command, 4, data, size);
-    m95p_cs_high();
     // wait till it ends
     m95p_wait_until_not_busy();
 }
@@ -491,9 +412,7 @@ static inline void  m95p_read(uint32_t address, uint8_t *buffer, size_t size) {
     // wait till previous operation ends
     m95p_wait_until_not_busy();
     m95p_command_with_address(command, m95p_instruction_READ, address);
-    m95p_cs_low();
     mp95p_spi_read(command, 4, buffer, size);
-    m95p_cs_high();
     // wait till it ends
     m95p_wait_until_not_busy();
 }
@@ -837,13 +756,13 @@ void test_memory () {
     };
 
     struct perisistant_values values;
-    m95p_read(EEPROM_SAMPLE_OFFSET, &values, sizeof(values));
+    m95p_read(EEPROM_SAMPLE_OFFSET, (uint8_t *)&values, sizeof(values));
     if (values.magic != EEPROM_SAMPLE_MAGIC) {
 		values.magic = EEPROM_SAMPLE_MAGIC;
 		values.boot_count = 0;
 	}
     values.boot_count++;
     LOG_INF("Device booted %d times.\n", values.boot_count);
-    m95p_page_write(EEPROM_SAMPLE_OFFSET, &values, sizeof(values));
+    m95p_page_write(EEPROM_SAMPLE_OFFSET, (const uint8_t *)&values, sizeof(values));
     LOG_INF("Reset the MCU to see the increasing boot counter.\n\n");
 }

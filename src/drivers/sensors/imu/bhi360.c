@@ -1,12 +1,9 @@
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/spi.h>
-#include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
 #include <stdio.h>
-#include <zephyr/drivers/spi.h>
-#include <assert.h>
 #include "bhi360.h"
 #include "bhy2.h"
 #include "bhy2_parse.h"
@@ -14,6 +11,9 @@
 
 #define BHY2_RD_WR_LEN          256 
 #define WORK_BUFFER_SIZE        2048
+#define BHI360_NODE             DT_NODELABEL(bhi360)
+
+BUILD_ASSERT(DT_SPI_DEV_HAS_CS_GPIOS(BHI360_NODE), "bhi360 is missing spi20 cs-gpios");
 
 LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -39,19 +39,14 @@ LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 
 // Structure to hold IMU specific data
 typedef struct {
-    uint8_t cs_gpio_node;
-    uint8_t cs_pin;
-    struct device *cs_gpio_dev;
     struct bhy2_dev bhy2;
     bool initialized;
     char name[32];  // Friendly name for logging
 } imu_device_t;
 
-// Global array of IMU devices - define your CS pins here
+// Global array of IMU devices
 static imu_device_t imu_devices[] = {
     {
-        .cs_gpio_node = 1,
-        .cs_pin = 13,  // First IMU CS pin (P1.12)
         .initialized = false,
         .name = "IMU_1"
     }
@@ -60,15 +55,7 @@ static imu_device_t imu_devices[] = {
 #define NUM_IMUS (sizeof(imu_devices) / sizeof(imu_devices[0]))
 
 // Global device structures
-static struct spi_dt_spec *spi_dev;
-// static struct spi_config spi_cfg = {
-//     .frequency = 8000000,  // Reduced to 8MHz for reliability
-//     .operation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB ,
-//     .cs = SPI_CS_CONTROL_PTR_DT(DT_NODELABEL(bhi360), 0)
-// };
-
-// Use SPI_CS_CONTROL macro for CS control
-static struct bhy2_dev bhy2;
+static const struct spi_dt_spec *spi_dev;
 
 static imu_quat_cb_t imu_quat_callback;
 static void *imu_quat_callback_user_data;
@@ -97,14 +84,6 @@ int imu_register_linear_accel_callback(imu_lacc_cb_t cb, void *user_data)
 void imu_set_streaming_enabled(bool enabled)
 {
 	atomic_set(&imu_streaming_enabled, enabled ? 1 : 0);
-}
-
-static inline void bhi360_cs_high(imu_device_t *imu) {
-    gpio_pin_set(imu->cs_gpio_dev, imu->cs_pin, 1);
-}
-
-static inline void bhi360_cs_low(imu_device_t *imu) {
-    gpio_pin_set(imu->cs_gpio_dev, imu->cs_pin, 0);
 }
 
 // Add new function declarations
@@ -151,7 +130,7 @@ static int8_t upload_firmware(struct bhy2_dev *dev)
         rslt = bhy2_upload_firmware_to_ram_partly(&bhy2_firmware_image[i], len, i, incr, dev);
 #endif
 
-        LOG_INF("%.2f%% complete", (float)(i + incr) / (float)len * 100.0f);
+        LOG_INF("%.2f%% complete", (double)(i + incr) / (double)len * 100.0);
     }
 
     return rslt;
@@ -165,26 +144,25 @@ static int8_t upload_firmware(struct bhy2_dev *dev)
         } \
     } while (0)
 
-static void setup_SPI(imu_device_t *imu)
+static int setup_SPI(void)
 {
     // Only initialize SPI hardware once
     static bool spi_initialized = false;
     if (!spi_initialized) {
-        static const struct spi_dt_spec local_spi_dev = SPI_DT_SPEC_GET(DT_NODELABEL(bhi360),
+        static const struct spi_dt_spec local_spi_dev = SPI_DT_SPEC_GET(BHI360_NODE,
                             SPI_WORD_SET(8) | SPI_TRANSFER_MSB,
                             0);
-        struct device *cs_gpio = DEVICE_DT_GET(DT_NODELABEL(gpio1));
-        if (!device_is_ready(cs_gpio)) {
+
+        if (!spi_is_ready_dt(&local_spi_dev)) {
+            LOG_ERR("BHI360 SPI device not ready");
             return -ENODEV;
         }
-        int ret = gpio_pin_configure(cs_gpio,
-                              imu->cs_pin,
-                              GPIO_OUTPUT_ACTIVE);
-        assert(ret == 0);
-        imu->cs_gpio_dev = cs_gpio;
+
         spi_dev = &local_spi_dev;
         spi_initialized = true;
     }
+
+    return 0;
 }
 
 static int8_t bhi360_spi_read(uint8_t reg_addr,
@@ -245,13 +223,11 @@ static int8_t bhi360_spi_read(uint8_t reg_addr,
         .buffers = rx_bufs,
         .count = 2,
     };
-    bhi360_cs_low(imu);
     int ret = spi_transceive_dt(spi_dev, &tx, &rx);
     if (ret != 0) {
         return BHY2_E_IO; /* or map ret -> BHY2 error codes */
     }
     memcpy(reg_data, rx_buf_stack + 1U, length);
-    bhi360_cs_high(imu);
     return BHY2_INTF_RET_SUCCESS;
 }
 
@@ -289,12 +265,10 @@ static int8_t bhi360_spi_write(uint8_t reg_addr,
         .buffers = &tx_buf,
         .count = 1,
     };
-    bhi360_cs_low(imu);
     int ret = spi_write_dt(spi_dev, &tx);
     if (ret != 0) {
         return BHY2_E_IO;
     }
-    bhi360_cs_high(imu);
     return BHY2_INTF_RET_SUCCESS;
 }
 
@@ -313,9 +287,6 @@ static bool initialize_imu(imu_device_t *imu) {
 
     LOG_INF("%s: Starting initialization", imu->name);
 
-    // Configure CS pin
-    // nrf_gpio_cfg_output(imu->cs_pin);
-    // nrf_gpio_pin_clear(imu->cs_pin);
     k_sleep(K_USEC(1));
 
     // Initialize BHY2 device
@@ -397,13 +368,13 @@ static bool initialize_imu(imu_device_t *imu) {
         LOG_INF("%s: Configuring quaternion sensor...", imu->name);
         rslt = bhy2_set_virt_sensor_cfg(QUAT_SENSOR_ID, sample_rate, report_latency_ms, &imu->bhy2);
         print_api_error(rslt, &imu->bhy2);
-        LOG_INF("%s: Enable Quaternion at %.2fHz", imu->name, sample_rate);
+        LOG_INF("%s: Enable Quaternion at %.2fHz", imu->name, (double)sample_rate);
 
         // Configure linear acceleration sensor
         LOG_INF("%s: Configuring linear acceleration sensor...", imu->name);
         rslt = bhy2_set_virt_sensor_cfg(LACC_SENSOR_ID, sample_rate, report_latency_ms, &imu->bhy2);
         print_api_error(rslt, &imu->bhy2);
-        LOG_INF("%s: Enable Linear Acceleration at %.2fHz", imu->name, sample_rate);
+        LOG_INF("%s: Enable Linear Acceleration at %.2fHz", imu->name, (double)sample_rate);
 
         rslt = bhy2_register_fifo_parse_callback(BHY2_SYS_ID_META_EVENT, 
             parse_meta_event, imu, &imu->bhy2);
@@ -478,7 +449,10 @@ int imu_start(void)
     // Initialize all IMUs
     //TODO: Do not initialize IMU everytime you start reading the sensors values
     for (int i = 0; i < NUM_IMUS; i++) {
-        setup_SPI(&imu_devices[i]);  // Setup SPI for each IMU
+        int ret = setup_SPI();  // Setup SPI for each IMU
+        if (ret != 0) {
+            return ret;
+        }
         initialize_imu(&imu_devices[i]);
     }
     k_thread_create(&imu_thread,
@@ -528,7 +502,7 @@ void imu_sensor_init(void)
 // Update callback functions to use IMU context
 static void parse_quaternion(const struct bhy2_fifo_parse_data_info *callback_info, void *callback_ref)
 {
-    imu_device_t *imu = (imu_device_t *)callback_ref;
+    (void)callback_ref;
     struct bhy2_data_quaternion data;
     uint32_t s, ns;
     if (callback_info->data_size != 11) { // Check for valid payload size
@@ -566,7 +540,7 @@ static void parse_quaternion(const struct bhy2_fifo_parse_data_info *callback_in
 }
 
 static void parse_linear_acceleration(const struct bhy2_fifo_parse_data_info *callback_info, void *callback_ref) {
-    imu_device_t *imu = (imu_device_t *)callback_ref;
+    (void)callback_ref;
     struct bhy2_data_xyz data;
     bhy2_parse_xyz(callback_info->data_ptr, &data);
 
@@ -588,7 +562,6 @@ static void parse_linear_acceleration(const struct bhy2_fifo_parse_data_info *ca
 
 static void parse_meta_event(const struct bhy2_fifo_parse_data_info *callback_info, void *callback_ref)
 {
-    imu_device_t *imu = (imu_device_t *)callback_ref;
     (void)callback_ref;
     uint8_t meta_event_type = callback_info->data_ptr[0];
     uint8_t byte1 = callback_info->data_ptr[1];
