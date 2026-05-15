@@ -150,86 +150,6 @@ static void publish_state_if_changed(const struct power_lbs_daughter_state *next
 	}
 }
 
-static void refresh_daughter_board_state_locked(void)
-{
-	struct power_lbs_daughter_state next_state = {
-		.flags = POWER_LBS_DAUGHTER_FLAG_REGULATOR_ENABLED,
-		.regulator_mv = DAUGHTER_BOARD_LOW_UV / 1000U,
-	};
-	int err;
-	uint8_t low_voltage_mask = 0U;
-
-	if (ppg_active_requested) {
-		next_state.flags |= POWER_LBS_DAUGHTER_FLAG_PPG_REQUESTED;
-	}
-
-	if ((daughter_board_state.active_board == POWER_LBS_DAUGHTER_BOARD_PPG) && ppg_active_requested) {
-		err = set_regulator_voltage_uv(DAUGHTER_BOARD_HIGH_UV);
-		if ((err == 0) && probe_ppg()) {
-			next_state.connected_mask = POWER_LBS_DAUGHTER_MASK_PPG;
-			next_state.active_board = POWER_LBS_DAUGHTER_BOARD_PPG;
-			next_state.regulator_mv = DAUGHTER_BOARD_HIGH_UV / 1000U;
-			publish_state_if_changed(&next_state);
-			return;
-		}
-	}
-
-	err = set_regulator_voltage_uv(DAUGHTER_BOARD_LOW_UV);
-	if (err != 0) {
-		next_state.flags = 0U;
-		next_state.regulator_mv = 0U;
-		publish_state_if_changed(&next_state);
-		return;
-	}
-
-	if (probe_temperature()) {
-		low_voltage_mask |= POWER_LBS_DAUGHTER_MASK_TEMPERATURE;
-	}
-
-	if (probe_touch()) {
-		low_voltage_mask |= POWER_LBS_DAUGHTER_MASK_TOUCH;
-	}
-
-	if (probe_haptic()) {
-		low_voltage_mask |= POWER_LBS_DAUGHTER_MASK_HAPTIC;
-	}
-
-	if (probe_ppg()) {
-		low_voltage_mask |= POWER_LBS_DAUGHTER_MASK_PPG;
-	}
-
-	next_state.connected_mask = low_voltage_mask;
-	next_state.active_board = choose_low_voltage_board(low_voltage_mask);
-
-	if (ppg_active_requested && (low_voltage_mask & (POWER_LBS_DAUGHTER_MASK_TEMPERATURE |
-						       POWER_LBS_DAUGHTER_MASK_TOUCH |
-						       POWER_LBS_DAUGHTER_MASK_HAPTIC)) == 0U) {
-		err = set_regulator_voltage_uv(DAUGHTER_BOARD_HIGH_UV);
-		if ((err == 0) && probe_ppg()) {
-			next_state.connected_mask |= POWER_LBS_DAUGHTER_MASK_PPG;
-			next_state.active_board = POWER_LBS_DAUGHTER_BOARD_PPG;
-			next_state.regulator_mv = DAUGHTER_BOARD_HIGH_UV / 1000U;
-		} else {
-			(void)set_regulator_voltage_uv(DAUGHTER_BOARD_LOW_UV);
-			next_state.regulator_mv = DAUGHTER_BOARD_LOW_UV / 1000U;
-		}
-	}
-
-	publish_state_if_changed(&next_state);
-}
-
-static void daughter_board_scan_work_fn(struct k_work *work)
-{
-	ARG_UNUSED(work);
-
-	k_mutex_lock(&daughter_board_lock, K_FOREVER);
-	refresh_daughter_board_state_locked();
-	k_mutex_unlock(&daughter_board_lock);
-
-	(void)k_work_reschedule(&daughter_board_scan_work,
-			       K_MSEC(DAUGHTER_BOARD_SCAN_INTERVAL_MS));
-}
-
 int daughter_board_manager_init(void)
 {
 	int err;
@@ -249,15 +169,7 @@ int daughter_board_manager_init(void)
 		return err;
 	}
 
-	k_work_init_delayable(&daughter_board_scan_work, daughter_board_scan_work_fn);
-
-	k_mutex_lock(&daughter_board_lock, K_FOREVER);
-	refresh_daughter_board_state_locked();
-	k_mutex_unlock(&daughter_board_lock);
-
-	(void)k_work_reschedule(&daughter_board_scan_work,
-			       K_MSEC(DAUGHTER_BOARD_SCAN_INTERVAL_MS));
-	daughter_board_initialized = true;
+	set_regulator_voltage_uv(3000000);
 	return 0;
 }
 

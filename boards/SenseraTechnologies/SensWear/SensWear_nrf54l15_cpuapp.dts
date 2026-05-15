@@ -16,39 +16,6 @@
 		zephyr,flash-controller = &rram_controller;
 	};
 	
-
-	// spi_bitbang: spi_bitbang {
-    //     compatible = "zephyr,spi-bitbang";
-	// 	status = "okay";
-	// 	#address-cells = <1>;
-	// 	#size-cells = <0>;
-		
-	// 	clk-gpios = <&gpio2 1 GPIO_ACTIVE_HIGH>;  /* P2.01 */
-	// 	miso-gpios = <&gpio2 2 GPIO_ACTIVE_HIGH>; /* P2.02 (Your requested mapping) */
-	// 	mosi-gpios = <&gpio2 3 GPIO_ACTIVE_HIGH>; /* P2.03 (Your requested mapping) */
-		
-	// 	/* Keep cs-gpios if needed */
-	// 	// cs-gpios = <&gpio2 7 GPIO_ACTIVE_LOW>;
-
-	// 	/* Define your SPI device here */
-	// 	eeprom0: eeprom0@0 {
-	// 		compatible = "st,m95p32", "st,m95xxx", "atmel,at25";
-	// 		reg = <0>;
-	// 		spi-max-frequency = <1000000>;
-	// 		size = <0x400000>;
-	// 		address-width = <24>;
-	// 		pagesize = <512>;
-	// 		timeout = <100>;
-	// 	};
-
-	// 	bhi360: bhi360@1 {
-	// 		compatible = "bosch,bhi360";
-	// 		reg = <1>;
-	// 		status = "okay";
-	// 		spi-max-frequency = <1000000>;
-	// 	};
-	// };
-
 	bq25180_irq: bq25180_irq {
 		compatible = "sensewear,bq25180-irq";
 		interrupt-gpios = <&gpio1 5 GPIO_ACTIVE_LOW>;

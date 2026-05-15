@@ -9,9 +9,6 @@
 #include <string.h>
 #include <assert.h>
 
-//extern I2C_HandleTypeDef LP5562_I2C_DRIVER;
-#define LP5562_I2C_ADDRESS(__id) ((LP5562_I2C_ADDRESS_BASE) + (__id << 1))
-
 #define RUNNING_STATE 3
 #define LP5562_MASTER_CLOCK_FREQ 2048
 //64

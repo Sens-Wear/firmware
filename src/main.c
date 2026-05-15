@@ -203,9 +203,7 @@ int main(void)
 
 	sys_memory_init();
 	test_memory();
-	
-	// touch_sensor_init();
-	
+		
 
 	while (1) {
 		k_sleep(K_FOREVER);
