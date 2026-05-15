@@ -45,11 +45,6 @@ LOG_MODULE_REGISTER(tpsm83102, CONFIG_REGULATOR_LOG_LEVEL);
 #define TPSM83102_UV_MAX 5500000  /* 5.5V */
 #define TPSM83102_UV_STEP 25000   /* 25mV */
 
-/* Add near the top with the other register defs */
-#define TPSM83102_REG_UNDEF0   0x00
-#define TPSM83102_REG_UNDEF1   0x01
-#define TPSM83102_REG_UNDEF4   0x04
-
 /* Datasheet reset defaults */
 #define TPSM83102_RESET_CONTROL1 0x08
 #define TPSM83102_RESET_VOUT     0x5C
@@ -68,6 +63,7 @@ struct tpsm83102_config {
 	uint8_t cfg_td_ramp; /* 0..7 */
 	bool cfg_enable_scp;
 	bool cfg_fast_dvs;
+	bool strict_reset_defaults;
 };
 
 struct tpsm83102_data {
@@ -105,7 +101,6 @@ static int tpsm83102_reg_update(const struct device *dev, uint8_t reg,
 static int tpsm83102_verify_device(const struct device *dev, bool strict_reset_defaults)
 {
 	uint8_t c1, vout, c2;
-	uint8_t u0, u1, u4;
 	int ret;
 
 	/* Read the three defined registers */
@@ -367,6 +362,9 @@ static int tpsm83102_apply_defaults(const struct device *dev)
 static int tpsm83102_init(const struct device *dev)
 {
 	const struct tpsm83102_config *cfg = dev->config;
+	struct tpsm83102_data *data = dev->data;
+	uint8_t c1;
+	uint8_t vout_code;
 	int ret;
 
 	if (!device_is_ready(cfg->i2c.bus)) {
@@ -379,24 +377,38 @@ static int tpsm83102_init(const struct device *dev)
 		return -ENODEV;
 	}
 
-	/* If EN GPIO exists, configure it */
 	if (cfg->has_en_gpio) {
-		ret = gpio_pin_configure_dt(&cfg->en_gpio, GPIO_OUTPUT_INACTIVE);
+		ret = gpio_pin_configure_dt(&cfg->en_gpio, GPIO_OUTPUT_ACTIVE);
 		if (ret) {
 			LOG_ERR("Failed to configure EN GPIO: %d", ret);
 			return ret;
 		}
+
+		k_msleep(100);
 	}
-	gpio_pin_set_dt(&cfg->en_gpio, 1);
-	k_msleep(100);
+
 	/* Verify the device answers like TPSM83102 */
-	ret = tpsm83102_verify_device(dev, true);
+	ret = tpsm83102_verify_device(dev, cfg->strict_reset_defaults);
 	if (ret) {
 		LOG_ERR("Device probe failed: %d", ret);
 		return ret;
 	}
+
+	ret = tpsm83102_reg_read(dev, TPSM83102_REG_CONTROL1, &c1);
+	if (ret) {
+		return ret;
+	}
+
+	ret = tpsm83102_get_vout_code(dev, &vout_code);
+	if (ret) {
+		return ret;
+	}
+
+	data->enabled = (c1 & TPSM83102_CONTROL1_CONVERTER_EN) != 0U;
+	data->last_uV = tpsm83102_code_to_uV(vout_code);
+
 	LOG_INF("Constraints: min=%u max=%u",
-        cfg->common.min_uv, cfg->common.max_uv);
+		cfg->common.min_uv, cfg->common.max_uv);
 	/* Apply default CONTROL1/CONTROL2 settings (does not enable converter) */
 	ret = tpsm83102_apply_defaults(dev);
 	if (ret) {
@@ -421,6 +433,7 @@ static int tpsm83102_init(const struct device *dev)
 		.cfg_td_ramp = DT_PROP_OR(node_id, ti_td_ramp, 5),                            \
 		.cfg_enable_scp = DT_PROP_OR(node_id, ti_enable_scp, 0),                      \
 		.cfg_fast_dvs = DT_PROP_OR(node_id, ti_fast_dvs, 0),                          \
+		.strict_reset_defaults = DT_PROP_OR(node_id, ti_strict_reset_defaults, 0),     \
 	};                                                                                \
 	static struct tpsm83102_data tpsm83102_data_##node_id;                            \
 	DEVICE_DT_DEFINE(node_id, tpsm83102_init, NULL,                                   \

@@ -9,111 +9,235 @@
 #include <zephyr/sys/util.h>
 
 #include "app/daughter_board_manager.h"
+
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
 #include "drivers/actuators/haptic/drv2605.h"
+#endif
+
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_PPG)
 #include "drivers/sensors/ppg/max30101.h"
+#endif
+
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TEMPERATURE)
 #include "drivers/sensors/temperature/max30208.h"
+#endif
+
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
 #include "drivers/sensors/touch/mtch6102.h"
+#endif
 
 LOG_MODULE_REGISTER(SENSE_WEAR_DAUGHTER_BOARD_MANAGER);
 
 #define TPSM83102_NODE DT_NODELABEL(tpsm83102)
-#define MAX30101_NODE DT_NODELABEL(max30101)
-#define MAX30208_NODE DT_NODELABEL(max30208)
-#define MTCH6102_NODE DT_NODELABEL(mtch6102)
-#define DRV2605_NODE DT_NODELABEL(drv2605)
+#define SENSEWEAR_DAUGHTER_NODE DT_ALIAS(sensewear_daughter)
 
 #define DAUGHTER_BOARD_SCAN_INTERVAL_MS 1500
 #define DAUGHTER_BOARD_RAMP_DELAY_MS 20
-#define DAUGHTER_BOARD_LOW_UV 3700000
-#define DAUGHTER_BOARD_HIGH_UV 5000000
+#define DAUGHTER_BOARD_TOUCH_UV 3700000
+#define DAUGHTER_BOARD_PPG_UV 5000000
+#define DAUGHTER_BOARD_TEMPERATURE_UV 3700000
+#define DAUGHTER_BOARD_HAPTIC_UV 3700000
 #define DRV2605_REG_MODE 0x01
 #define DAUGHTER_BOARD_STATUS_CB_MAX 8
 
-static const struct device *const daughter_regulator = DEVICE_DT_GET(TPSM83102_NODE);
-static const struct i2c_dt_spec ppg_i2c = I2C_DT_SPEC_GET(MAX30101_NODE);
-static const struct i2c_dt_spec temperature_i2c = I2C_DT_SPEC_GET(MAX30208_NODE);
-static const struct i2c_dt_spec touch_i2c = I2C_DT_SPEC_GET(MTCH6102_NODE);
-static const struct i2c_dt_spec haptic_i2c = I2C_DT_SPEC_GET(DRV2605_NODE);
+#define DAUGHTER_BOARD_SELECTION_COUNT							\
+	(IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_NONE) +				\
+	 IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TOUCH) +				\
+	 IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_PPG) +				\
+	 IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TEMPERATURE) +			\
+	 IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC))
 
+BUILD_ASSERT(DAUGHTER_BOARD_SELECTION_COUNT == 1,
+	     "Select exactly one SenseWear daughter board option");
+BUILD_ASSERT(DT_NODE_HAS_STATUS(TPSM83102_NODE, okay),
+	     "SensWear board DTS must enable the tpsm83102 daughter regulator");
+
+#if !IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_NONE)
+BUILD_ASSERT(DT_NODE_HAS_STATUS(SENSEWEAR_DAUGHTER_NODE, okay),
+	     "Selected daughter board must provide an okay sensewear-daughter alias");
+#endif
+
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
+#define SELECTED_DAUGHTER_MASK POWER_LBS_DAUGHTER_MASK_TOUCH
+#define SELECTED_DAUGHTER_TYPE POWER_LBS_DAUGHTER_BOARD_TOUCH
+#define SELECTED_DAUGHTER_NAME "touch"
+#elif IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_PPG)
+#define SELECTED_DAUGHTER_MASK POWER_LBS_DAUGHTER_MASK_PPG
+#define SELECTED_DAUGHTER_TYPE POWER_LBS_DAUGHTER_BOARD_PPG
+#define SELECTED_DAUGHTER_NAME "ppg"
+#elif IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TEMPERATURE)
+#define SELECTED_DAUGHTER_MASK POWER_LBS_DAUGHTER_MASK_TEMPERATURE
+#define SELECTED_DAUGHTER_TYPE POWER_LBS_DAUGHTER_BOARD_TEMPERATURE
+#define SELECTED_DAUGHTER_NAME "temperature"
+#elif IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
+#define SELECTED_DAUGHTER_MASK POWER_LBS_DAUGHTER_MASK_HAPTIC
+#define SELECTED_DAUGHTER_TYPE POWER_LBS_DAUGHTER_BOARD_HAPTIC
+#define SELECTED_DAUGHTER_NAME "haptic"
+#else
+#define SELECTED_DAUGHTER_MASK 0U
+#define SELECTED_DAUGHTER_TYPE POWER_LBS_DAUGHTER_BOARD_NONE
+#define SELECTED_DAUGHTER_NAME "none"
+#endif
+
+static const struct device *const daughter_regulator = DEVICE_DT_GET(TPSM83102_NODE);
+#if !IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_NONE)
+static const struct i2c_dt_spec daughter_i2c = I2C_DT_SPEC_GET(SENSEWEAR_DAUGHTER_NODE);
+#endif
 static struct k_work_delayable daughter_board_scan_work;
 static K_MUTEX_DEFINE(daughter_board_lock);
 
 static struct power_lbs_daughter_state daughter_board_state;
 static bool daughter_board_initialized;
+static bool daughter_board_present;
+static bool daughter_regulator_ready;
 static bool ppg_active_requested;
+static int32_t daughter_regulator_uv;
 static daughter_board_manager_status_cb_t daughter_board_status_cbs[DAUGHTER_BOARD_STATUS_CB_MAX];
 static void *daughter_board_status_user_data[DAUGHTER_BOARD_STATUS_CB_MAX];
 
-static bool probe_register_value(const struct i2c_dt_spec *spec, uint8_t reg, uint8_t expected)
+static int32_t selected_regulator_voltage_uv(void)
 {
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
+	return DAUGHTER_BOARD_TOUCH_UV;
+#elif IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_PPG)
+	return DAUGHTER_BOARD_PPG_UV;
+#elif IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TEMPERATURE)
+	return DAUGHTER_BOARD_TEMPERATURE_UV;
+#elif IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
+	return DAUGHTER_BOARD_HAPTIC_UV;
+#else
+	return 0;
+#endif
+}
+
+static uint8_t selected_state_flags(void)
+{
+	uint8_t flags = 0U;
+
+	if (daughter_regulator_ready) {
+		flags |= POWER_LBS_DAUGHTER_FLAG_REGULATOR_ENABLED;
+	}
+
+	if (IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_PPG) && ppg_active_requested) {
+		flags |= POWER_LBS_DAUGHTER_FLAG_PPG_REQUESTED;
+	}
+
+	return flags;
+}
+
+static bool refresh_daughter_board_state_locked(void)
+{
+	struct power_lbs_daughter_state next_state = {
+		.connected_mask = daughter_board_present ? SELECTED_DAUGHTER_MASK : 0U,
+		.active_board = daughter_board_present ? SELECTED_DAUGHTER_TYPE :
+							  POWER_LBS_DAUGHTER_BOARD_NONE,
+		.regulator_mv = (uint16_t)(daughter_regulator_uv / 1000),
+		.flags = selected_state_flags(),
+	};
+	bool changed = memcmp(&daughter_board_state, &next_state, sizeof(next_state)) != 0;
+
+	daughter_board_state = next_state;
+	return changed;
+}
+
+static void notify_status_cbs(const struct power_lbs_daughter_state *state)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(daughter_board_status_cbs); i++) {
+		if (daughter_board_status_cbs[i] != NULL) {
+			daughter_board_status_cbs[i](state, daughter_board_status_user_data[i]);
+		}
+	}
+}
+
+static bool probe_register_value(uint8_t reg, uint8_t expected)
+{
+#if !IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_NONE)
 	uint8_t value = 0U;
 
-	if ((spec == NULL) || !i2c_is_ready_dt(spec)) {
+	if (!i2c_is_ready_dt(&daughter_i2c)) {
 		return false;
 	}
 
-	if (i2c_write_read_dt(spec, &reg, sizeof(reg), &value, sizeof(value)) != 0) {
+	if (i2c_write_read_dt(&daughter_i2c, &reg, sizeof(reg), &value, sizeof(value)) != 0) {
 		return false;
 	}
 
 	return value == expected;
+#else
+	ARG_UNUSED(reg);
+	ARG_UNUSED(expected);
+	return false;
+#endif
 }
 
-static bool probe_register_access(const struct i2c_dt_spec *spec, uint8_t reg)
+static bool probe_register_access(uint8_t reg)
 {
+#if !IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_NONE)
 	uint8_t value = 0U;
 
-	if ((spec == NULL) || !i2c_is_ready_dt(spec)) {
+	if (!i2c_is_ready_dt(&daughter_i2c)) {
 		return false;
 	}
 
-	return i2c_write_read_dt(spec, &reg, sizeof(reg), &value, sizeof(value)) == 0;
+	return i2c_write_read_dt(&daughter_i2c, &reg, sizeof(reg), &value, sizeof(value)) == 0;
+#else
+	ARG_UNUSED(reg);
+	return false;
+#endif
 }
 
-static bool probe_ppg(void)
+static bool probe_selected_daughter_board(void)
 {
-	return probe_register_value(&ppg_i2c, max30101_register_PartID, MAX30101_PART_ID);
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
+	return probe_register_value(MTCH6102__FW_MAJOR, 0x02U);
+#elif IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_PPG)
+	return probe_register_value(max30101_register_PartID, MAX30101_PART_ID);
+#elif IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TEMPERATURE)
+	return probe_register_value(MAX30208_ID_ADDR, MAX30208_PART_ID_VALUE);
+#elif IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
+	return probe_register_access(DRV2605_REG_MODE);
+#else
+	return false;
+#endif
 }
 
-static bool probe_temperature(void)
+static void update_presence_and_notify(bool present)
 {
-	return probe_register_value(&temperature_i2c, MAX30208_ID_ADDR, MAX30208_PART_ID_VALUE);
-}
+	struct power_lbs_daughter_state state;
+	bool changed;
 
-static bool probe_touch(void)
-{
-	return probe_register_value(&touch_i2c, MTCH6102__FW_MAJOR, 0x02U);
-}
+	k_mutex_lock(&daughter_board_lock, K_FOREVER);
+	daughter_board_present = present;
+	changed = refresh_daughter_board_state_locked();
+	state = daughter_board_state;
+	k_mutex_unlock(&daughter_board_lock);
 
-static bool probe_haptic(void)
-{
-	return probe_register_access(&haptic_i2c, DRV2605_REG_MODE);
-}
-
-static enum power_lbs_daughter_board_type choose_low_voltage_board(uint8_t connected_mask)
-{
-	if ((connected_mask & POWER_LBS_DAUGHTER_MASK_TEMPERATURE) != 0U) {
-		return POWER_LBS_DAUGHTER_BOARD_TEMPERATURE;
+	if (!changed) {
+		return;
 	}
 
-	if ((connected_mask & POWER_LBS_DAUGHTER_MASK_TOUCH) != 0U) {
-		return POWER_LBS_DAUGHTER_BOARD_TOUCH;
-	}
+	LOG_INF("Daughter board %s: connected=%u regulator=%umV",
+		SELECTED_DAUGHTER_NAME, present ? 1U : 0U, state.regulator_mv);
+	notify_status_cbs(&state);
+}
 
-	if ((connected_mask & POWER_LBS_DAUGHTER_MASK_HAPTIC) != 0U) {
-		return POWER_LBS_DAUGHTER_BOARD_HAPTIC;
-	}
+static void daughter_board_scan_work_fn(struct k_work *work)
+{
+	ARG_UNUSED(work);
 
-	if ((connected_mask & POWER_LBS_DAUGHTER_MASK_PPG) != 0U) {
-		return POWER_LBS_DAUGHTER_BOARD_PPG;
-	}
-
-	return POWER_LBS_DAUGHTER_BOARD_NONE;
+	update_presence_and_notify(probe_selected_daughter_board());
+	(void)k_work_schedule(&daughter_board_scan_work,
+			       K_MSEC(DAUGHTER_BOARD_SCAN_INTERVAL_MS));
 }
 
 static int set_regulator_voltage_uv(int32_t uv)
 {
 	int err;
+
+	if (uv == 0) {
+		daughter_regulator_uv = 0;
+		return 0;
+	}
 
 	err = regulator_set_voltage(daughter_regulator, uv, uv);
 	if (err != 0) {
@@ -122,39 +246,18 @@ static int set_regulator_voltage_uv(int32_t uv)
 	}
 
 	k_msleep(DAUGHTER_BOARD_RAMP_DELAY_MS);
+	daughter_regulator_uv = uv;
 	return 0;
 }
 
-static void publish_state_if_changed(const struct power_lbs_daughter_state *next_state)
-{
-	bool changed;
-	struct power_lbs_daughter_state old_state;
-
-	old_state = daughter_board_state;
-	changed = memcmp(&old_state, next_state, sizeof(*next_state)) != 0;
-	daughter_board_state = *next_state;
-
-	if (changed) {
-		LOG_INF("Daughter board status changed: mask=0x%02x active=%u regulator=%umV flags=0x%02x",
-			next_state->connected_mask, next_state->active_board,
-			next_state->regulator_mv, next_state->flags);
-	}
-
-	if (changed) {
-		for (size_t i = 0; i < ARRAY_SIZE(daughter_board_status_cbs); i++) {
-			if (daughter_board_status_cbs[i] != NULL) {
-				daughter_board_status_cbs[i](next_state,
-							 daughter_board_status_user_data[i]);
-			}
-		}
-	}
-}
-
-int daughter_board_manager_init(void)
+static int init_daughter_regulator(void)
 {
 	int err;
 
-	if (daughter_board_initialized) {
+	daughter_regulator_ready = false;
+	daughter_regulator_uv = 0;
+
+	if (IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_NONE)) {
 		return 0;
 	}
 
@@ -169,7 +272,52 @@ int daughter_board_manager_init(void)
 		return err;
 	}
 
-	set_regulator_voltage_uv(3000000);
+	err = set_regulator_voltage_uv(selected_regulator_voltage_uv());
+	if (err != 0) {
+		return err;
+	}
+
+	daughter_regulator_ready = true;
+	return 0;
+}
+
+int daughter_board_manager_init(void)
+{
+	struct power_lbs_daughter_state state;
+	bool changed;
+	int err;
+
+	if (daughter_board_initialized) {
+		return 0;
+	}
+
+	err = init_daughter_regulator();
+	if (err != 0) {
+		LOG_ERR("Daughter regulator unavailable; reporting %s daughter as disconnected: %d",
+			SELECTED_DAUGHTER_NAME, err);
+	}
+
+	k_mutex_lock(&daughter_board_lock, K_FOREVER);
+	daughter_board_initialized = true;
+	daughter_board_present = daughter_regulator_ready ? probe_selected_daughter_board() : false;
+	changed = refresh_daughter_board_state_locked();
+	state = daughter_board_state;
+	k_mutex_unlock(&daughter_board_lock);
+
+	LOG_INF("Daughter board selection: %s connected=%u regulator=%umV",
+		SELECTED_DAUGHTER_NAME, daughter_board_present ? 1U : 0U,
+		state.regulator_mv);
+
+	if (changed) {
+		notify_status_cbs(&state);
+	}
+
+	if (daughter_regulator_ready) {
+		k_work_init_delayable(&daughter_board_scan_work, daughter_board_scan_work_fn);
+		(void)k_work_schedule(&daughter_board_scan_work,
+				       K_MSEC(DAUGHTER_BOARD_SCAN_INTERVAL_MS));
+	}
+
 	return 0;
 }
 
@@ -187,23 +335,43 @@ int daughter_board_manager_get_status(struct power_lbs_daughter_state *state)
 
 int daughter_board_manager_set_ppg_active(bool active)
 {
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_PPG)
+	struct power_lbs_daughter_state state;
+	bool changed;
+
 	if (!daughter_board_initialized) {
 		return -EACCES;
 	}
 
+	if (!daughter_regulator_ready) {
+		return -ENODEV;
+	}
+
 	k_mutex_lock(&daughter_board_lock, K_FOREVER);
 	ppg_active_requested = active;
-	refresh_daughter_board_state_locked();
+	changed = refresh_daughter_board_state_locked();
+	state = daughter_board_state;
 	k_mutex_unlock(&daughter_board_lock);
 
-	(void)k_work_reschedule(&daughter_board_scan_work,
-			       K_MSEC(DAUGHTER_BOARD_SCAN_INTERVAL_MS));
+	if (changed) {
+		LOG_INF("PPG daughter board %s", active ? "active" : "idle");
+		notify_status_cbs(&state);
+	}
+
 	return 0;
+#else
+	ARG_UNUSED(active);
+	return -ENOTSUP;
+#endif
 }
 
 void daughter_board_manager_register_status_cb(daughter_board_manager_status_cb_t cb,
 					       void *user_data)
 {
+	if (cb == NULL) {
+		return;
+	}
+
 	k_mutex_lock(&daughter_board_lock, K_FOREVER);
 
 	for (size_t i = 0; i < ARRAY_SIZE(daughter_board_status_cbs); i++) {

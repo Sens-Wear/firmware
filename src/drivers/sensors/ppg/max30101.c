@@ -22,13 +22,15 @@
 LOG_MODULE_REGISTER(SENS_WEAR_PPG_SENSOR_LOGGER);
 
 
-#define MAX30101_NODE DT_NODELABEL(max30101)
+#define MAX30101_NODE DT_ALIAS(sensewear_ppg)
 #define MAX_SENSOR_READING_SIZE 32
 #define PPG_STREAM_SLEEP_MS 1
 #define PPG_IDLE_SLEEP_MS 250
 #define PPG_BATCH_MIN_SAMPLES 10
 #define PPG_BATCH_TARGET_SAMPLES 12
 #define PPG_BATCH_MAX_SAMPLES 15
+BUILD_ASSERT(DT_NODE_HAS_STATUS(MAX30101_NODE, okay),
+	     "PPG firmware requires the sensewear_ppg shield");
 static const struct i2c_dt_spec dev_i2c = I2C_DT_SPEC_GET(MAX30101_NODE);
 static struct max30101_t max30101 = {0};
 static atomic_t ppg_streaming_enabled;

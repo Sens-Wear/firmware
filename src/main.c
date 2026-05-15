@@ -16,28 +16,37 @@
 #include <zephyr/bluetooth/conn.h>
 
 #include "app/led_ble_bridge.h"
-#include "app/haptic_ble_bridge.h"
 #include "app/imu_ble_bridge.h"
-#include "app/ppg_ble_bridge.h"
 #include "app/daughter_board_manager.h"
 #include "app/power_ble_bridge.h"
-#include "app/temperature_ble_bridge.h"
-#include "app/touch_ble_bridge.h"
 #include "bluetooth/services/imu/imu_lbs.h"
 #include "bluetooth/services/led/led_lbs.h"
-#include "bluetooth/services/haptic/haptic_lbs.h"
 #include "bluetooth/services/power/power_lbs.h"
-#include "bluetooth/services/ppg/ppg_lbs.h"
-#include "bluetooth/services/temperature/temperature_lbs.h"
-#include "bluetooth/services/touch/touch_lbs.h"
 
 #include "drivers/memory/eeprom/m95p.h"
 #include "drivers/power/charger/bq25180.h"
 #include "drivers/power/gauge/bq27427.h"
-#include "drivers/sensors/touch/mtch6102.h"
-#include "drivers/sensors/temperature/max30208.h"
-#include "drivers/sensors/ppg/max30101.h"
 #include "drivers/sensors/imu/bhi360.h"
+
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
+#include "app/haptic_ble_bridge.h"
+#include "bluetooth/services/haptic/haptic_lbs.h"
+#endif
+
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_PPG)
+#include "app/ppg_ble_bridge.h"
+#include "bluetooth/services/ppg/ppg_lbs.h"
+#endif
+
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TEMPERATURE)
+#include "app/temperature_ble_bridge.h"
+#include "bluetooth/services/temperature/temperature_lbs.h"
+#endif
+
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
+#include "app/touch_ble_bridge.h"
+#include "bluetooth/services/touch/touch_lbs.h"
+#endif
 
 static const struct bt_le_adv_param *adv_param = BT_LE_ADV_PARAM(
 	(BT_LE_ADV_OPT_CONN |
@@ -98,11 +107,19 @@ void on_connected(struct bt_conn *conn, uint8_t err) {
     current_conn = bt_conn_ref(conn);
 	imu_lbs_set_conn(conn);
 	led_lbs_set_conn(conn);
-	haptic_lbs_set_conn(conn);
 	power_lbs_set_conn(conn);
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
+	haptic_lbs_set_conn(conn);
+#endif
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_PPG)
 	ppg_lbs_set_conn(conn);
+#endif
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TEMPERATURE)
 	temperature_lbs_set_conn(conn);
+#endif
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
 	touch_lbs_set_conn(conn);
+#endif
 }
 
 void on_disconnected(struct bt_conn *conn, uint8_t reason)
@@ -115,14 +132,22 @@ void on_disconnected(struct bt_conn *conn, uint8_t reason)
     }
 	imu_lbs_clear_conn();
 	led_lbs_clear_conn();
-	haptic_lbs_clear_conn();
 	power_lbs_clear_conn();
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
+	haptic_lbs_clear_conn();
+#endif
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_PPG)
 	ppg_lbs_clear_conn();
+#endif
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TEMPERATURE)
 	temperature_lbs_clear_conn();
+#endif
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
 	touch_lbs_clear_conn();
+#endif
 
-    /* Defer restart (0–50 ms are typical; 10 ms is fine) */
-    k_work_schedule(&adv_restart_work, K_MSEC(1000));
+	/* Defer restart briefly so the stack has time to finish disconnect cleanup. */
+	k_work_schedule(&adv_restart_work, K_MSEC(1000));
 }
 
 
@@ -194,11 +219,19 @@ int main(void)
 
 	led_ble_bridge_init();
     imu_ble_bridge_init();
-	temperature_ble_bridge_init();
-	ppg_ble_bridge_init();
 	power_ble_bridge_init();
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TEMPERATURE)
+	temperature_ble_bridge_init();
+#endif
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_PPG)
+	ppg_ble_bridge_init();
+#endif
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
 	touch_ble_bridge_init();
+#endif
+#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
 	haptic_ble_bridge_init();
+#endif
 
 
 	sys_memory_init();

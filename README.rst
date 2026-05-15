@@ -18,9 +18,10 @@ Features
 ********
 
 - BLE peripheral advertising with custom LED and IMU services.
-- Sensor drivers: BHI360 IMU, FDC1004 pressure, MAX30208 temperature,
-  MAX30101 PPG, MTCH6102 touch.
-- Actuators: DRV2605 haptics, LP5562 LED controller.
+- Sensor drivers: BHI360 IMU, FDC1004 pressure, and one selected daughter
+  board sensor: MAX30208 temperature, MAX30101 PPG, or MTCH6102 touch.
+- Actuators: LP5562 LED controller and optional DRV2605 haptics daughter
+  board.
 - Power and storage: BQ25180 charger, TPSM83102 regulator, M95P EEPROM.
 - UART logging and shell enabled by default.
 
@@ -41,13 +42,20 @@ From the firmware root:
 
 .. code-block:: console
 
-   west build -b SensWear/nrf54l15/cpuapp -d build/senswear .
+   west build -p always -b SensWear/nrf54l15/cpuapp --shield sensewear_touch -d build/touch .
+   west build -p always -b SensWear/nrf54l15/cpuapp --shield sensewear_ppg -d build/ppg .
+   west build -p always -b SensWear/nrf54l15/cpuapp --shield sensewear_temperature -d build/temperature .
+   west build -p always -b SensWear/nrf54l15/cpuapp --shield sensewear_haptic -d build/haptic .
 
-If you need a pristine build:
+Each build includes only the selected daughter board DTS nodes, driver, bridge,
+and BLE service. For base-board bring-up without a daughter board, omit
+``--shield``.
+
+If you need to rebuild an existing build directory:
 
 .. code-block:: console
 
-   west build -p always -b SensWear/nrf54l15/cpuapp -d build/senswear .
+   west build -p always -b SensWear/nrf54l15/cpuapp --shield sensewear_touch -d build/touch .
 
 Flashing
 ********
@@ -56,7 +64,7 @@ Use your preferred nRF54L15 programming probe and:
 
 .. code-block:: console
 
-   west flash -d build/senswear
+   west flash -d build/touch
 
 Bluetooth
 *********

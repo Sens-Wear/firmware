@@ -20,7 +20,20 @@
 		compatible = "sensewear,bq25180-irq";
 		interrupt-gpios = <&gpio1 5 GPIO_ACTIVE_LOW>;
 	};
+
+	daughter_connector: daughter_connector {
+		compatible = "sensewear,daughter-connector";
+		#gpio-cells = <2>;
+		gpio-map-mask = <0xffffffff 0xffffffc0>;
+		gpio-map-pass-thru = <0 0x3f>;
+		gpio-map = <2 0 &gpio1 2 0>,   /* Shared I2C SDA */
+			   <3 0 &gpio1 3 0>,   /* Shared I2C SCL */
+			   <14 0 &gpio1 14 0>; /* Daughter GPIO/enable */
+	};
 };
+
+daughter_i2c: &i2c21 {};
+zephyr_i2c: &i2c21 {};
 
 &uart30 {
     status = "okay";
@@ -140,43 +153,12 @@
 	tpsm83102: tpsm83102@68 {
 		compatible = "ti,tpsm83102";
 		reg = <0x68>;
+		status = "okay";
 		enable-gpios = <&gpio1 6 GPIO_ACTIVE_HIGH>;
 		regulator-name = "VDD_DAUGHTER";
 		regulator-min-microvolt = <1000000>;
 		regulator-max-microvolt = <5500000>;
 	};
-
-	drv2605: drv2605@5a {
-		compatible = "ti,drv2605";
-		reg = <0x5a>;
-		en-gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>;
-		status = "okay";
-		actuator-mode = "LRA";
-		loop-gain = "HIGH";
-		feedback-brake-factor = "2X";
-        label = "drv2605";
-	};
-
-	max30208: max30208@50 {
-        compatible = "i2c-device";
-		status = "okay";
-        reg = <0x50>;
-        label = "MAX30208";
-    };
-
-	mtch6102: mtch6102@25 {
-        compatible = "i2c-device";
-		status = "okay";
-        reg = <0x25>;
-        label = "MTCH6102";
-    };
-
-	max30101: max30101@57{
-        compatible = "i2c-device";
-		status = "okay";
-        reg = < 0x57 >;
-        label = "MAX30101";
-    };
 };
 
 &gpio1 {
@@ -187,13 +169,6 @@
         gpios = <4 GPIO_ACTIVE_HIGH>;  /* P1.04 */
         output-high;
         line-name = "LP5562_EN";
-    };
-
-	tpsm83102_en_hog: tpsm83102_en_hog {
-        gpio-hog;
-        gpios = <6 GPIO_ACTIVE_HIGH>;  /* P1.06 */
-        output-high;
-        line-name = "TPSM83102_EN";
     };
 
 	charger_pwr_kill_hog: charger_pwr_kill_hog {

@@ -10,10 +10,12 @@
 
 LOG_MODULE_REGISTER(SENS_WEAR_TEMPERATURE_SENSOR_LOGGER);
 
-#define MAX30208_NODE DT_NODELABEL(max30208)
+#define MAX30208_NODE DT_ALIAS(sensewear_temperature)
 #define MAX30208_CONVERSION_POLL_MS 10U
 #define MAX30208_CONVERSION_TIMEOUT_MS 200U
 
+BUILD_ASSERT(DT_NODE_HAS_STATUS(MAX30208_NODE, okay),
+	     "Temperature firmware requires the sensewear_temperature shield");
 static const struct i2c_dt_spec dev_i2c = I2C_DT_SPEC_GET(MAX30208_NODE);
 
 static struct k_work_delayable temperature_sample_work;

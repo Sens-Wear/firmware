@@ -1,0 +1,19 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	aliases {
+		sensewear-daughter = &mtch6102;
+		sensewear-touch = &mtch6102;
+	};
+};
+
+&daughter_i2c {
+	mtch6102: mtch6102@25 {
+		compatible = "i2c-device";
+		status = "okay";
+		reg = <0x25>;
+		label = "MTCH6102";
+	};
+};

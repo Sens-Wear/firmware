@@ -1,0 +1,19 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	aliases {
+		sensewear-daughter = &max30208;
+		sensewear-temperature = &max30208;
+	};
+};
+
+&daughter_i2c {
+	max30208: max30208@50 {
+		compatible = "i2c-device";
+		status = "okay";
+		reg = <0x50>;
+		label = "MAX30208";
+	};
+};

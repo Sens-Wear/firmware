@@ -1,0 +1,37 @@
+menu "SenseWear firmware"
+
+choice SENSEWEAR_DAUGHTER_BOARD
+	prompt "SenseWear daughter board"
+	default SENSEWEAR_DAUGHTER_TOUCH if SHIELD_SENSEWEAR_TOUCH
+	default SENSEWEAR_DAUGHTER_PPG if SHIELD_SENSEWEAR_PPG
+	default SENSEWEAR_DAUGHTER_TEMPERATURE if SHIELD_SENSEWEAR_TEMPERATURE
+	default SENSEWEAR_DAUGHTER_HAPTIC if SHIELD_SENSEWEAR_HAPTIC
+	default SENSEWEAR_DAUGHTER_NONE
+
+config SENSEWEAR_DAUGHTER_NONE
+	bool "No daughter board"
+
+config SENSEWEAR_DAUGHTER_TOUCH
+	bool "Touch daughter board"
+
+config SENSEWEAR_DAUGHTER_PPG
+	bool "PPG daughter board"
+
+config SENSEWEAR_DAUGHTER_TEMPERATURE
+	bool "Temperature daughter board"
+
+config SENSEWEAR_DAUGHTER_HAPTIC
+	bool "Haptic daughter board"
+
+endchoice
+
+config SENSEWEAR_DAUGHTER_PRESENT
+	bool
+	default y if SENSEWEAR_DAUGHTER_TOUCH
+	default y if SENSEWEAR_DAUGHTER_PPG
+	default y if SENSEWEAR_DAUGHTER_TEMPERATURE
+	default y if SENSEWEAR_DAUGHTER_HAPTIC
+
+endmenu
+
+source "Kconfig.zephyr"

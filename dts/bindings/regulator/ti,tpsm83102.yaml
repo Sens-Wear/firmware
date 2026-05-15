@@ -75,3 +75,10 @@ properties:
     type: boolean
     description: |
       Enable fast DVS (CONTROL1.EN_FAST_DVS bit3).
+
+  ti,strict-reset-defaults:
+    type: boolean
+    description: |
+      Require CONTROL1, VOUT, and CONTROL2 to match datasheet reset defaults
+      during probe. This is intended for lab diagnostics only; production
+      firmware should allow existing programmed register state.

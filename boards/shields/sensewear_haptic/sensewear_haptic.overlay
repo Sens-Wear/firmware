@@ -1,0 +1,23 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	aliases {
+		sensewear-daughter = &drv2605;
+		sensewear-haptic = &drv2605;
+	};
+};
+
+&daughter_i2c {
+	drv2605: drv2605@5a {
+		compatible = "ti,drv2605";
+		reg = <0x5a>;
+		en-gpios = <&daughter_connector 14 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+		actuator-mode = "LRA";
+		loop-gain = "HIGH";
+		feedback-brake-factor = "2X";
+		label = "drv2605";
+	};
+};

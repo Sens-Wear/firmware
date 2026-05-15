@@ -9,9 +9,11 @@
 
 LOG_MODULE_REGISTER(SENS_WEAR_TOUCH_SENSOR_LOGGER);
 
-#define MTCH6102_NODE DT_NODELABEL(mtch6102)
+#define MTCH6102_NODE DT_ALIAS(sensewear_touch)
 #define MAX_CHANNEL_NUMBER 15
 #define TOUCH_DEFAULT_SAMPLING_RATE_HZ 10U
+BUILD_ASSERT(DT_NODE_HAS_STATUS(MTCH6102_NODE, okay),
+	     "Touch firmware requires the sensewear_touch shield");
 static const struct i2c_dt_spec dev_i2c = I2C_DT_SPEC_GET(MTCH6102_NODE);
 static uint8_t touch_sensor_buf[3];
 static struct k_work_delayable touch_sample_work;

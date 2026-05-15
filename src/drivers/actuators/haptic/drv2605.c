@@ -22,8 +22,12 @@ LOG_MODULE_REGISTER(SENS_WEAR_HAPTIC_SENSOR_LOGGER);
 #define DRV2605_MODE_INTERNAL_TRIGGER 0x00
 #define DRV2605_MODE_RTP 0x05
 
-static const struct device *const haptic_dev = DEVICE_DT_GET(DT_NODELABEL(drv2605));
-static const struct i2c_dt_spec haptic_i2c = I2C_DT_SPEC_GET(DT_NODELABEL(drv2605));
+#define DRV2605_NODE DT_ALIAS(sensewear_haptic)
+
+BUILD_ASSERT(DT_NODE_HAS_STATUS(DRV2605_NODE, okay),
+	     "Haptic firmware requires the sensewear_haptic shield");
+static const struct device *const haptic_dev = DEVICE_DT_GET(DRV2605_NODE);
+static const struct i2c_dt_spec haptic_i2c = I2C_DT_SPEC_GET(DRV2605_NODE);
 
 static K_THREAD_STACK_DEFINE(haptic_playback_thread_stack, HAPTIC_PLAYBACK_THREAD_STACK_SIZE);
 static struct k_thread haptic_playback_thread_data;

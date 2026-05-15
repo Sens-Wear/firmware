@@ -2,6 +2,10 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
+list(APPEND BOARD_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+list(APPEND SHIELD_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+list(APPEND DTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(firmware)
 
@@ -14,35 +18,47 @@ file(GLOB BHY2_SOURCES
 
 target_sources(app PRIVATE
     src/main.c
-    src/app/haptic_ble_bridge.c
     src/app/led_ble_bridge.c
     src/app/imu_ble_bridge.c
-    src/app/ppg_ble_bridge.c
     src/app/daughter_board_manager.c
     src/app/power_ble_bridge.c
-    src/app/temperature_ble_bridge.c
-    src/app/touch_ble_bridge.c
-    src/bluetooth/services/haptic/haptic_lbs.c
     src/bluetooth/services/led/led_lbs.c
     src/bluetooth/services/imu/imu_lbs.c
-    src/bluetooth/services/ppg/ppg_lbs.c
     src/bluetooth/services/power/power_lbs.c
     src/bluetooth/services/pressure/pressure_lbs.c
-    src/bluetooth/services/temperature/temperature_lbs.c
-    src/bluetooth/services/touch/touch_lbs.c
     src/drivers/actuators/led/led_controller.c
     src/drivers/actuators/led/LP5562/lp5562.c
-    src/drivers/actuators/haptic/drv2605.c
     src/drivers/memory/eeprom/m95p.c
     src/drivers/power/charger/bq25180.c
     src/drivers/sensors/imu/common.c
     src/drivers/sensors/imu/bhi360.c
-    src/drivers/sensors/temperature/max30208.c
-    src/drivers/sensors/touch/mtch6102.c
-    src/drivers/sensors/ppg/max30101.c
     src/drivers/power/regulator/tpsm83102.c
     src/drivers/power/gauge/bq27427.c
     ${BHY2_SOURCES}
+)
+
+target_sources_ifdef(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC app PRIVATE
+    src/app/haptic_ble_bridge.c
+    src/bluetooth/services/haptic/haptic_lbs.c
+    src/drivers/actuators/haptic/drv2605.c
+)
+
+target_sources_ifdef(CONFIG_SENSEWEAR_DAUGHTER_PPG app PRIVATE
+    src/app/ppg_ble_bridge.c
+    src/bluetooth/services/ppg/ppg_lbs.c
+    src/drivers/sensors/ppg/max30101.c
+)
+
+target_sources_ifdef(CONFIG_SENSEWEAR_DAUGHTER_TEMPERATURE app PRIVATE
+    src/app/temperature_ble_bridge.c
+    src/bluetooth/services/temperature/temperature_lbs.c
+    src/drivers/sensors/temperature/max30208.c
+)
+
+target_sources_ifdef(CONFIG_SENSEWEAR_DAUGHTER_TOUCH app PRIVATE
+    src/app/touch_ble_bridge.c
+    src/bluetooth/services/touch/touch_lbs.c
+    src/drivers/sensors/touch/mtch6102.c
 )
 
 # Include directories - simplified paths
