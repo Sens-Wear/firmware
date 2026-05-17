@@ -4,7 +4,7 @@
 #include <zephyr/drivers/led.h>
 #include <zephyr/sys/util.h>
 
-#include "lp5562.h"
+#include "zephyr_led.h"
 
 LOG_MODULE_REGISTER(SENSE_WEAR_LED_ACTUATOR_LOGGER);
 
