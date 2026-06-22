@@ -9,11 +9,11 @@
 	};
 };
 
-&daughter_i2c {
+&sys_i2c_peripheral {
 	drv2605: drv2605@5a {
 		compatible = "ti,drv2605";
 		reg = <0x5a>;
-		en-gpios = <&daughter_connector 14 GPIO_ACTIVE_HIGH>;
+		en-gpios = <&daughter_board_if 0 GPIO_ACTIVE_HIGH>; /* SENSOR_GPIO_0 / P1.14 */
 		status = "okay";
 		actuator-mode = "LRA";
 		loop-gain = "HIGH";

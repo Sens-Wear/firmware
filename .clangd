@@ -1,0 +1,7 @@
+CompileFlags:
+  CompilationDatabase: build/firmware
+  Compiler: arm-zephyr-eabi-gcc
+  Remove:
+    - -fno-printf-return-value
+    - -mfp16-format=*
+    - -fno-reorder-functions

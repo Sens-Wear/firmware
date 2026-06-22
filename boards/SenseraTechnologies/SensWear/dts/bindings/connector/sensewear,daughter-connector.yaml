@@ -1,0 +1,13 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: Apache-2.0
+
+description: SenseWear shared daughter board connector
+
+compatible: "sensewear,daughter-connector"
+
+include: [gpio-nexus.yaml, i2c-device.yaml]
+
+properties:
+  gpio-line-names:
+    type: string-array
+    description: Names for the exposed connector GPIO lines (per schematic).

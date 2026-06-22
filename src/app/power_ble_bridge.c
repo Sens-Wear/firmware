@@ -6,10 +6,15 @@
 #include "app/daughter_board_manager.h"
 #include "app/power_ble_bridge.h"
 #include "bluetooth/services/power/power_lbs.h"
-#include "drivers/power/charger/bq25180.h"
-#include "drivers/power/gauge/bq27427.h"
+#include "bq25180.h"
+#include "bq27427.h"
 
 #define POWER_BLE_POLL_INTERVAL_MS 2000
+
+/* TODO: replace with a centralized device-id enum once the device event
+ * manager dispatch is wired up (see drivers/common/device_events.h). */
+#define POWER_BLE_DEVICE_ID_CHARGER 1u
+#define POWER_BLE_DEVICE_ID_GAUGE 2u
 
 static bool power_bridge_started;
 static bool charger_checked;
@@ -50,7 +55,7 @@ static void power_ble_init_optional_charger(void)
 	charger_checked = true;
 	charger_available = false;
 
-	if (bq25180_init() && bq25180_is_available()) {
+	if (bq25180_init(POWER_BLE_DEVICE_ID_CHARGER) && bq25180_is_ready()) {
 		bq25180_get_default_lipo_usb_charger_config(&charger_config);
 		charger_config.battery_uvlo = bq25180_battery_UVLO_threshold_2V8;
 		charger_available = bq25180_config(&charger_config);
@@ -68,7 +73,7 @@ static void power_ble_init_optional_gauge(void)
 	gauge_checked = true;
 	gauge_available = false;
 
-	if (bq27427_init() && bq27427_is_available()) {
+	if (bq27427_init(POWER_BLE_DEVICE_ID_GAUGE) && bq27427_is_ready()) {
 		bq27427_get_default_config(&gauge_config);
 		gauge_config.battery_capacity = 450;
 		gauge_available = bq27427_config(&gauge_config);

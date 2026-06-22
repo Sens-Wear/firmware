@@ -1,51 +1,78 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-    {
-        "name": "nRF54L15 CMSIS-DAP (pyOCD)",
-        "cwd": "${workspaceFolder}",
-        "executable": "${workspaceFolder}/build/firmware/zephyr/zephyr.elfx",
-        "request": "launch",
-        "type": "cortex-debug",
-        "servertype": "pyocd",
-        "interface": "swd",
-        "targetId": "nrf54l",
-        // "cmsisPack": "~/.local/share/cmsis-packs/NordicSemiconductor/nRF_DeviceFamilyPack", 
-        "runToEntryPoint": "main",
-        "showDevDebugOutput": "none"
-    },
-    {
-  "name": "Debug (pyOCD)",
-  "type": "cortex-debug",
-  "request": "launch",
-  "servertype": "pyocd",
-  "cwd": "C:\\Users\\salamid1\\Desktop\\Projects\\SenseWear\\firmware",
-  "executable": "C:/Users/salamid1/Desktop/Projects/SenseWear/firmware/build/firmware/zephyr/zephyr.elf",
-
-  "gdbPath": "C:/ncs/toolchains/66cdf9b75e/opt/zephyr-sdk/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb.exe",
-
-  "targetId": "nrf54l",
-  "interface": "swd",
-
-  "showDevDebugOutput": "raw",
-
-  "serverArgs": [
-    "--frequency", "1000000",
-    "--persist"
-  ],
-
-  "gdbTarget": "localhost:50000",
-
-  "postLaunchCommands": [
-    "monitor reset halt"
-  ],
-
-  "serverLaunchTimeout": 30000
-}
-
-
+        {
+            "name": "CMSIS-DAP: flash and debug nRF54L15",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/firmware/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "preLaunchTask": "CMSIS-DAP: flash nRF54L15",
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "ST-Link/V2: flash and debug nRF54L15",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/firmware/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-stlink-v2.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "preLaunchTask": "ST-Link/V2: flash nRF54L15",
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "J-Link: flash and debug nRF54L15",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "jlink",
+            "serverpath": "${workspaceFolder}/config/scripts/jlink-gdb-server-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/firmware/zephyr/zephyr.elf",
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\jlink-gdb-server-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd"
+            },
+            "device": "nRF54L15_M33",
+            "interface": "swd",
+            "rtos": "Zephyr",
+            "runToEntryPoint": "main",
+            "showDevDebugOutput": "none"
+        }
     ]
 }

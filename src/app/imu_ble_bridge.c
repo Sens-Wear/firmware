@@ -4,7 +4,7 @@
 
 #include "app/imu_ble_bridge.h"
 #include "bluetooth/services/imu/imu_lbs.h"
-#include "drivers/sensors/imu/bhi360.h"
+#include "bhi360.h"
 
 static bool imu_bridge_started;
 static atomic_t imu_quat_notify_enabled;

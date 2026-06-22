@@ -5,3 +5,7 @@
 # build
 /build*/
 /debug*/
+
+# local machine config (per-developer paths)
+.env
+CMakeUserPresets.json

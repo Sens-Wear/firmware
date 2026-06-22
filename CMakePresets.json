@@ -1,0 +1,140 @@
+{
+    "version": 5,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 23
+    },
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "generator": "Ninja",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}"
+            }
+        },
+        {
+            "name": "senswear_nrf54l15_cpuapp",
+            "displayName": "SensWear nRF54L15 (cpuapp)",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/build"
+        },
+        {
+            "name": "test_base",
+            "hidden": true,
+            "inherits": "base",
+            "description": "Driver bring-up test: replaces the app main with the selected test main."
+        },
+        {
+            "name": "test_bq25180",
+            "displayName": "Test: BQ25180 charger",
+            "inherits": "test_base",
+            "binaryDir": "${sourceDir}/build/tests/bq25180",
+            "cacheVariables": {
+                "TEST_BQ25180_DRIVER": {
+                    "type": "BOOL",
+                    "value": "ON"
+                }
+            }
+        },
+        {
+            "name": "test_bq27427",
+            "displayName": "Test: BQ27427 fuel gauge",
+            "inherits": "test_base",
+            "binaryDir": "${sourceDir}/build/tests/bq27427",
+            "cacheVariables": {
+                "TEST_BQ27427_DRIVER": {
+                    "type": "BOOL",
+                    "value": "ON"
+                }
+            }
+        },
+        {
+            "name": "test_bhi360",
+            "displayName": "Test: BHI360 IMU",
+            "inherits": "test_base",
+            "binaryDir": "${sourceDir}/build/tests/bhi360",
+            "cacheVariables": {
+                "TEST_BHI360_DRIVER": {
+                    "type": "BOOL",
+                    "value": "ON"
+                }
+            }
+        },
+        {
+            "name": "test_lp5562",
+            "displayName": "Test: LP5562 LED controller",
+            "inherits": "test_base",
+            "binaryDir": "${sourceDir}/build/tests/lp5562",
+            "cacheVariables": {
+                "TEST_LP5562_DRIVER": {
+                    "type": "BOOL",
+                    "value": "ON"
+                }
+            }
+        },
+        {
+            "name": "test_m95p",
+            "displayName": "Test: M95P EEPROM",
+            "inherits": "test_base",
+            "binaryDir": "${sourceDir}/build/tests/m95p",
+            "cacheVariables": {
+                "TEST_M95P_DRIVER": {
+                    "type": "BOOL",
+                    "value": "ON"
+                }
+            }
+        },
+        {
+            "name": "test_tpsm83102",
+            "displayName": "Test: TPSM83102 regulator",
+            "inherits": "test_base",
+            "binaryDir": "${sourceDir}/build/tests/tpsm83102",
+            "cacheVariables": {
+                "TEST_TPSM83102_DRIVER": {
+                    "type": "BOOL",
+                    "value": "ON"
+                }
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "senswear_nrf54l15_cpuapp",
+            "configurePreset": "senswear_nrf54l15_cpuapp"
+        },
+        {
+            "name": "test_bq25180",
+            "configurePreset": "test_bq25180"
+        },
+        {
+            "name": "test_bq27427",
+            "configurePreset": "test_bq27427"
+        },
+        {
+            "name": "test_bhi360",
+            "configurePreset": "test_bhi360"
+        },
+        {
+            "name": "test_lp5562",
+            "configurePreset": "test_lp5562"
+        },
+        {
+            "name": "test_m95p",
+            "configurePreset": "test_m95p"
+        },
+        {
+            "name": "test_tpsm83102",
+            "configurePreset": "test_tpsm83102"
+        }
+    ]
+}

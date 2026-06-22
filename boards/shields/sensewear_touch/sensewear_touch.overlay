@@ -9,7 +9,7 @@
 	};
 };
 
-&daughter_i2c {
+&sys_i2c_peripheral {
 	mtch6102: mtch6102@25 {
 		compatible = "i2c-device";
 		status = "okay";

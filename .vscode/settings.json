@@ -1,5 +1,20 @@
 {
-    "cortex-debug.pyocdPath": "pyocd",
+    "nrf-connect.applications": [
+        "${workspaceFolder}"
+    ],
+    "nrf-connect.boardRoots": [
+        "${workspaceFolder}"
+    ],
+    "cmake.useCMakePresets": "always",
+    "cmake.parallelJobs": 0,
     "cortex-debug.variableUseNaturalFormat": true,
-    "cortex-debug.gdbPath": "C:\\ncs\\toolchains\\66cdf9b75e\\opt\\zephyr-sdk\\arm-zephyr-eabi\\bin\\arm-zephyr-eabi-gdb.exe",
+    "cortex-debug.pyocdPath": "pyocd",
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}/build/firmware",
+        "--query-driver=${env:NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk/arm-zephyr-eabi/bin/arm-zephyr-eabi-*"
+    ],
+    "nrf-connect.debugging.bindings": {
+        "${workspaceFolder}/build": "CMSIS-DAP: flash and debug nRF54L15",
+        "${workspaceFolder}/build/firmware": "CMSIS-DAP: flash and debug nRF54L15"
+    }
 }

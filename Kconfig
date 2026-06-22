@@ -32,6 +32,108 @@ config SENSEWEAR_DAUGHTER_PRESENT
 	default y if SENSEWEAR_DAUGHTER_TEMPERATURE
 	default y if SENSEWEAR_DAUGHTER_HAPTIC
 
+config SENSEWEAR_SYS_I2C
+	bool "SenseWear shared system I2C bus wrapper"
+	depends on I2C
+	depends on DT_HAS_SENSEWEAR_SYS_I2C_ENABLED
+	default y
+	help
+	  Ownership-locking wrapper driver over a Nordic I2C controller. Devices
+	  depend on it via a `bus = <&sys_i2c>` phandle and use the sys_i2c_* API.
+
+config SENSEWEAR_SYS_I2C_INIT_PRIORITY
+	int "sys_i2c init priority"
+	depends on SENSEWEAR_SYS_I2C
+	default 60
+	help
+	  POST_KERNEL init priority for the sys_i2c wrapper. Must be greater than
+	  I2C_INIT_PRIORITY so the wrapped controller is initialised first.
+
+config SENSEWEAR_SYS_SPI
+	bool "SenseWear shared system SPI bus wrapper"
+	depends on SPI
+	depends on DT_HAS_SENSEWEAR_SYS_SPI_ENABLED
+	default y
+	help
+	  Ownership-locking wrapper driver over a Nordic SPI controller. Devices
+	  depend on it via a `bus = <&sys_spi>` phandle and use the sys_spi_* API.
+
+config SENSEWEAR_SYS_SPI_INIT_PRIORITY
+	int "sys_spi init priority"
+	depends on SENSEWEAR_SYS_SPI
+	default 80
+	help
+	  POST_KERNEL init priority for the sys_spi wrapper. Must be greater than
+	  SPI_INIT_PRIORITY so the wrapped controller is initialised first.
+
+config SENSEWEAR_M95P_DISK
+	bool "Expose the M95P EEPROM as a disk-access block device"
+	depends on DISK_ACCESS
+	help
+	  Registers the M95P EEPROM with the Zephyr disk-access subsystem under
+	  the name "eeprom" so a filesystem (LittleFS over a block device) can
+	  be mounted on it. One 512-byte logical sector maps to one M95P page.
+
+config SENSEWEAR_M95P_DISK_AUTOMOUNT
+	bool "Mount the M95P LittleFS filesystem at boot"
+	depends on SENSEWEAR_M95P_DISK
+	depends on FILE_SYSTEM_LITTLEFS && FS_LITTLEFS_BLK_DEV
+	help
+	  Automatically mount the LittleFS filesystem on the M95P during system
+	  init. When disabled, call m95p_fs_mount() explicitly from application
+	  code.
+
+# Board driver presence. Each symbol must stay aligned with its CMake
+# HAVE_<driver>_DRIVER option; the build rejects configuration on a mismatch.
+
+config SENSEWEAR_BQ25180_DRIVER
+	bool "BQ25180 charger driver"
+	depends on I2C
+	default y
+	help
+	  Build the BQ25180 charger / power-path controller driver. Must match the
+	  HAVE_BQ25180_DRIVER CMake option.
+
+config SENSEWEAR_BQ27427_DRIVER
+	bool "BQ27427 fuel-gauge driver"
+	depends on I2C
+	default y
+	help
+	  Build the BQ27427 fuel-gauge driver. Must match the HAVE_BQ27427_DRIVER
+	  CMake option.
+
+config SENSEWEAR_BHI360_DRIVER
+	bool "BHI360 IMU driver"
+	depends on SPI
+	default y
+	help
+	  Build the BHI360 IMU driver. Must match the HAVE_BHI360_DRIVER CMake
+	  option.
+
+config SENSEWEAR_LP5562_DRIVER
+	bool "LP5562 LED controller driver"
+	depends on I2C
+	default y
+	help
+	  Build the LP5562 LED controller driver. Must match the HAVE_LP5562_DRIVER
+	  CMake option.
+
+config SENSEWEAR_M95P_DRIVER
+	bool "M95P EEPROM driver"
+	depends on SPI
+	default y
+	help
+	  Build the M95P serial-page EEPROM driver. Must match the HAVE_M95P_DRIVER
+	  CMake option.
+
+config SENSEWEAR_TPSM83102_DRIVER
+	bool "TPSM83102 regulator driver"
+	depends on I2C
+	default y
+	help
+	  Build the TPSM83102 buck regulator driver. Must match the
+	  HAVE_TPSM83102_DRIVER CMake option.
+
 endmenu
 
 source "Kconfig.zephyr"

@@ -23,10 +23,10 @@
 #include "bluetooth/services/led/led_lbs.h"
 #include "bluetooth/services/power/power_lbs.h"
 
-#include "drivers/memory/eeprom/m95p.h"
-#include "drivers/power/charger/bq25180.h"
-#include "drivers/power/gauge/bq27427.h"
-#include "drivers/sensors/imu/bhi360.h"
+#include "m95p.h"
+#include "bq25180.h"
+#include "bq27427.h"
+#include "bhi360.h"
 
 #if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
 #include "app/haptic_ble_bridge.h"

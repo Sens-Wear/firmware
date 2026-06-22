@@ -1,8 +1,0 @@
-description: SenseWear BQ25180 interrupt GPIO
-
-compatible: "sensewear,bq25180-irq"
-
-properties:
-  interrupt-gpios:
-    type: phandle-array
-    required: true

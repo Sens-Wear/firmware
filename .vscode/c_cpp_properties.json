@@ -1,0 +1,12 @@
+{
+    "configurations": [
+        {
+            "name": "nRF54L15 (Zephyr)",
+            "compileCommands": "${workspaceFolder}/build/firmware/compile_commands.json",
+            "intelliSenseMode": "gcc-arm",
+            "cStandard": "c17",
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
+}

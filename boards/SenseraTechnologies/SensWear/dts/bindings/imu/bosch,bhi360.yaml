@@ -1,0 +1,41 @@
+description: Bosch BHI360 IMU (SPI)
+
+compatible: "bosch,bhi360"
+
+include:
+  - name: spi-device.yaml
+
+properties:
+  reg:
+    required: true
+
+  spi-max-frequency:
+    required: true
+
+  cs-gpios:
+    type: phandle-array
+    required: true
+    description: |
+      Chip-select GPIO owned and driven by this driver (P2.05 BHI360_CS#).
+      The SPI controller does not manage chip-select for this device; the
+      driver asserts and deasserts this line manually around each transfer.
+
+  int-gpios:
+    type: phandle-array
+    required: false
+    description: Active-low host interrupt (MPU_IRQ#).
+
+  reset-gpios:
+    type: phandle-array
+    required: false
+    description: Active-low reset line (MPU_RESET).
+
+  gpio0-gpios:
+    type: phandle-array
+    required: false
+    description: Auxiliary host GPIO 0 (MPU_GPIO0).
+
+  gpio1-gpios:
+    type: phandle-array
+    required: false
+    description: Auxiliary host GPIO 1 (MPU_GPIO1).

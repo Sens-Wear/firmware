@@ -1,5 +1,6 @@
 board:
   name: SensWear
+  full_name: SensWear
   vendor: SenseraTechnologies
   socs:
   - name: nrf54l15

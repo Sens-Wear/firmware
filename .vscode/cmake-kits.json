@@ -1,0 +1,14 @@
+[
+    {
+        "name": "nRF54L15 Zephyr SDK (v3.3.0)",
+        "compilers": {
+            "C": "${env:NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc",
+            "CXX": "${env:NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk/arm-zephyr-eabi/bin/arm-zephyr-eabi-g++"
+        },
+        "environmentVariables": {
+            "ZEPHYR_BASE": "${env:ZEPHYR_BASE}",
+            "ZEPHYR_SDK_INSTALL_DIR": "${env:NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+            "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr"
+        }
+    }
+]

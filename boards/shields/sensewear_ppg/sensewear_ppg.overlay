@@ -9,7 +9,7 @@
 	};
 };
 
-&daughter_i2c {
+&sys_i2c_peripheral {
 	max30101: max30101@57 {
 		compatible = "i2c-device";
 		status = "okay";

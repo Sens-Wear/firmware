@@ -9,7 +9,7 @@
 #ifndef _MATEONE_LED_CONTROLLER_H_
 #define _MATEONE_LED_CONTROLLER_H_
 #include <zephyr/drivers/i2c.h>
-#include "LP5562/lp5562.h"
+#include "lp5562.h"
 #include "led_controller_config.h"
 
 #define LED_PWM_STATE_COUNT (4u)
