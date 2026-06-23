@@ -40,10 +40,7 @@
             "inherits": "test_base",
             "binaryDir": "${sourceDir}/build/tests/bq25180",
             "cacheVariables": {
-                "TEST_BQ25180_DRIVER": {
-                    "type": "BOOL",
-                    "value": "ON"
-                }
+                "CONFIG_SENSEWEAR_TEST_BQ25180_DRIVER": "y"
             }
         },
         {
@@ -52,10 +49,7 @@
             "inherits": "test_base",
             "binaryDir": "${sourceDir}/build/tests/bq27427",
             "cacheVariables": {
-                "TEST_BQ27427_DRIVER": {
-                    "type": "BOOL",
-                    "value": "ON"
-                }
+                "CONFIG_SENSEWEAR_TEST_BQ27427_DRIVER": "y"
             }
         },
         {
@@ -64,10 +58,7 @@
             "inherits": "test_base",
             "binaryDir": "${sourceDir}/build/tests/bhi360",
             "cacheVariables": {
-                "TEST_BHI360_DRIVER": {
-                    "type": "BOOL",
-                    "value": "ON"
-                }
+                "CONFIG_SENSEWEAR_TEST_BHI360_DRIVER": "y"
             }
         },
         {
@@ -76,10 +67,7 @@
             "inherits": "test_base",
             "binaryDir": "${sourceDir}/build/tests/lp5562",
             "cacheVariables": {
-                "TEST_LP5562_DRIVER": {
-                    "type": "BOOL",
-                    "value": "ON"
-                }
+                "CONFIG_SENSEWEAR_TEST_LP5562_DRIVER": "y"
             }
         },
         {
@@ -88,10 +76,7 @@
             "inherits": "test_base",
             "binaryDir": "${sourceDir}/build/tests/m95p",
             "cacheVariables": {
-                "TEST_M95P_DRIVER": {
-                    "type": "BOOL",
-                    "value": "ON"
-                }
+                "CONFIG_SENSEWEAR_TEST_M95P_DRIVER": "y"
             }
         },
         {
@@ -100,10 +85,7 @@
             "inherits": "test_base",
             "binaryDir": "${sourceDir}/build/tests/tpsm83102",
             "cacheVariables": {
-                "TEST_TPSM83102_DRIVER": {
-                    "type": "BOOL",
-                    "value": "ON"
-                }
+                "CONFIG_SENSEWEAR_TEST_TPSM83102_DRIVER": "y"
             }
         }
     ],

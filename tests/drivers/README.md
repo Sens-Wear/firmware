@@ -15,27 +15,31 @@ initialise, configure, then poll/print state every 2 seconds over the console.
 
 ## Building a test
 
-Tests are selected with CMake options (all **OFF** by default, so a normal
-build is unaffected):
+Tests are selected with **Kconfig symbols** (all off by default, so a normal
+build is unaffected). They are Kconfig — not CMake options — on purpose: under
+sysbuild only Kconfig symbols are forwarded from the top-level build (and thus
+from a CMake preset) down into the application image, so a plain CMake option
+would never receive the override.
 
-- `TEST_<DRIVER>_DRIVER` — build that driver's test, e.g. `TEST_M95P_DRIVER`.
-- `TEST_DRIVERS` — umbrella switch; enabling any `TEST_<DRIVER>_DRIVER` turns
-  it on automatically. You normally never set this directly.
+- `CONFIG_SENSEWEAR_TEST_<DRIVER>_DRIVER` — build that driver's test, e.g.
+  `CONFIG_SENSEWEAR_TEST_M95P_DRIVER`.
 
 Enable exactly **one** test (each defines its own `main()`; the build fails
 fast if two are on). When a test is enabled, the application main
-(`src/main.c`) is omitted and the test's `main()` takes its place:
+(`src/main.c`) is omitted and the test's `main()` takes its place. The easiest
+way is the matching CMake preset (e.g. `test_m95p`); equivalently:
 
 ```sh
-west build -b SensWear/nrf54l15/cpuapp -- -DTEST_M95P_DRIVER=ON
-# or, reconfiguring an existing build dir:
-cmake -DTEST_M95P_DRIVER=ON build/firmware && cmake --build build --target firmware
+west build -b SensWear/nrf54l15/cpuapp -- -DCONFIG_SENSEWEAR_TEST_M95P_DRIVER=y
 ```
 
-Wiring: the top `CMakeLists.txt` defines the options and includes
-`tests/drivers/tests.cmake` when `TEST_DRIVERS` is on; that file creates a
-`test_<driver>` INTERFACE library per enabled test and links it into `app`.
+Wiring: the top `CMakeLists.txt` reads the `CONFIG_SENSEWEAR_TEST_*` symbols
+(available as CMake variables after `find_package(Zephyr)`), derives the
+internal `TEST_DRIVERS` flag, and includes `tests/drivers/tests.cmake` when it
+is on; that file creates a `test_<driver>` INTERFACE library per enabled test
+and links it into `app`.
 
-The relevant driver must be enabled on **both** sides (they are by default):
-`-DHAVE_<DRIVER>_DRIVER=ON` and `CONFIG_SENSEWEAR_<DRIVER>_DRIVER=y` — the build
-rejects a mismatch (see the guard in `CMakeLists.txt`).
+The relevant driver must be enabled via its `CONFIG_SENSEWEAR_<DRIVER>_DRIVER`
+Kconfig symbol (all enabled by default). That symbol is the single source of
+truth: the per-type cmakes under `boards/.../drivers` gate their sources on it
+directly.

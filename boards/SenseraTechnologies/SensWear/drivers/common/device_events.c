@@ -25,10 +25,7 @@ static struct device_manager_t {
 
 	/** True once device_event_init() has created the queue. */
 	bool ready;
-} device_event_manager = {
-	.msgq = {0},
-	.ready = false,
-};
+} device_event_manager = {0}; /* zero-initialised by static storage duration */
 /**
  * Common enqueue path shared by the thread and ISR producers. The caller chooses
  * the timeout: K_NO_WAIT for the ISR path, a (possibly blocking) timeout for the

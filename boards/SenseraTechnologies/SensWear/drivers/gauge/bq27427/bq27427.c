@@ -81,10 +81,8 @@ static struct bq27427_t {
 	.device = SYS_I2C_DT_SPEC_GET(BQ27427_NODE),
 	.device_id = DEVICE_EVENT_ID_INVALID,
 	.irq_gpio = GPIO_DT_SPEC_GET(BQ27427_NODE, int_gpios),
-	.irq_cb = {0},
-	.config = {0},
-	.state.value = 0,
-	.battery_state = {0},
+	/* All remaining members (irq_cb, config, state, battery_state) are
+	 * zero-initialised by static storage duration. */
 };
 
 /** Acquire shared-I2C ownership for one high-level gauge operation. */

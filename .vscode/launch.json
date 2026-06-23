@@ -8,7 +8,7 @@
             "servertype": "openocd",
             "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
             "cwd": "${workspaceFolder}",
-            "executable": "${workspaceFolder}/build/firmware/zephyr/zephyr.elf",
+            "executable": "${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.elf",
             "loadFiles": [],
             "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
             "windows": {
@@ -35,7 +35,7 @@
             "servertype": "openocd",
             "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
             "cwd": "${workspaceFolder}",
-            "executable": "${workspaceFolder}/build/firmware/zephyr/zephyr.elf",
+            "executable": "${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.elf",
             "loadFiles": [],
             "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
             "windows": {
@@ -62,7 +62,7 @@
             "servertype": "jlink",
             "serverpath": "${workspaceFolder}/config/scripts/jlink-gdb-server-with-env.sh",
             "cwd": "${workspaceFolder}",
-            "executable": "${workspaceFolder}/build/firmware/zephyr/zephyr.elf",
+            "executable": "${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.elf",
             "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
             "windows": {
                 "serverpath": "${workspaceFolder}\\config\\scripts\\jlink-gdb-server-with-env.cmd",
@@ -73,6 +73,14 @@
             "rtos": "Zephyr",
             "runToEntryPoint": "main",
             "showDevDebugOutput": "none"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "cmakeBuildDirectory",
+            "type": "command",
+            "command": "cmake.buildDirectory",
+            "args": "${workspaceFolder}"
         }
     ]
 }

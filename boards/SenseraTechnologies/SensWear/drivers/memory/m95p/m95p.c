@@ -657,7 +657,7 @@ bool m95p_is_write_protected(void) {
 	bool bRet = M95P_SPI_LOCK(&m95p, &(m95p.spi_config), M95P_SPI_TIMEOUT);
 	assert(bRet != false);
 	// --------------------------------------------------------------------------------------------
-	bool wpState = m95p_is_write_protected();
+	bool wpState = m95p_device_is_write_protected();
 	// --------------------------------------------------------------------------------------------
 	M95P_SPI_UNLOCK(&m95p);
 	return wpState;

@@ -10,8 +10,8 @@
                 "-f", "config/openocd-nrf54l15.cfg",
                 "-c", "init",
                 "-c", "reset init",
-                "-c", "nrf54l-load build/firmware/zephyr/zephyr.hex",
-                "-c", "verify_image build/firmware/zephyr/zephyr.hex",
+                "-c", "nrf54l-load {${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.hex}",
+                "-c", "verify_image {${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.hex}",
                 "-c", "reset run",
                 "-c", "shutdown"
             ],
@@ -29,8 +29,8 @@
                 "-f", "config/openocd-nrf54l15.cfg",
                 "-c", "init",
                 "-c", "reset init",
-                "-c", "nrf54l-load build/firmware/zephyr/zephyr.hex",
-                "-c", "verify_image build/firmware/zephyr/zephyr.hex",
+                "-c", "nrf54l-load {${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.hex}",
+                "-c", "verify_image {${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.hex}",
                 "-c", "reset run",
                 "-c", "shutdown"
             ],
@@ -38,6 +38,14 @@
                 "command": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd"
             },
             "problemMatcher": []
+        }
+    ],
+    "inputs": [
+        {
+            "id": "cmakeBuildDirectory",
+            "type": "command",
+            "command": "cmake.buildDirectory",
+            "args": "${workspaceFolder}"
         }
     ]
 }

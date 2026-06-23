@@ -234,7 +234,7 @@ int main(void)
 #endif
 
 
-	sys_memory_init();
+	m95p_init(NULL);
 	test_memory();
 		
 

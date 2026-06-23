@@ -1,5 +1,8 @@
 # Local tool paths
 
+See `ORGANIZATION.md` for source-tree ownership and the local Zephyr module
+integration under `config/cmake/zephyr_module/`.
+
 The checked-in VS Code and CMake configuration avoids machine-specific SDK
 paths. Copy `.env.example` to `.env` on each development machine and adjust the
 paths:
@@ -14,7 +17,7 @@ cp .env.example .env
 | --------------------- | ------------------------------------------------------------- |
 | `NCS_TOOLCHAIN_ROOT`  | NCS toolchain bundle (contains `bin/` and `opt/zephyr-sdk`).  |
 | `ZEPHYR_BASE`         | Zephyr tree inside the installed NCS version.                 |
-| `ZEPHYR_GDB`          | `arm-zephyr-eabi-gdb` from the Zephyr SDK (debug).            |
+| `ZEPHYR_GDB`          | Zephyr SDK GDB; the wrappers derive matching `objdump`/`nm`.  |
 | `OPENOCD`             | OpenOCD executable (flash/debug).                             |
 | `OPENOCD_SCRIPTS`     | OpenOCD scripts directory (`-s`).                             |
 | `JLINK_GDB_SERVER`    | Optional SEGGER GDB server path when it is not already on PATH.|
@@ -24,9 +27,10 @@ toolchain is installed somewhere else, only the variable values should change,
 not the repository files.
 
 VS Code does not automatically load `.env` into `${env:...}` substitutions.
-The checked-in OpenOCD and GDB wrappers read `.env` directly for flash/debug
-tasks. VS Code uses the `.sh` wrappers on macOS/Linux and the `.cmd` wrappers
-on Windows. For CMake, clangd, and other extension settings, use one of these
+The checked-in OpenOCD, GDB, objdump, and nm wrappers read `.env` directly for
+flash/debug tasks. VS Code uses the `.sh` wrappers on macOS/Linux and the
+`.cmd` wrappers on Windows. For CMake, clangd, and other extension settings,
+use one of these
 workflows:
 
 ```sh
@@ -73,9 +77,12 @@ The Run and Debug selector provides three launch configurations:
 - `J-Link: flash and debug nRF54L15`
 
 The OpenOCD profiles use probe-specific adapter files and a shared nRF54L15
-target file under `config/`. They flash `build/firmware/zephyr/zephyr.hex`
-before Cortex-Debug attaches. The J-Link profile programs the ELF through the
-SEGGER GDB server.
+target file under `config/`. They obtain the active build directory from the
+CMake Tools extension and flash `firmware/zephyr/zephyr.hex` from that build
+before Cortex-Debug attaches. The debugger uses the matching
+`firmware/zephyr/zephyr.elf`; this also supports the driver-test presets under
+`build/tests/`. The J-Link profile programs the selected ELF through the SEGGER
+GDB server.
 
 The selected OpenOCD installation must provide:
 

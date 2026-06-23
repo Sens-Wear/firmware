@@ -76,11 +76,8 @@ static struct bq25180_t {
 	.device = SYS_I2C_DT_SPEC_GET(BQ25180_NODE),
 	.irq_gpio = GPIO_DT_SPEC_GET(BQ25180_NODE, int_gpios),
 	.kill_gpio = GPIO_DT_SPEC_GET(BQ25180_NODE, kill_gpios),
-	.config = {0},
-	.state.value = 0,
-	.charger_state.value = 0,
-	.irq_cb = {0},
-	.irq_work = {0},
+	/* All remaining members (config, state, charger_state, irq_cb, irq_work)
+	 * are zero-initialised by static storage duration. */
 };
 
 /** Acquire shared-I2C ownership for one high-level charger operation. */

@@ -28,11 +28,14 @@ Features
 Project Layout
 **************
 
+- ``ORGANIZATION.md``: Detailed source-tree ownership and build integration.
 - ``src/main.c``: Application entry point, BLE startup, service bridges.
 - ``src/app``: BLE bridge logic for LED and IMU data.
 - ``src/bluetooth/services``: Custom GATT services.
-- ``src/drivers``: Board-specific sensor, actuator, power, and memory drivers.
-- ``boards/SenseraTechnologies/SensWear``: Board definition and device tree.
+- ``src/drivers``: Application adapters and optional daughter-board drivers.
+- ``boards/SenseraTechnologies/SensWear``: Board definition, bindings, and
+  base-board drivers.
+- ``config/cmake/zephyr_module``: Conditional extensions to Zephyr libraries.
 - ``prj.conf``: Zephyr configuration for this firmware.
 
 Building

@@ -1,7 +1,13 @@
 /dts-v1/;
 #include <nordic/nrf54l15_cpuapp.dtsi>
 #include "SensWear-pinctrl.dtsi"
-#include <vendor/nordic/nrf54l15_cpuapp_partition.dtsi>
+/*
+ * Flash partitioning is defined directly in DTS below (see &cpuapp_rram) rather
+ * than pulling in the vendor MCUboot partition layout
+ * (vendor/nordic/nrf54l15_cpuapp_partition.dtsi). This board runs without a
+ * bootloader, so the application owns flash from 0x0. Partition Manager is also
+ * disabled (sysbuild.conf) so this layout is authoritative.
+ */
 
 / {
 	model = "SensWear board";
@@ -33,6 +39,32 @@
 		status = "okay";
 	};
 
+};
+
+/*
+ * Application flash layout (DTS-based, no bootloader). The 1428 KB cpuapp_rram
+ * holds the application from 0x0 (slot0_partition is the chosen code-partition,
+ * so the reset vector lives at 0x0 and the device boots it directly) and a
+ * 36 KB storage_partition at the top for Settings/NVS. The on-device LittleFS
+ * is mounted on the external M95P (a block device), so it needs no partition
+ * here. Sizes are 4 KB-erase-block aligned and sum to the full 1428 KB.
+ */
+&cpuapp_rram {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		slot0_partition: partition@0 {
+			label = "image-0";
+			reg = <0x0 DT_SIZE_K(1392)>;
+		};
+
+		storage_partition: partition@15c000 {
+			label = "storage";
+			reg = <0x15c000 DT_SIZE_K(36)>;
+		};
+	};
 };
 
 &uart30 {

@@ -68,6 +68,7 @@ config SENSEWEAR_SYS_SPI_INIT_PRIORITY
 
 config SENSEWEAR_M95P_DISK
 	bool "Expose the M95P EEPROM as a disk-access block device"
+	depends on SENSEWEAR_M95P_DRIVER
 	depends on DISK_ACCESS
 	help
 	  Registers the M95P EEPROM with the Zephyr disk-access subsystem under
@@ -83,56 +84,87 @@ config SENSEWEAR_M95P_DISK_AUTOMOUNT
 	  init. When disabled, call m95p_fs_mount() explicitly from application
 	  code.
 
-# Board driver presence. Each symbol must stay aligned with its CMake
-# HAVE_<driver>_DRIVER option; the build rejects configuration on a mismatch.
+# Board driver presence. Each symbol is the single source of truth for whether
+# its driver is compiled: the per-type cmakes under boards/.../drivers gate their
+# sources directly on these CONFIG_ symbols.
 
 config SENSEWEAR_BQ25180_DRIVER
 	bool "BQ25180 charger driver"
 	depends on I2C
 	default y
 	help
-	  Build the BQ25180 charger / power-path controller driver. Must match the
-	  HAVE_BQ25180_DRIVER CMake option.
+	  Build the BQ25180 charger / power-path controller driver.
 
 config SENSEWEAR_BQ27427_DRIVER
 	bool "BQ27427 fuel-gauge driver"
 	depends on I2C
 	default y
 	help
-	  Build the BQ27427 fuel-gauge driver. Must match the HAVE_BQ27427_DRIVER
-	  CMake option.
+	  Build the BQ27427 fuel-gauge driver.
 
 config SENSEWEAR_BHI360_DRIVER
 	bool "BHI360 IMU driver"
 	depends on SPI
 	default y
 	help
-	  Build the BHI360 IMU driver. Must match the HAVE_BHI360_DRIVER CMake
-	  option.
+	  Build the BHI360 IMU driver.
 
 config SENSEWEAR_LP5562_DRIVER
 	bool "LP5562 LED controller driver"
 	depends on I2C
 	default y
 	help
-	  Build the LP5562 LED controller driver. Must match the HAVE_LP5562_DRIVER
-	  CMake option.
+	  Build the LP5562 LED controller driver.
 
 config SENSEWEAR_M95P_DRIVER
 	bool "M95P EEPROM driver"
 	depends on SPI
 	default y
 	help
-	  Build the M95P serial-page EEPROM driver. Must match the HAVE_M95P_DRIVER
-	  CMake option.
+	  Build the M95P serial-page EEPROM driver.
 
 config SENSEWEAR_TPSM83102_DRIVER
 	bool "TPSM83102 regulator driver"
 	depends on I2C
 	default y
 	help
-	  Build the TPSM83102 buck regulator driver. Must match the
-	  HAVE_TPSM83102_DRIVER CMake option.
+	  Build the TPSM83102 buck regulator driver.
+
+# Driver bring-up tests (tests/drivers). All off by default. Enabling exactly
+# one replaces the application main() with the selected test main(); see
+# tests/drivers/tests.cmake. These are Kconfig symbols (not CMake options) so
+# the selection propagates from the sysbuild top-level build / a CMake preset
+# down into this image.
+
+config SENSEWEAR_TEST_BQ25180_DRIVER
+	bool "Build the BQ25180 charger bring-up test"
+	help
+	  Replace the application with the BQ25180 charger driver bring-up test.
+
+config SENSEWEAR_TEST_BQ27427_DRIVER
+	bool "Build the BQ27427 fuel-gauge bring-up test"
+	help
+	  Replace the application with the BQ27427 fuel-gauge driver bring-up test.
+
+config SENSEWEAR_TEST_BHI360_DRIVER
+	bool "Build the BHI360 IMU bring-up test"
+	help
+	  Replace the application with the BHI360 IMU driver bring-up test.
+
+config SENSEWEAR_TEST_LP5562_DRIVER
+	bool "Build the LP5562 LED controller bring-up test"
+	help
+	  Replace the application with the LP5562 LED controller bring-up test.
+
+config SENSEWEAR_TEST_M95P_DRIVER
+	bool "Build the M95P EEPROM bring-up test"
+	help
+	  Replace the application with the M95P EEPROM driver bring-up test.
+
+config SENSEWEAR_TEST_TPSM83102_DRIVER
+	bool "Build the TPSM83102 regulator bring-up test"
+	help
+	  Replace the application with the TPSM83102 regulator driver bring-up test.
 
 endmenu
 
