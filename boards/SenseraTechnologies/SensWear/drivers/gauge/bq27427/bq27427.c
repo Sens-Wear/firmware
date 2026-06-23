@@ -1,6 +1,6 @@
 #include "bq27427.h"
 #include "sys_i2c.h"
-#include "device_events.h"
+#include "device_driver_events.h"
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
@@ -79,7 +79,7 @@ static struct bq27427_t {
 	struct bq27427_battery_state_t battery_state;
 } bq27427 = {
 	.device = SYS_I2C_DT_SPEC_GET(BQ27427_NODE),
-	.device_id = DEVICE_EVENT_ID_INVALID,
+	.device_id = DEVICE_DRIVER_EVENT_ID_INVALID,
 	.irq_gpio = GPIO_DT_SPEC_GET(BQ27427_NODE, int_gpios),
 	/* All remaining members (irq_cb, config, state, battery_state) are
 	 * zero-initialised by static storage duration. */
@@ -108,7 +108,6 @@ static inline bool bq27427_bus_unlock(void) {
 
 	return true;
 }
-
 
 /** Probe for the gauge by reading DeviceType. The caller must own the bus. */
 static bool bq27427_probe(void) {
@@ -193,8 +192,8 @@ static inline uint16_t bq27427_i2c_read_w_command(enum bq27427_command_type comm
 	return sys_get_le16(buf); /* or sys_get_be16 */
 }
 
-static inline uint16_t
-bq27427_i2c_read_control(const enum bq27427_control_subcommand_type subcommand) {
+static inline uint16_t bq27427_i2c_read_control(
+	const enum bq27427_control_subcommand_type subcommand) {
 	uint8_t wr[3];
 	wr[0] = (uint8_t) bq27427_command_Control;
 	sys_put_le16((uint16_t) subcommand, &wr[1]);
@@ -473,7 +472,7 @@ static void bq27427_irq_callback(const struct device* dev,
 	ARG_UNUSED(cb);
 	ARG_UNUSED(pins);
 
-	device_event_post_isr(bq27427.device_id, bq27427_event_BatteryLow, 0, NULL);
+	device_driver_event_post_isr(bq27427.device_id, bq27427_event_BatteryLow, 0, NULL);
 }
 
 /** Configure the active-low battery-low interrupt and register its callback. */
@@ -909,11 +908,11 @@ bool bq27427_update_state(struct bq27427_battery_state_t* state) {
 	}
 
 	// notify consumers that a fresh battery state is available.
-	device_event_post(bq27427.device_id,
-					  bq27427_event_StateUpdated,
-					  0,
-					  NULL,
-					  K_MSEC(BQ27427_I2C_TIMEOUT));
+	device_driver_event_post(bq27427.device_id,
+							 bq27427_event_StateUpdated,
+							 0,
+							 NULL,
+							 K_MSEC(BQ27427_I2C_TIMEOUT));
 	return true;
 }
 

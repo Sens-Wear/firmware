@@ -109,12 +109,12 @@
 #endif
 /**
  * \brief Event types posted by the BQ27427 driver to the device event manager.
- * 
+ *
  */
-enum bq27427_event_type{
-    bq27427_event_Invalid = -1,
-    bq27427_event_BatteryLow = 0,
-    bq27427_event_StateUpdated = 1
+enum bq27427_event_type {
+	bq27427_event_Invalid = -1,
+	bq27427_event_BatteryLow = 0,
+	bq27427_event_StateUpdated = 1
 };
 
 /**
@@ -138,8 +138,9 @@ struct bq27427_config_t {
 	uint16_t charge_current_threshold;	  /**< Charge current threshold in mA (offset 2). */
 	uint16_t quit_current_threshold;	  /**< Quit current threshold in mA (offset 4). */
 	/* Chemistry Info class -- Chem Data subclass (109) */
-	uint16_t voltage_at_charge_termination; /**< Cell voltage at charge termination in mV (offset 6). */
-	uint16_t taper_voltage;					/**< Taper voltage in mV (offset 8). */
+	uint16_t
+		voltage_at_charge_termination; /**< Cell voltage at charge termination in mV (offset 6). */
+	uint16_t taper_voltage;			   /**< Taper voltage in mV (offset 8). */
 	/* Ra Tables class -- Ra0 RAM (89): not currently programmed. */
 };
 
@@ -171,7 +172,7 @@ struct bq27427_battery_state_t {
  * This function does not program the gauge design parameters.
  *
  * @param device_id Identifier reserved for the device event manager (see
- *        device_events.h). It is stored but not yet used to post events.
+ *        device_driver_events.h). It is stored but not yet used to post events.
  * @retval true The bus was ready and the gauge responded with the expected
  *         device type.
  * @retval false The bus was not ready or the device-type probe failed.
@@ -201,7 +202,7 @@ bool bq27427_is_ready(void);
  *
  * @warning Blocks for several seconds (see the file-level warning).
  */
-bool bq27427_config(struct bq27427_config_t *config);
+bool bq27427_config(struct bq27427_config_t* config);
 
 /**
  * @brief Reset the gauge and optionally reapply a configuration.
@@ -217,7 +218,7 @@ bool bq27427_config(struct bq27427_config_t *config);
  *
  * @warning Blocks for several seconds (see the file-level warning).
  */
-bool bq27427_reset(struct bq27427_config_t *config);
+bool bq27427_reset(struct bq27427_config_t* config);
 
 /**
  * @brief Populate a configuration with the SenseWear battery defaults.
@@ -227,7 +228,7 @@ bool bq27427_reset(struct bq27427_config_t *config);
  *
  * @param config Destination configuration. Must not be NULL.
  */
-void bq27427_get_default_config(struct bq27427_config_t *config);
+void bq27427_get_default_config(struct bq27427_config_t* config);
 
 /**
  * @brief Read and decode the current battery state.
@@ -243,7 +244,7 @@ void bq27427_get_default_config(struct bq27427_config_t *config);
  * @retval false The driver is unavailable or unconfigured, or a POR/reset was
  *         detected.
  */
-bool bq27427_update_state(struct bq27427_battery_state_t *state);
+bool bq27427_update_state(struct bq27427_battery_state_t* state);
 
 /**
  * @brief Log the most recently cached battery state.
