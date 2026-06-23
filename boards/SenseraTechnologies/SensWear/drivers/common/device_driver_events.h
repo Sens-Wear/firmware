@@ -2,10 +2,10 @@
  * Copyright (c) 2026
  * SPDX-License-Identifier: Apache-2.0
  *
- * @file device_events.h
+ * @file device_driver_events.h
  * @brief SenseWear centralized device event manager.
  *
- * @defgroup sensewear_device_events SenseWear device event manager
+ * @defgroup sensewear_device_driver_events SenseWear device driver event manager
  * @ingroup io_interfaces
  * @{
  *
@@ -17,53 +17,54 @@
  *
  * @code{.text}
  * device A IRQ ─┐
- * device B IRQ ─┤ device_event_post[_isr]()   (producers)
+ * device B IRQ ─┤ device_driver_event_post[_isr]()   (producers)
  * device C IRQ ─┘            │
  *                            v
  *                   [ shared k_msgq queue ]
  *                            │
- *                   device_event_wait()        (single consumer)
+ *                   device_driver_event_wait()        (single consumer)
  *                            │
  *                   dispatch by device_id / event_id
  * @endcode
  *
- * @section sensewear_device_events_model Ownership model
+ * @section sensewear_device_driver_events_model Ownership model
  *
- * Events are delivered @b by @b value: device_event_wait() copies the next event
- * into a caller-provided ::device_event_t. There is no allocation to release and
+ * Events are delivered @b by @b value: device_driver_event_wait() copies the next event
+ * into a caller-provided ::device_driver_event_t. There is no allocation to release and
  * no internal pointer is exposed. The copy is valid for as long as the caller's
  * buffer lives, so a synchronous consumer can simply keep it on its stack.
  *
- * The @ref device_event_t.p_param pointer is copied verbatim; the memory it
+ * The @ref device_driver_event_t.p_param pointer is copied verbatim; the memory it
  * points at is @b not copied. A producer must therefore point @ref
- * device_event_t.p_param at storage that remains valid until the consumer has
+ * device_driver_event_t.p_param at storage that remains valid until the consumer has
  * processed the event (for example a device's static context). Transient stack
- * buffers must not be passed through @ref device_event_t.p_param. Small payloads
- * should be carried inline in @ref device_event_t.v_param instead.
+ * buffers must not be passed through @ref device_driver_event_t.p_param. Small payloads
+ * should be carried inline in @ref device_driver_event_t.v_param instead.
  *
- * @section sensewear_device_events_context Execution context
+ * @section sensewear_device_driver_events_context Execution context
  *
  * Producers may run in either thread or interrupt context:
- * - device_event_post() is for thread context.
- * - device_event_post_isr() is for interrupt context and never blocks.
+ * - device_driver_event_post() is for thread context.
+ * - device_driver_event_post_isr() is for interrupt context and never blocks.
  *
- * device_event_wait() blocks and must only be called from a thread. The design
+ * device_driver_event_wait() blocks and must only be called from a thread. The design
  * assumes exactly one consumer thread; the queue is otherwise multi-producer and
  * thread-/ISR-safe.
  *
- * @section sensewear_device_events_lifecycle Lifecycle
+ * @section sensewear_device_driver_events_lifecycle Lifecycle
  *
- * device_event_init() must be called once during start-up to create the backing
- * queue before any event is posted or awaited. device_event_get_queue() exposes
+ * device_driver_event_init() must be called once during start-up to create the backing
+ * queue before any event is posted or awaited. device_driver_event_get_queue() exposes
  * the underlying Zephyr message queue for advanced integration (for example
  * adding it to a @c k_poll set).
  *
- * @section sensewear_device_events_example Typical usage
+ * @section sensewear_device_driver_events_example Typical usage
  *
- * Initialization, once at start-up:
+ * Initialization, once at start-up (automatic if CONFIG_SENSEWEAR_DEVICE_DRIVER_EVENTS_AUTO_INIT is
+ * enabled):
  *
  * @code{.c}
- * device_event_init(16);   // queue depth of 16 events
+ * device_driver_event_init(CONFIG_SENSEWEAR_DEVICE_DRIVER_EVENTS_MAX);
  * @endcode
  *
  * Producer side, from a device's deferred interrupt handler:
@@ -73,10 +74,10 @@
  * #define CHG_EVT_IRQ 1u
  *
  * // From a work handler (thread context):
- * device_event_post(DEV_CHARGER, CHG_EVT_IRQ, raw_status, NULL);
+ * device_driver_event_post(DEV_CHARGER, CHG_EVT_IRQ, raw_status, NULL);
  *
  * // Or directly from an ISR:
- * device_event_post_isr(DEV_CHARGER, CHG_EVT_IRQ, 0u, NULL);
+ * device_driver_event_post_isr(DEV_CHARGER, CHG_EVT_IRQ, 0u, NULL);
  * @endcode
  *
  * Consumer side, the single device-manager thread:
@@ -84,9 +85,9 @@
  * @code{.c}
  * static void device_manager_thread(void *a, void *b, void *c)
  * {
- *     struct device_event_t ev;          // lives on this thread's stack
+ *     struct device_driver_event_t ev;          // lives on this thread's stack
  *
- *     while (device_event_wait(K_FOREVER, &ev)) {
+ *     while (device_driver_event_wait(K_FOREVER, &ev)) {
  *         switch (ev.device_id) {
  *         case DEV_CHARGER:
  *             charger_handle_event(&ev);
@@ -99,8 +100,8 @@
  * @endcode
  */
 
-#ifndef SENSWEAR_DRIVERS_COMMON_DEVICE_EVENTS_H_
-#define SENSWEAR_DRIVERS_COMMON_DEVICE_EVENTS_H_
+#ifndef SENSWEAR_DRIVERS_COMMON_DEVICE_DRIVER_EVENTS_H_
+#define SENSWEAR_DRIVERS_COMMON_DEVICE_DRIVER_EVENTS_H_
 
 #include "zephyr/kernel.h"
 #include "zephyr/sys/clock.h"
@@ -108,10 +109,10 @@
 
 /**
  * @brief Reserved sentinel for an unused or invalid event identifier.
- * @details Producers must not post this value as @ref device_event_t.event_id.
+ * @details Producers must not post this value as @ref device_driver_event_t.event_id.
  *          It is available to callers as a "no event" marker.
  */
-#define DEVICE_EVENT_ID_INVALID (UINT32_MAX)
+#define DEVICE_DRIVER_EVENT_ID_INVALID (UINT32_MAX)
 
 /**
  * @brief A single device event passed from a producer to the consumer.
@@ -119,17 +120,19 @@
  *          should travel in @ref v_param; @ref p_param is an optional pointer
  *          whose pointee lifetime is the producer's responsibility.
  */
-struct device_event_t{
-    uint32_t device_id; /**< Identifier of the device that produced the event. */
-    uint32_t event_id;  /**< Device-specific event code (not ::DEVICE_EVENT_ID_INVALID). */
-    uint32_t v_param;   /**< Inline scalar payload (event code, value, flags, ...). */
-    void* p_param;      /**< Optional pointer payload; pointee must outlive delivery. */
+struct device_driver_event_t {
+	uint32_t device_id; /**< Identifier of the device that produced the event. */
+	uint32_t event_id;	/**< Device-specific event code (not ::DEVICE_DRIVER_EVENT_ID_INVALID). */
+	uint32_t v_param;	/**< Inline scalar payload (event code, value, flags, ...). */
+	void* p_param;		/**< Optional pointer payload; pointee must outlive delivery. */
 };
 
 /**
  * @brief Initialize the event manager and its backing queue.
  *
  * Must be called once, before any other operation, to create the shared queue.
+ * This is typically called automatically at system startup if
+ * CONFIG_SENSEWEAR_DEVICE_DRIVER_EVENTS_AUTO_INIT is enabled.
  *
  * @param max_events Maximum number of events the queue can hold at once.
  * @retval 0 The manager was initialized.
@@ -137,7 +140,7 @@ struct device_event_t{
  * @retval -EALREADY The manager was already initialized.
  * @return A negative errno if the backing queue could not be allocated.
  */
-int device_event_init(int max_events);
+int device_driver_event_init(int max_events);
 
 /**
  * @brief Access the underlying Zephyr message queue.
@@ -147,7 +150,7 @@ int device_event_init(int max_events);
  *
  * @return Pointer to the manager's backing message queue.
  */
-struct k_msgq* device_event_get_queue(void);
+struct k_msgq* device_driver_event_get_queue(void);
 
 /**
  * @brief Post an event from thread context, blocking for queue space if needed.
@@ -164,13 +167,16 @@ struct k_msgq* device_event_get_queue(void);
  * @retval -EAGAIN The queue stayed full until @p timeout elapsed.
  * @return A negative errno if the event could not be queued.
  */
-int device_event_post(uint32_t device_id, uint32_t event_id, uint32_t v_param, void* p_param,
-                      k_timeout_t timeout);
+int device_driver_event_post(uint32_t device_id,
+							 uint32_t event_id,
+							 uint32_t v_param,
+							 void* p_param,
+							 k_timeout_t timeout);
 
 /**
  * @brief Post an event from interrupt context.
  *
- * Like device_event_post() but guaranteed never to block (K_NO_WAIT); intended
+ * Like device_driver_event_post() but guaranteed never to block (K_NO_WAIT); intended
  * for use directly inside an ISR.
  *
  * @param device_id Identifier of the producing device.
@@ -182,7 +188,10 @@ int device_event_post(uint32_t device_id, uint32_t event_id, uint32_t v_param, v
  * @return A negative errno if the event could not be queued (for example the
  *         queue is full).
  */
-int device_event_post_isr(uint32_t device_id, uint32_t event_id, uint32_t v_param, void* p_param);
+int device_driver_event_post_isr(uint32_t device_id,
+								 uint32_t event_id,
+								 uint32_t v_param,
+								 void* p_param);
 
 /**
  * @brief Wait for and copy the next queued event (single consumer).
@@ -197,7 +206,7 @@ int device_event_post_isr(uint32_t device_id, uint32_t event_id, uint32_t v_para
  * @retval false The timeout elapsed with no event available; @p event is
  *         unchanged.
  */
-bool device_event_wait(k_timeout_t timeout_ms, struct device_event_t* event);
+bool device_driver_event_wait(k_timeout_t timeout_ms, struct device_driver_event_t* event);
 
 /**
  * @brief Return the number of events currently queued.
@@ -205,8 +214,8 @@ bool device_event_wait(k_timeout_t timeout_ms, struct device_event_t* event);
  * @return Count of pending events not yet consumed. The value is advisory and
  *         may change immediately in the presence of concurrent producers.
  */
-int device_event_get_count(void);
+int device_driver_event_get_count(void);
 
 /** @} */
 
-#endif  // SENSWEAR_DRIVERS_COMMON_DEVICE_EVENTS_H_
+#endif // SENSWEAR_DRIVERS_COMMON_DEVICE_DRIVER_EVENTS_H_

@@ -130,6 +130,37 @@ config SENSEWEAR_TPSM83102_DRIVER
 	help
 	  Build the TPSM83102 buck regulator driver.
 
+config SENSEWEAR_DEVICE_DRIVER_EVENTS
+	bool "SenseWear device driver event manager"
+	help
+	  Enable the centralized device driver event manager. This provides a
+	  shared message queue for device interrupt handlers to post events that
+	  are consumed by a single event-processing thread, keeping device handling
+	  in one place and on one stack.
+
+if SENSEWEAR_DEVICE_DRIVER_EVENTS
+
+config SENSEWEAR_DEVICE_DRIVER_EVENTS_MAX
+	int "Maximum number of queued device driver events"
+	default 16
+	range 1 128
+	help
+	  Maximum number of events that can be queued in the device driver event
+	  manager at any given time. Each queued event consumes memory proportional
+	  to the size of struct device_driver_event_t (currently 16 bytes).
+
+config SENSEWEAR_DEVICE_DRIVER_EVENTS_AUTO_INIT
+	bool "Automatically initialize device driver events at system startup"
+	default y
+	help
+	  If enabled, the device driver event manager will be automatically
+	  initialized at POST_KERNEL initialization priority with
+	  CONFIG_SENSEWEAR_DEVICE_DRIVER_EVENTS_MAX events. If disabled, the
+	  application must call device_driver_event_init() manually before posting
+	  or waiting for events.
+
+endif # SENSEWEAR_DEVICE_DRIVER_EVENTS
+
 # Driver bring-up tests (tests/drivers). All off by default. Enabling exactly
 # one replaces the application main() with the selected test main(); see
 # tests/drivers/tests.cmake. These are Kconfig symbols (not CMake options) so
@@ -169,3 +200,4 @@ config SENSEWEAR_TEST_TPSM83102_DRIVER
 endmenu
 
 source "Kconfig.zephyr"
+
