@@ -104,7 +104,6 @@ struct led_controller_t{
 	struct i2c_dt_spec* device;	  //!< The I2C driver of the LED controller.
 	/*-------------------------------------------------------------------------*/
 	union led_controller_status_t status; //!< the controller state
-	struct lp5562_t led_driver;
 };
 
 extern struct led_controller_t* pLedController;

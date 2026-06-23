@@ -16,19 +16,6 @@
 static struct led_controller_t m_pb_led_controller = {.status.value = 0};
 struct led_controller_t* pLedController = &m_pb_led_controller;
 
-/**
- * \brief Sends data to the specified LED controller.
- *
- *
- * @param deviceId The device identifier.
- * @param pData The data
- * @param dataLength The number of bytes forming the data array.
- *
- * @return true if I2C transfer completes successfully; false otherwise.
- */
-bool lp5562_i2c_write(const struct lp5562_t* pDriver,
-					  const uint8_t* pData,
-					  const size_t data_count);
 
 /*
  * \brief Initializes led controller wrapper library.
@@ -37,24 +24,9 @@ bool led_controller_init(void) {
 	if(pLedController->status.bits.bInitialized != 0) {
 		return true;
 	}
-	// pLedController->device = DEVICE_DT_GET(DT_NODELABEL(lp5562));
-	//-----------------------------------------------------------------
-	// initialize the enable pins
-	{
-		static const struct gpio_dt_spec enable_gpio = GPIO_DT_SPEC_GET(DT_NODELABEL(lp5562), enable_gpios);
-		int ret;
-		if (!gpio_is_ready_dt(&enable_gpio)) {
-			return -ENODEV;
-		}
-
-		ret = gpio_pin_configure_dt(&enable_gpio, GPIO_OUTPUT_INACTIVE);
-		if (ret) {
-			return ret;
-		}
-		// gpio_pin_set_dt(&enable_gpio, GPIO_OUTPUT_INACTIVE);
-	}
-	// initialize the lp5562 object
-	lp5562_initialize(&(m_pb_led_controller.led_driver));
+	// initialize the lp5562 singleton (binds the DT I2C/enable specs and powers
+	// the controller on through its enable line).
+	lp5562_initialize();
 	pLedController->status.bits.bInitialized = 1;
 	return true;
 }
@@ -77,40 +49,35 @@ bool led_controller_configure(void) {
 		bool bPWMhf = (PINGBIT_LED_ENABLE_PWM_HF == 0) ? false : true;
 		bool bLogPWM = (PINGBIT_LED_USE_LOG_PWM == 0) ? false : true;
 
-		bool bRet = lp5562_i2c_enable(&(pLedController->led_driver));
+		bool bRet = lp5562_reset();
 		if(bRet == false) {
 			return false;
 		}
 		//-----------------------------------------------------------------
-		bRet = lp5562_reset(&(pLedController->led_driver));
+		bRet = lp5562_configure_clock(clock);
 		if(bRet == false) {
 			return false;
 		}
 		//-----------------------------------------------------------------
-		bRet = lp5562_configure_clock(&(pLedController->led_driver), clock);
-		if(bRet == false) {
-			return false;
-		}
-		//-----------------------------------------------------------------
-		bRet = lp5562_power_save(&(pLedController->led_driver), bPowerSave);
+		bRet = lp5562_power_save(bPowerSave);
 		if(bRet == false) {
 			return false;
 		}
 
 		//-----------------------------------------------------------------
-		bRet = lp5562_pwm_hf(&(pLedController->led_driver), bPWMhf);
+		bRet = lp5562_pwm_hf(bPWMhf);
 		if(bRet == false) {
 			return false;
 		}
 
 		//-----------------------------------------------------------------
-		bRet = lp5562_log_pwm_enable(&(pLedController->led_driver), bLogPWM);
+		bRet = lp5562_log_pwm_enable(bLogPWM);
 		if(bRet == false) {
 			return false;
 		}
 
 		//-----------------------------------------------------------------
-		bRet = lp5562_led_configure(&(pLedController->led_driver),
+		bRet = lp5562_led_configure(
 									lp5562_led_Red,
 									RED_LED_MAX_CURRENT *
 										PINGBIT_LED_DRIVER_CURRENT_SCALE,
@@ -119,7 +86,7 @@ bool led_controller_configure(void) {
 		if(bRet == false) {
 			return false;
 		}
-		bRet = lp5562_led_configure(&(pLedController->led_driver),
+		bRet = lp5562_led_configure(
 									lp5562_led_Green,
 									GREEN_LED_MAX_CURRENT *
 										PINGBIT_LED_DRIVER_CURRENT_SCALE,
@@ -128,7 +95,7 @@ bool led_controller_configure(void) {
 		if(bRet == false) {
 			return false;
 		}
-		bRet = lp5562_led_configure(&(pLedController->led_driver),
+		bRet = lp5562_led_configure(
 									lp5562_led_Blue,
 									BLUE_LED_MAX_CURRENT *
 										PINGBIT_LED_DRIVER_CURRENT_SCALE,
@@ -137,7 +104,7 @@ bool led_controller_configure(void) {
 		if(bRet == false) {
 			return false;
 		}
-		bRet = lp5562_led_configure(&(pLedController->led_driver),
+		bRet = lp5562_led_configure(
 									lp5562_led_White,
 									WHITE_LED_MAX_CURRENT *
 										PINGBIT_LED_DRIVER_CURRENT_SCALE,
@@ -146,7 +113,7 @@ bool led_controller_configure(void) {
 		if(bRet == false) {
 			return false;
 		}
-		bRet = lp5562_chip_enable(&(pLedController->led_driver));
+		bRet = lp5562_chip_enable();
 		if(bRet == false) {
 			return false;
 		}
@@ -155,107 +122,6 @@ bool led_controller_configure(void) {
 	}
 }
 
-bool lp5562_i2c_write_register(const struct lp5562_t* pDriver,
-							   uint8_t regAddress,
-							   uint8_t value) {
-	int ret;
-
-    if (pDriver == NULL) {
-        return false;
-    }
-
-    if (!device_is_ready(pDriver->device->bus)) {
-        return false;
-    }
-
-    /* Optional: lock if your driver can be called concurrently */
-    /* k_mutex_lock((struct k_mutex *)&pDriver->lock, K_FOREVER); */
-
-	// ret = i2c_configure(pDriver->device.bus, pDriver->i2c_config.i2c_cfg);
-	// if (ret < 0) {
-	// 	/* k_mutex_unlock((struct k_mutex *)&pDriver->lock); */
-	// 	return false;
-	// }
-
-    /* Blocking write to the target address from DTS (pDriver->i2c.addr) */
-    ret = i2c_reg_write_byte_dt(pDriver->device, regAddress, value);
-	assert(ret == 0);
-    /* k_mutex_unlock((struct k_mutex *)&pDriver->lock); */
-
-    return (ret == 0);
-}
-
-bool lp5562_i2c_write_memory(const struct lp5562_t *pDriver,
-                             uint8_t regAddress,
-                             uint8_t *pData,
-                             size_t dataLength) {
-	int ret;
-
-    if (pDriver == NULL || pData == NULL || dataLength == 0U) {
-        return false;
-    }
-
-    if (!device_is_ready(pDriver->device->bus)) {
-        return false;
-    }
-
-    /* Optional: lock if your driver can be called concurrently */
-    /* k_mutex_lock((struct k_mutex *)&pDriver->lock, K_FOREVER); */
-
-	// ret = i2c_configure(pDriver->device.bus, pDriver->i2c_config.i2c_cfg);
-	// if (ret < 0) {
-	// 	/* k_mutex_unlock((struct k_mutex *)&pDriver->lock); */
-	// 	return false;
-	// }
-
-    /* Blocking write to the target address from DTS (pDriver->i2c.addr) */
-    ret = i2c_burst_write_dt(pDriver->device, regAddress, pData, dataLength);
-
-    /* k_mutex_unlock((struct k_mutex *)&pDriver->lock); */
-
-    return (ret == 0);
-}
-
-/*
- * \brief Sends data to the specified LED controller.
- *
- *
- * @param deviceId The device identifier.
- * @param pData The data
- * @param dataLength The number of bytes forming the data array.
- * @param timeOut The timeout duration in OS ticks.
- *
- * @return true if I2C transfer completes successfully; false otherwise.
- */
-bool lp5562_i2c_write(const struct lp5562_t* pDriver,
-					  const uint8_t* pData,
-					  const size_t dataLength) {
-	int ret;
-
-    if (pDriver == NULL || pData == NULL || dataLength == 0U) {
-        return false;
-    }
-
-    if (!device_is_ready(pDriver->device->bus)) {
-        return false;
-    }
-
-    /* Optional: lock if your driver can be called concurrently */
-    /* k_mutex_lock((struct k_mutex *)&pDriver->lock, K_FOREVER); */
-
-	// ret = i2c_configure(pDriver->device.bus, pDriver->i2c_config.i2c_cfg);
-	// if (ret < 0) {
-	// 	/* k_mutex_unlock((struct k_mutex *)&pDriver->lock); */
-	// 	return false;
-	// }
-
-    /* Blocking write to the target address from DTS (pDriver->i2c.addr) */
-    ret = i2c_write_dt(pDriver->device, pData, dataLength);
-
-    /* k_mutex_unlock((struct k_mutex *)&pDriver->lock); */
-
-    return (ret == 0);
-}
 
 /*
  * \brief turns off all the leds.
@@ -277,42 +143,34 @@ bool led_controller_turn_on_leds(uint8_t led, union led_color_t color) {
 		bool bRet;
 		switch(led) {
 		case 0:
-			lp5562_chip_enable(&(pLedController->led_driver));
-			bRet = lp5562_led_configure(&(pLedController->led_driver),
+			lp5562_chip_enable();
+			bRet = lp5562_led_configure(
 										lp5562_led_Red,
-										pLedController->led_driver
-											.leds[(uint8_t) lp5562_led_Red]
-											.current,
+										lp5562_led_get_current(lp5562_led_Red),
 										color.leds.red,
 										lp5562_engine_i2c_pwm);
 			if(bRet == false) {
 				return false;
 			}
-			bRet = lp5562_led_configure(&(pLedController->led_driver),
+			bRet = lp5562_led_configure(
 										lp5562_led_Green,
-										pLedController->led_driver
-											.leds[(uint8_t) lp5562_led_Green]
-											.current,
+										lp5562_led_get_current(lp5562_led_Green),
 										color.leds.green,
 										lp5562_engine_i2c_pwm);
 			if(bRet == false) {
 				return false;
 			}
-			bRet = lp5562_led_configure(&(pLedController->led_driver),
+			bRet = lp5562_led_configure(
 										lp5562_led_Blue,
-										pLedController->led_driver
-											.leds[(uint8_t) lp5562_led_Blue]
-											.current,
+										lp5562_led_get_current(lp5562_led_Blue),
 										color.leds.blue,
 										lp5562_engine_i2c_pwm);
 			if(bRet == false) {
 				return false;
 			}
-			bRet = lp5562_led_configure(&(pLedController->led_driver),
+			bRet = lp5562_led_configure(
 										lp5562_led_White,
-										pLedController->led_driver
-											.leds[(uint8_t) lp5562_led_White]
-											.current,
+										lp5562_led_get_current(lp5562_led_White),
 										color.leds.white,
 										lp5562_engine_i2c_pwm);
 			if(bRet == false) {
@@ -338,48 +196,40 @@ bool led_controller_turn_off_leds(uint8_t led) {
 		union led_color_t color = {0};
 		switch(led) {
 		case 0:
-			lp5562_chip_enable(&(pLedController->led_driver));
-			bRet = lp5562_led_configure(&(pLedController->led_driver),
+			lp5562_chip_enable();
+			bRet = lp5562_led_configure(
 										lp5562_led_Red,
-										pLedController->led_driver
-											.leds[(uint8_t) lp5562_led_Red]
-											.current,
+										lp5562_led_get_current(lp5562_led_Red),
 										color.leds.red,
 										lp5562_engine_i2c_pwm);
 			if(bRet == false) {
 				return false;
 			}
-			bRet = lp5562_led_configure(&(pLedController->led_driver),
+			bRet = lp5562_led_configure(
 										lp5562_led_Green,
-										pLedController->led_driver
-											.leds[(uint8_t) lp5562_led_Green]
-											.current,
+										lp5562_led_get_current(lp5562_led_Green),
 										color.leds.green,
 										lp5562_engine_i2c_pwm);
 			if(bRet == false) {
 				return false;
 			}
-			bRet = lp5562_led_configure(&(pLedController->led_driver),
+			bRet = lp5562_led_configure(
 										lp5562_led_Blue,
-										pLedController->led_driver
-											.leds[(uint8_t) lp5562_led_Blue]
-											.current,
+										lp5562_led_get_current(lp5562_led_Blue),
 										color.leds.blue,
 										lp5562_engine_i2c_pwm);
 			if(bRet == false) {
 				return false;
 			}
-			bRet = lp5562_led_configure(&(pLedController->led_driver),
+			bRet = lp5562_led_configure(
 										lp5562_led_White,
-										pLedController->led_driver
-											.leds[(uint8_t) lp5562_led_White]
-											.current,
+										lp5562_led_get_current(lp5562_led_White),
 										color.leds.white,
 										lp5562_engine_i2c_pwm);
 			if(bRet == false) {
 				return false;
 			}
-			lp5562_chip_enable(&(pLedController->led_driver));
+			lp5562_chip_enable();
 			break;
 		default:
 			return false;
@@ -603,23 +453,21 @@ bool led_controller_set_led_pwm(uint8_t led, struct led_pwm_t* pwm) {
 		bool bRet;
 		switch(led) {
 		case 0:
-			lp5562_chip_enable(&(pLedController->led_driver));
+			lp5562_chip_enable();
 			k_msleep(1);
 			/*-------------------------------------------------------------------------*/
 			// 1st controller
 			//-----------------------------------------------------------------
 			// white LED
-			bRet = lp5562_led_configure(&(pLedController->led_driver),
+			bRet = lp5562_led_configure(
 										lp5562_led_White,
-										pLedController->led_driver
-											.leds[(int) lp5562_led_White]
-											.current,
+										lp5562_led_get_current(lp5562_led_White),
 										pwm->color.leds.white,
 										lp5562_engine_i2c_pwm);
 			//-----------------------------------------------------------------
 			// red LED
 			pCommands =
-				lp5562_engine_get_commands(&(pLedController->led_driver),
+				lp5562_engine_get_commands(
 										   lp5562_engine_1);
 			commandCount =
 				lp5562_pwm_to_command(pCommands, pwm, pwm->color.leds.red, 0);
@@ -632,15 +480,13 @@ bool led_controller_set_led_pwm(uint8_t led, struct led_pwm_t* pwm) {
 			commandCount += 2;
 			commandCount = lp5562_pwm_end_command(pCommands, commandCount);
 
-			bRet = lp5562_engine_configure_commands(&(pLedController
-														  ->led_driver),
-													lp5562_engine_1,
+			bRet = lp5562_engine_configure_commands( lp5562_engine_1,
 													commandCount,
 													true);
 			if(bRet == false) {
 				return false;
 			}
-			bRet = lp5562_led_set_engine((&pLedController->led_driver),
+			bRet = lp5562_led_set_engine(
 										 lp5562_led_Red,
 										 lp5562_engine_1);
 			if(bRet == false) {
@@ -649,7 +495,7 @@ bool led_controller_set_led_pwm(uint8_t led, struct led_pwm_t* pwm) {
 			//-----------------------------------------------------------------
 			// green LED
 			pCommands =
-				lp5562_engine_get_commands(&(pLedController->led_driver),
+				lp5562_engine_get_commands(
 										   lp5562_engine_2);
 			commandCount =
 				lp5562_pwm_to_command(pCommands, pwm, pwm->color.leds.green, 0);
@@ -662,15 +508,13 @@ bool led_controller_set_led_pwm(uint8_t led, struct led_pwm_t* pwm) {
 			commandCount += 2;
 			commandCount = lp5562_pwm_end_command(pCommands, commandCount);
 
-			bRet = lp5562_engine_configure_commands(&(pLedController
-														  ->led_driver),
-													lp5562_engine_2,
+			bRet = lp5562_engine_configure_commands( lp5562_engine_2,
 													commandCount,
 													true);
 			if(bRet == false) {
 				return false;
 			}
-			bRet = lp5562_led_set_engine((&pLedController->led_driver),
+			bRet = lp5562_led_set_engine(
 										 lp5562_led_Green,
 										 lp5562_engine_2);
 			if(bRet == false) {
@@ -679,7 +523,7 @@ bool led_controller_set_led_pwm(uint8_t led, struct led_pwm_t* pwm) {
 			//-----------------------------------------------------------------
 			// blue LED
 			pCommands =
-				lp5562_engine_get_commands(&(pLedController->led_driver),
+				lp5562_engine_get_commands(
 										   lp5562_engine_3);
 			commandCount =
 				lp5562_pwm_to_command(pCommands, pwm, pwm->color.leds.blue, 0);
@@ -692,16 +536,14 @@ bool led_controller_set_led_pwm(uint8_t led, struct led_pwm_t* pwm) {
 			commandCount += 2;
 			commandCount = lp5562_pwm_end_command(pCommands, commandCount);
 
-			bRet = lp5562_engine_configure_commands(&(pLedController
-														  ->led_driver),
-													lp5562_engine_3,
+			bRet = lp5562_engine_configure_commands( lp5562_engine_3,
 													commandCount,
 													true);
 
 			if(bRet == false) {
 				return false;
 			}
-			bRet = lp5562_led_set_engine((&pLedController->led_driver),
+			bRet = lp5562_led_set_engine(
 										 lp5562_led_Blue,
 										 lp5562_engine_3);
 			if(bRet == false) {
