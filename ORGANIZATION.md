@@ -118,6 +118,16 @@ the M95P disk backend is compiled through `board_drivers`, while
 `CONFIG_DISK_ACCESS` still causes Zephyr to create the in-tree disk-driver
 library.
 
+When `CONFIG_FILE_SYSTEM_LITTLEFS` is set, the same adapter
+(`memory/m95p/m95p_disk.c`) layers a LittleFS filesystem on the disk and, with
+`CONFIG_SENSEWEAR_M95P_DISK_AUTOMOUNT`, mounts it at `/eeprom` during system
+init; `m95p_fs_mount()` / `m95p_fs_unmount()` expose the same operation to
+application code. `prj.conf` enables `CONFIG_POSIX_API` (sized by
+`CONFIG_ZVFS_OPEN_MAX`) so the mount is reachable not only through Zephyr's
+native `fs_*` API but also through POSIX file calls (`open`/`read`/`write`) and
+the C standard-library stdio API (`fopen`/`fread`/`fwrite`), which the libc
+retargets onto those POSIX calls.
+
 New extensions to Zephyr-owned libraries should follow the same mirrored path
 structure, for example `drivers/<subsystem>/CMakeLists.txt`, under this module.
 

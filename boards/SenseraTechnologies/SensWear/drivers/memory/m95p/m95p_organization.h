@@ -6,7 +6,7 @@
 #define _M95P_ORGANIZATION_H
 
 #define M95P_SECTOR_COUNT (1024ul)	 // 1 k sector
-#define M95P_SIZE (4 * 1024ul * 1024ul) // 8 MByte
+#define M95P_SIZE (4 * 1024ul * 1024ul) // 4 MiB
 
 #define M95P_PAGE_SIZE (512)
 #define M95P_PAGES_PER_SECTOR (8)

@@ -76,7 +76,9 @@
             "inherits": "test_base",
             "binaryDir": "${sourceDir}/build/tests/m95p",
             "cacheVariables": {
-                "CONFIG_SENSEWEAR_TEST_M95P_DRIVER": "y"
+                "CONFIG_SENSEWEAR_TEST_M95P_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
             }
         },
         {

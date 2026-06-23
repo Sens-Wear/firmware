@@ -30,13 +30,11 @@
  * @brief Initialize and identify the M95P32.
  * @details Verifies that the shared SPI device is ready, resets the memory,
  *          reads the three identification bytes, validates them against the
- *          expected M95P32 values, enables writes, and clears pending safety
- *          flags. Repeated calls after successful initialization return
- *          immediately.
+ *          expected M95P32 values, and clears pending safety flags. Repeated
+ *          calls after successful initialization return immediately.
  * @param arg Reserved; pass NULL.
  * @retval true Initialization completed or the driver was already initialized.
  * @retval false The shared SPI device was unavailable or could not be acquired.
- * @note An unexpected device identifier currently triggers an assertion.
  */
 bool m95p_init(void* arg);
 
@@ -135,10 +133,8 @@ size_t m95p_get_golden_section_sector_count(void);
  * @param data Destination buffer.
  * @param size Number of bytes to read.
  * @retval true The shared SPI bus was acquired and the read completed.
- * @retval false The shared SPI bus could not be acquired.
+ * @retval false Validation, transfer, or shared-bus ownership failed.
  * @pre m95p_init() has completed successfully.
- * @warning The current implementation does not validate the address range,
- *          buffer pointer, or transfer size.
  */
 bool m95p_read(uint32_t address, void* data, size_t size);
 
@@ -148,11 +144,9 @@ bool m95p_read(uint32_t address, void* data, size_t size);
  * @param data Source buffer.
  * @param size Number of bytes to program.
  * @retval true The shared SPI bus was acquired and the operation completed.
- * @retval false The shared SPI bus could not be acquired.
+ * @retval false Validation, transfer, or shared-bus ownership failed.
  * @pre m95p_init() has completed successfully.
- * @warning The caller must keep the transfer within one 512-byte page and
- *          provide bytes in the erased state. These constraints and the page
- *          range are not currently validated.
+ * @warning The caller must provide bytes in the erased state.
  */
 bool m95p_program_page(uint32_t page, const void* data, size_t size);
 
@@ -165,8 +159,7 @@ bool m95p_program_page(uint32_t page, const void* data, size_t size);
  * @param data Source buffer.
  * @param size Number of bytes to write.
  * @retval true The shared SPI bus was acquired and the operation completed.
- * @retval false The shared SPI bus could not be acquired.
- * @warning The current implementation does not validate sector, size, or data.
+ * @retval false Validation, transfer, or shared-bus ownership failed.
  */
 bool m95p_write_sector(uint32_t sector, const void* data, size_t size);
 
@@ -176,10 +169,17 @@ bool m95p_write_sector(uint32_t sector, const void* data, size_t size);
  *          not issue the physical 4-Kbyte sector-erase instruction.
  * @param sector Zero-based logical 512-byte sector index.
  * @retval true The shared SPI bus was acquired and the operation completed.
- * @retval false The shared SPI bus could not be acquired.
- * @warning The current implementation does not validate the sector index.
+ * @retval false Validation, transfer, or shared-bus ownership failed.
  */
 bool m95p_erase_sector(uint32_t sector);
+
+/**
+ * @brief Erase one physical 64-Kbyte block.
+ * @param block Zero-based block index in the data area.
+ * @retval true The erase and shared-bus release completed.
+ * @retval false Validation, transfer, or shared-bus ownership failed.
+ */
+bool m95p_erase_block(uint32_t block);
 
 /**
  * @brief Restore writable defaults and erase the complete memory array.
@@ -192,6 +192,13 @@ bool m95p_erase_sector(uint32_t sector);
  *          locked.
  */
 bool m95p_reset_to_factory_defaults(void);
+
+/**
+ * @brief Issue the M95P software-reset sequence.
+ * @retval true Both reset commands and shared-bus release completed.
+ * @retval false The driver was unavailable or an operation failed.
+ */
+bool m95p_reset(void);
 
 /**
  * @name Golden-section access
@@ -226,16 +233,13 @@ bool m95p_golden_section_program_page(uint32_t page, const void* data, size_t si
  * @brief Erase a logical sector relative to the golden-section start.
  * @param sector Zero-based logical sector index within the golden section.
  * @retval true The operation completed, or no golden section is configured.
- * @note The configured-golden-section path currently contains an assertion
- *       because its logical-sector mapping has not been finalized.
  */
 bool m95p_golden_section_erase_sector(uint32_t sector);
 
 /**
  * @brief Erase the complete golden section.
- * @retval true No golden section is configured, or the current placeholder
- *              path was reached.
- * @warning Erasure is not implemented when a golden section is configured.
+ * @retval true No golden section is configured or all reserved pages erased.
+ * @retval false A page erase failed.
  */
 bool m95p_golden_section_erase(void);
 
@@ -271,8 +275,6 @@ bool m95p_golden_section_unlock(void);
  * @brief Read the status-register write-disable state.
  * @pre m95p_init() has completed successfully.
  * @note This reports SRWD, not whether BP currently protects array blocks.
- * @warning The current implementation calls itself recursively and must be
- *          corrected before this API can be used.
  */
 bool m95p_is_write_protected(void);
 
@@ -289,7 +291,6 @@ bool m95p_set_write_protection_state(bool bWriteProtect);
 /**
  * @brief Decode BP[2:0] as the number of protected 64-Kbyte blocks.
  * @return Number of protected top-of-array blocks.
- * @warning The current implementation does not safely handle BP equal to zero.
  */
 uint32_t m95p_write_protected_blocks_count(void);
 

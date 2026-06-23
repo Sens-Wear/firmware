@@ -10,7 +10,7 @@ initialise, configure, then poll/print state every 2 seconds over the console.
 | `main_test_bq27427.c`  | BQ27427 fuel gauge | init → config (450 mAh) → print battery state every 2 s |
 | `main_test_bhi360.c`   | BHI360 IMU         | register callbacks → start streaming → print latest quat/lacc every 2 s |
 | `main_test_lp5562.c`   | LP5562 LED ctrl    | init → configure → toggle LED 0 red on/off every 2 s |
-| `main_test_m95p.c`     | M95P EEPROM        | init → JEDEC/geometry → page write/read round-trip → print status every 2 s |
+| `main_test_m95p.c`     | M95P EEPROM        | init → JEDEC/geometry → mount LittleFS → POSIX text + binary file round-trips → walk + list the FS tree → print status every 2 s |
 | `main_test_tpsm83102.c`| TPSM83102 regulator| placeholder (driver has no public API yet) |
 
 ## Building a test
@@ -43,3 +43,21 @@ The relevant driver must be enabled via its `CONFIG_SENSEWEAR_<DRIVER>_DRIVER`
 Kconfig symbol (all enabled by default). That symbol is the single source of
 truth: the per-type cmakes under `boards/.../drivers` gate their sources on it
 directly.
+
+## Filesystem / POSIX dependency (M95P)
+
+`main_test_m95p.c` exercises the EEPROM through the LittleFS filesystem mounted
+at `/eeprom` using POSIX file operations (`open`/`read`/`write`/`close`). This
+relies on the storage and POSIX options already set in `prj.conf` — chiefly
+`CONFIG_FILE_SYSTEM_LITTLEFS`, `CONFIG_SENSEWEAR_M95P_DISK_AUTOMOUNT`, and
+`CONFIG_POSIX_API` (sized by `CONFIG_ZVFS_OPEN_MAX`) — which route the POSIX
+calls onto the mounted filesystem. See the "Storage and Filesystem" section of
+the top-level `README.rst`.
+
+The `test_m95p` preset also overrides `CONFIG_SHELL=n` and `CONFIG_I2C_SHELL=n`
+(the rest of the firmware keeps the shell). The shell's serial backend and the
+UART console both drive the same UART, so with the shell enabled every
+`printk`/log line is emitted twice — once by the console and once re-rendered by
+the shell prompt. Disabling the shell leaves a single console owner, so this
+test's output appears once. Logging stays on (`CONFIG_LOG_BACKEND_UART`); with
+the shell gone, its duplicate `CONFIG_SHELL_LOG_BACKEND` is dropped too.

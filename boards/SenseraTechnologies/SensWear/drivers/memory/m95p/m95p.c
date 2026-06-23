@@ -1,51 +1,44 @@
 
+/**
+ * Copyright (c) 2026
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * @file m95p.c
+ * @brief SenseWear M95P32 page EEPROM driver implementation.
+ * @details Implements the board-level singleton declared by @ref sensewear_m95p.
+ *          Public operations own the shared system SPI bus for their complete
+ *          command sequence. Private transfer helpers require that ownership
+ *          to have already been acquired and drive chip select explicitly.
+ */
+
 #include "m95p.h"
 #include "m95p_organization.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <string.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
 #include "sys_spi.h"
 
-LOG_MODULE_REGISTER(SENSE_WEAR_MEMORY_DRIVER_LOGGER);
+LOG_MODULE_REGISTER(m95p, CONFIG_LOG_DEFAULT_LEVEL);
 
+/**
+ * @brief Devicetree node identifier for the board's M95P32 instance.
+ * @details Used to construct the shared-SPI specification and software-managed
+ *          chip-select GPIO specification stored in the singleton context.
+ */
 #define M95P_NODE DT_NODELABEL(m95p)
 BUILD_ASSERT(DT_NODE_HAS_PROP(M95P_NODE, cs_gpios), "M95P is missing its chip-select GPIO");
 
-static const struct sys_spi_dt_spec m95p_spi =
-	SYS_SPI_DT_SPEC_GET(M95P_NODE, SPI_OP_MODE_MASTER | SPI_WORD_SET(8));
-
-/*
- * Chip-select is driven manually by this driver rather than by the SPI
- * controller, so the line is owned here and toggled around each transfer.
- */
-static const struct gpio_dt_spec m95p_cs = GPIO_DT_SPEC_GET(M95P_NODE, cs_gpios);
-
-/** Assert (select) the M95P chip-select line. */
-static inline void m95p_cs_select(void) {
-	gpio_pin_set_dt(&m95p_cs, 1);
-}
-
-/** Deassert (release) the M95P chip-select line. */
-static inline void m95p_cs_deselect(void) {
-	gpio_pin_set_dt(&m95p_cs, 0);
-}
-
-#if HAVE_FATFS
-
-#include "ff.h"
-#include "sys_debug.h"
-
 /**
- * @brief Logical sector size requested by the filesystem layer.
- * @details FatFS selects its maximum configured sector size. Without FatFS,
- *          the fallback is the M95P32 physical 4-Kbyte sector size.
+ * @brief Filesystem-facing sector size baseline.
+ * @details Defaults to one physical 4-Kbyte sector. Decouples the size the
+ *          filesystem layer treats as a sector from the device's physical
+ *          sector geometry so the two can be tuned independently.
  */
-#define FS_SUPPORTED_SECTOR_SIZE (FF_MAX_SS)
-#else
 #define FS_SUPPORTED_SECTOR_SIZE (M95P_SECTOR_SIZE)
-#endif
 
 /*
  * M95P32 physical geometry aliases.
@@ -54,23 +47,53 @@ static inline void m95p_cs_deselect(void) {
  * form a physical 4-Kbyte sector, and 16 physical sectors form a 64-Kbyte
  * protection/erase block.
  */
-/** Total physical memory-array capacity in bytes. */
+/**
+ * @brief Total physical memory-array capacity in bytes.
+ * @details Mirrors the part's full 4-MiB array (8192 pages of 512 bytes) and is
+ *          the basis from which the whole-array page and sector totals derive.
+ */
 #define SYS_MEMORY_SIZE (M95P_SIZE)
-/** Smallest physical page-program and page-erase unit in bytes. */
+/**
+ * @brief Smallest physical page-program and page-erase unit in bytes.
+ * @details One 512-byte page is the finest granularity the M95P32 can program
+ *          or erase, so it also defines the driver's logical sector size.
+ */
 #define SYS_MEMORY_PAGE_SIZE (M95P_PAGE_SIZE)
-/** Physical sector-erase unit in bytes. */
+/**
+ * @brief Physical sector-erase unit in bytes.
+ * @details Eight consecutive 512-byte pages form one physical 4-Kbyte sector.
+ */
 #define SYS_MEMORY_SECTOR_SIZE (M95P_SECTOR_SIZE)
-/** Physical block-erase and block-protection unit in bytes. */
+/**
+ * @brief Physical block-erase and block-protection unit in bytes.
+ * @details Sixteen 4-Kbyte sectors form one 64-Kbyte block, which is also the
+ *          granularity at which the array protection scheme operates.
+ */
 #define SYS_MEMORY_BLOCK_SIZE (M95P_BLOCK_SIZE)
-/** Number of physical 4-Kbyte sectors in the complete array. */
+/**
+ * @brief Number of physical 4-Kbyte sectors in the complete array.
+ * @details Counts every sector before any golden-section reservation is removed.
+ */
 #define SYS_MEMORY_TOTAL_SECTOR_COUNT (M95P_SECTOR_COUNT)
-/** Number of 512-byte pages in the complete array. */
+/**
+ * @brief Number of 512-byte pages in the complete array.
+ * @details Derived as the total array capacity divided by the page size.
+ */
 #define SYS_MEMORY_PAGE_COUNT (SYS_MEMORY_SIZE / SYS_MEMORY_PAGE_SIZE)
-/** Number of 512-byte pages per physical 4-Kbyte sector. */
+/**
+ * @brief Number of 512-byte pages per physical 4-Kbyte sector.
+ * @details Evaluates to eight and converts between page and sector indices.
+ */
 #define SYS_MEMORY_PAGES_PER_SECTOR (SYS_MEMORY_SECTOR_SIZE / SYS_MEMORY_PAGE_SIZE)
-/** Number of physical 4-Kbyte sectors per 64-Kbyte block. */
+/**
+ * @brief Number of physical 4-Kbyte sectors per 64-Kbyte block.
+ * @details Evaluates to sixteen and converts between sector and block indices.
+ */
 #define SYS_MEMORY_SECTORS_PER_BLOCK (SYS_MEMORY_BLOCK_SIZE / SYS_MEMORY_SECTOR_SIZE)
-/** Maximum number of blocks addressable by the protection scheme. */
+/**
+ * @brief Maximum number of blocks addressable by the protection scheme.
+ * @details Upper bound enforced when reserving or protecting golden-section blocks.
+ */
 #define SYS_MEMORY_MAX_PROTECTION_BLOCK_COUNT M95P_MAX_PROTECTION_BLOCK_COUNT
 
 /*
@@ -80,9 +103,17 @@ static inline void m95p_cs_deselect(void) {
  * M95P32 supports page erase and page write. The filesystem-facing sector size
  * remains separate and may span one or more driver-logical sectors.
  */
-/** Filesystem-facing logical sector size in bytes. */
+/**
+ * @brief Filesystem-facing logical sector size in bytes.
+ * @details Re-exports FS_SUPPORTED_SECTOR_SIZE under the SYS_MEMORY namespace
+ *          shared by the rest of the geometry model.
+ */
 #define SYS_MEMORY_SUPPORTED_SECTOR_SIZE FS_SUPPORTED_SECTOR_SIZE
-/** Number of filesystem sectors contained in one physical 4-Kbyte sector. */
+/**
+ * @brief Number of filesystem sectors contained in one physical 4-Kbyte sector.
+ * @details Ratio of the physical sector size to the filesystem-facing sector
+ *          size; equals one when both sizes are identical.
+ */
 #define SYS_MEMORY_SECTOR_USAGE_RATIO (SYS_MEMORY_SECTOR_SIZE / SYS_MEMORY_SUPPORTED_SECTOR_SIZE)
 
 /**
@@ -101,82 +132,194 @@ static inline void m95p_cs_deselect(void) {
 #endif
 #endif
 
-/** Golden-section capacity in bytes. */
+/**
+ * @brief Golden-section capacity in bytes.
+ * @details Total size of the reserved top-of-array region, computed as the
+ *          reserved block count times the 64-Kbyte block size.
+ */
 #define SYS_MEMORY_GOLDEN_SECTION_SIZE \
 	(SYS_MEMORY_GOLDEN_SECTION_BLOCK_COUNT * SYS_MEMORY_BLOCK_SIZE)
 
-/** Number of physical 4-Kbyte sectors reserved for the golden section. */
+/**
+ * @brief Number of physical 4-Kbyte sectors reserved for the golden section.
+ * @details Golden-section capacity expressed in whole physical sectors.
+ */
 #define SYS_MEMORY_GOLDEN_SECTION_SECTOR_COUNT \
 	(SYS_MEMORY_GOLDEN_SECTION_SIZE / SYS_MEMORY_SECTOR_SIZE)
 #if SYS_MEMORY_GOLDEN_SECTION_SECTOR_COUNT >= SYS_MEMORY_TOTAL_SECTOR_COUNT
 #error "GOLDEN section configuration requires larger memory"
 #endif
 
-/** First physical 4-Kbyte sector reserved for the golden section. */
+/**
+ * @brief First physical 4-Kbyte sector reserved for the golden section.
+ * @details Index of the lowest reserved sector, measured from the top of the
+ *          array downward.
+ */
 #define SYS_MEMORY_GOLDEN_SECTION_SECTOR_START \
 	(SYS_MEMORY_TOTAL_SECTOR_COUNT - SYS_MEMORY_GOLDEN_SECTION_SECTOR_COUNT)
 
-/** First 64-Kbyte block reserved for the golden section. */
+/**
+ * @brief First 64-Kbyte block reserved for the golden section.
+ * @details Block index that contains the first reserved sector.
+ */
 #define SYS_MEMORY_GOLDEN_SECTION_BLOCK_START \
 	(SYS_MEMORY_GOLDEN_SECTION_SECTOR_START / SYS_MEMORY_SECTORS_PER_BLOCK)
 
-/** Number of 512-byte pages reserved for the golden section. */
+/**
+ * @brief Number of 512-byte pages reserved for the golden section.
+ * @details Reserved sector count converted to pages.
+ */
 #define SYS_MEMORY_GOLDEN_SECTION_PAGE_COUNT \
 	(SYS_MEMORY_GOLDEN_SECTION_SECTOR_COUNT * SYS_MEMORY_PAGES_PER_SECTOR)
-/** First 512-byte page reserved for the golden section. */
+/**
+ * @brief First 512-byte page reserved for the golden section.
+ * @details Page index of the lowest reserved page.
+ */
 #define SYS_MEMORY_GOLDEN_SECTION_PAGE_START \
 	(SYS_MEMORY_GOLDEN_SECTION_SECTOR_START * SYS_MEMORY_PAGES_PER_SECTOR)
 
-/** First byte address reserved for the golden section. */
+/**
+ * @brief First byte address reserved for the golden section.
+ * @details Base byte offset added to golden-section-relative addresses to reach
+ *          the physical array.
+ */
 #define SYS_MEMORY_GOLDEN_SECTION_ADDRESS_START \
 	(SYS_MEMORY_GOLDEN_SECTION_PAGE_START * SYS_MEMORY_PAGE_SIZE)
 
-/** Number of physical 4-Kbyte sectors remaining in the normal data area. */
+/**
+ * @brief Number of physical 4-Kbyte sectors remaining in the normal data area.
+ * @details Total sector count minus the sectors reserved for the golden section.
+ */
 #define SYS_MEMORY_SECTOR_COUNT \
 	(SYS_MEMORY_TOTAL_SECTOR_COUNT - SYS_MEMORY_GOLDEN_SECTION_SECTOR_COUNT)
 
-bool M95P_SPI_LOCK(void*, void*, int) {
-	return sys_spi_lock(&m95p_spi, K_MSEC(M95P_SPI_TIMEOUT)) == 0;
-}
-
-bool M95P_SPI_UNLOCK(void*) {
-	return sys_spi_release(&m95p_spi) == 0;
-}
-
-// void __NOP(void) {
-//     (void)0;
-// }
-
 /**
- * \brief The m95p device driver structure
+ * @brief Internal singleton M95P driver context.
+ * @details Collects all devicetree-derived hardware resources and cached
+ *          runtime state. The SPI specification is also the ownership token
+ *          used by the shared system SPI wrapper.
  */
 static struct m95p_t {
-	const struct sys_spi_dt_spec* spi_driver;
-	const struct sys_spi_config* spi_config;
+	/** Shared-SPI connection and recursive ownership token from devicetree. */
+	struct sys_spi_dt_spec device;
+	/** Software-managed active-low chip-select GPIO from devicetree. */
+	struct gpio_dt_spec cs_gpio;
+	/** True after reset, JEDEC identification, and initial cleanup succeed. */
 	bool initialized;
+	/** Cached status-register image reserved for future state reporting. */
 	union m95p_status_register_t status_register;
+	/** Cached configuration/safety image reserved for future state reporting. */
 	struct m95p_configuration_safety_registers_t config_safety_registers;
+	/** Cached volatile-register image reserved for future state reporting. */
 	union m95p_volatile_register_t volatile_register;
-
+	/** JEDEC identification bytes captured and validated during initialization. */
 	union m95p_jedec_id_t jedec_id;
-} m95p = {0};
-
-union address_t {
-	uint32_t value;
-	uint8_t bytes[4];
+} m95p = {
+	.device =
+		SYS_SPI_DT_SPEC_GET(M95P_NODE, SPI_OP_MODE_MASTER | SPI_WORD_SET(8) | SPI_TRANSFER_MSB),
+	.cs_gpio = GPIO_DT_SPEC_GET(M95P_NODE, cs_gpios),
 };
 
-static inline void m95p_command_with_address(uint8_t* buffer, uint8_t command, uint32_t address) {
-	union address_t address_union;
-	address_union.value = address;
-	buffer[0] = command;
-	buffer[1] = address_union.bytes[2];
-	buffer[2] = address_union.bytes[1];
-	buffer[3] = address_union.bytes[0];
+/**
+ * @brief Assert the software-managed M95P chip-select signal.
+ * @details The devicetree GPIO is active-low, so logical value 1 selects the
+ *          device through Zephyr's active-level translation.
+ * @retval 0 Chip select was asserted.
+ * @return A negative errno value returned by the GPIO driver on failure.
+ */
+static inline int m95p_cs_select(void) {
+	int ret = gpio_pin_set_dt(&m95p.cs_gpio, 1);
+
+	if (ret != 0) {
+		LOG_ERR("Failed to assert M95P chip-select (%d)", ret);
+	}
+	return ret;
 }
 
-static inline void
-mp95p_spi_read(uint8_t* command, size_t commandSize, uint8_t* buffer, size_t readSize) {
+/**
+ * @brief Deassert the software-managed M95P chip-select signal.
+ * @details Logical value 0 releases the active-low line through Zephyr's
+ *          active-level translation.
+ * @retval 0 Chip select was deasserted.
+ * @return A negative errno value returned by the GPIO driver on failure.
+ */
+static inline int m95p_cs_deselect(void) {
+	int ret = gpio_pin_set_dt(&m95p.cs_gpio, 0);
+
+	if (ret != 0) {
+		LOG_ERR("Failed to deassert M95P chip-select (%d)", ret);
+	}
+	return ret;
+}
+
+/**
+ * @brief Acquire shared-SPI ownership for one high-level M95P operation.
+ * @details Uses the singleton's SPI specification as the ownership token and
+ *          waits for at most M95P_SPI_TIMEOUT milliseconds.
+ * @retval true Ownership was acquired.
+ * @retval false The shared bus could not be acquired before the timeout.
+ */
+static inline bool m95p_bus_lock(void) {
+	int ret = sys_spi_lock(&m95p.device, K_MSEC(M95P_SPI_TIMEOUT));
+
+	if (ret != 0) {
+		LOG_ERR("Failed to lock SYS_SPI (%d)", ret);
+		return false;
+	}
+
+	return true;
+}
+
+/**
+ * @brief Fully release shared-SPI ownership after a high-level operation.
+ * @details Calls sys_spi_release() so any recursive acquisitions made by
+ *          private helpers are completely unwound.
+ * @retval true Ownership was fully released.
+ * @retval false The shared-bus wrapper reported a release failure.
+ */
+static inline bool m95p_bus_unlock(void) {
+	int ret = sys_spi_release(&m95p.device);
+
+	if (ret != 0) {
+		LOG_ERR("Failed to release SYS_SPI ownership (%d)", ret);
+		return false;
+	}
+	// enforce chip select deassertion after bus release to avoid leaving the device selected
+	m95p_cs_deselect();
+	return true;
+}
+
+/**
+ * @brief Encode an M95P instruction and 24-bit byte address.
+ * @details Produces the four-byte command prefix required by addressed array
+ *          operations: instruction, address[23:16], address[15:8], address[7:0].
+ * @param buffer Destination with space for four command bytes.
+ * @param command M95P instruction code.
+ * @param address Zero-based byte address in the M95P array.
+ */
+static inline void m95p_command_with_address(uint8_t* buffer, uint8_t command, uint32_t address) {
+	buffer[0] = command;
+	buffer[1] = (uint8_t) (address >> 16);
+	buffer[2] = (uint8_t) (address >> 8);
+	buffer[3] = (uint8_t) address;
+}
+
+/**
+ * @brief Execute one command followed by an SPI read payload.
+ * @details The caller must own the shared SPI bus. Chip select remains asserted
+ *          across the command and receive phases, and is deasserted on every
+ *          path after a successful assertion.
+ * @param command Command bytes to transmit.
+ * @param commandSize Number of command bytes.
+ * @param buffer Destination for received payload bytes.
+ * @param readSize Number of payload bytes to receive.
+ * @retval 0 Transfer and chip-select release succeeded.
+ * @return A negative errno value from GPIO or SPI on failure.
+ */
+static inline int mp95p_spi_read(uint8_t* command,
+								 size_t commandSize,
+								 uint8_t* buffer,
+								 size_t readSize) {
 	struct spi_buf tx_buf = {.buf = command, .len = commandSize};
 	struct spi_buf_set tx_bufs = {.buffers = &tx_buf, .count = 1};
 
@@ -190,16 +333,36 @@ mp95p_spi_read(uint8_t* command, size_t commandSize, uint8_t* buffer, size_t rea
 								}};
 	struct spi_buf_set rx_bufs = {.buffers = rx_buf, .count = 2};
 
-	m95p_cs_select();
-	int ret = sys_spi_transceive(&m95p_spi, &tx_bufs, &rx_bufs);
-	m95p_cs_deselect();
-	assert(ret == 0);
+	int ret = m95p_cs_select();
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = sys_spi_transceive(&m95p.device, &tx_bufs, &rx_bufs);
+	int cs_ret = m95p_cs_deselect();
+
+	if (ret != 0) {
+		LOG_ERR("M95P SPI read failed (%d)", ret);
+		return ret;
+	}
+	return cs_ret;
 }
 
-static inline void
-mp95p_spi_write(uint8_t* command, size_t commandSize, const uint8_t* buffer, size_t writeSize) {
-	int ret;
-
+/**
+ * @brief Execute one command with an optional SPI write payload.
+ * @details The caller must own the shared SPI bus. The command and payload are
+ *          emitted as one transaction while chip select remains asserted.
+ * @param command Command bytes to transmit.
+ * @param commandSize Number of command bytes.
+ * @param buffer Optional payload bytes, or NULL when no payload is required.
+ * @param writeSize Number of payload bytes.
+ * @retval 0 Transfer and chip-select release succeeded.
+ * @return A negative errno value from GPIO or SPI on failure.
+ */
+static inline int mp95p_spi_write(uint8_t* command,
+								  size_t commandSize,
+								  const uint8_t* buffer,
+								  size_t writeSize) {
 	// We can have up to 2 buffers: the command and the data payload
 	struct spi_buf tx_bufs_array[2];
 	uint8_t buf_count = 0;
@@ -221,39 +384,98 @@ mp95p_spi_write(uint8_t* command, size_t commandSize, const uint8_t* buffer, siz
 
 	// 3. Execute the write.
 	// Passing NULL for rx_bufs indicates a write-only operation.
-	m95p_cs_select();
-	ret = sys_spi_write(&m95p_spi, &tx_bufs);
-	m95p_cs_deselect();
-	assert(ret == 0);
+	int ret = m95p_cs_select();
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = sys_spi_write(&m95p.device, &tx_bufs);
+	int cs_ret = m95p_cs_deselect();
+
+	if (ret != 0) {
+		LOG_ERR("M95P SPI write failed (%d)", ret);
+		return ret;
+	}
+	return cs_ret;
 }
 
-static inline void m95p_spi_write_enable() {
+/**
+ * @brief Set the M95P write-enable latch.
+ * @details Sends WREN. The caller must own the shared SPI bus.
+ * @retval 0 WREN was transmitted successfully.
+ * @return A negative errno value from the transfer path on failure.
+ */
+static int m95p_spi_write_enable(void) {
 	uint8_t command = m95p_instruction_WREN;
-	mp95p_spi_write(&command, 1, NULL, 0);
+	return mp95p_spi_write(&command, 1, NULL, 0);
 }
 
-static inline void m95p_spi_read_status_register(union m95p_status_register_t* status) {
+/**
+ * @brief Read the M95P status register.
+ * @details Sends RDSR and stores the returned raw byte in @p status. The caller
+ *          must own the shared SPI bus.
+ * @param status Destination for the status-register image.
+ * @retval 0 The register was read successfully.
+ * @return A negative errno value from the transfer path on failure.
+ */
+static int m95p_spi_read_status_register(union m95p_status_register_t* status) {
 	uint8_t command = m95p_instruction_RDSR;
 	uint8_t value;
-	mp95p_spi_read(&command, 1, &value, 1);
+	int ret = mp95p_spi_read(&command, 1, &value, 1);
+
+	if (ret != 0) {
+		return ret;
+	}
 	status->value = value;
+	return 0;
 }
 
-static inline void
-m95p_spi_read_configuration_safety_register(struct m95p_configuration_safety_registers_t* config) {
+/**
+ * @brief Read the configuration and safety registers.
+ * @details Sends RDCR and maps its first response byte to the configuration
+ *          register and second response byte to the safety register. The caller
+ *          must own the shared SPI bus.
+ * @param config Destination for both register images.
+ * @retval 0 Both bytes were read successfully.
+ * @return A negative errno value from the transfer path on failure.
+ */
+static int m95p_spi_read_configuration_safety_register(
+	struct m95p_configuration_safety_registers_t* config) {
 	uint8_t buffer[2];
 	uint8_t command = m95p_instruction_RDCR;
-	mp95p_spi_read(&command, 1, buffer, 2);
+	int ret = mp95p_spi_read(&command, 1, buffer, 2);
+
+	if (ret != 0) {
+		return ret;
+	}
 	config->configuration_register.value = buffer[0];
 	config->safety_register.value = buffer[1];
+	return 0;
 }
 
-static inline void m95p_device_clear_safety_flags() {
+/**
+ * @brief Clear volatile M95P safety flags.
+ * @details Sends CLRSF. The caller must own the shared SPI bus.
+ * @retval 0 The command was transmitted successfully.
+ * @return A negative errno value from the transfer path on failure.
+ */
+static int m95p_device_clear_safety_flags(void) {
 	uint8_t command = m95p_instruction_CLRSF;
-	mp95p_spi_write(&command, 1, NULL, 0);
+	return mp95p_spi_write(&command, 1, NULL, 0);
 }
 
-static inline void m95p_device_write_status_and_configuration_register(
+/**
+ * @brief Write the status register and optionally the configuration register.
+ * @details Sends WRSR. When @p bStatusOnly is false, the configuration byte is
+ *          included after the status byte. The caller must issue WREN first and
+ *          must own the shared SPI bus.
+ * @param statusRegister Raw status-register image to write.
+ * @param configurationRegister Raw configuration-register image to write.
+ * @param bStatusOnly true to write only status; false to include configuration.
+ * @retval 0 The command was transmitted successfully.
+ * @return A negative errno value from the transfer path on failure.
+ */
+static int m95p_device_write_status_and_configuration_register(
 	union m95p_status_register_t statusRegister,
 	union m95p_configuration_register_t configurationRegister,
 	bool bStatusOnly) {
@@ -267,109 +489,213 @@ static inline void m95p_device_write_status_and_configuration_register(
 		buffer[3] = 0x00;
 		size += 1;
 	}
-	mp95p_spi_write(&command, 1, buffer, size);
+	return mp95p_spi_write(&command, 1, buffer, size);
 }
 
-static inline void m95p_read_jedec_id(union m95p_jedec_id_t* id) {
-	uint8_t command[4];
-	m95p_command_with_address(command, m95p_instruction_RDID, 0);
-	mp95p_spi_read(command, 4, id->data, 3);
+/**
+ * @brief Read the three-byte JEDEC device identifier.
+ * @details Sends JEDID and preserves the device's receive-byte order. The caller
+ *          must own the shared SPI bus.
+ * @param id Destination for manufacturer, family, and density bytes.
+ * @retval 0 All identification bytes were read successfully.
+ * @return A negative errno value from the transfer path on failure.
+ */
+static int m95p_read_jedec_id(union m95p_jedec_id_t* id) {
+	uint8_t command = m95p_instruction_JEDID;
+	return mp95p_spi_read(&command, 1, id->data, sizeof(id->data));
 }
 
-static inline void m95p_device_reset(void) {
+/**
+ * @brief Execute the M95P software-reset command sequence.
+ * @details Sends RSTEN followed by RESET with the required instruction spacing.
+ *          The caller must own the shared SPI bus.
+ * @retval 0 Both reset commands were transmitted successfully.
+ * @return A negative errno value from the transfer path on failure.
+ */
+static int m95p_device_reset(void) {
 	uint8_t command = m95p_instruction_RSTEN;
-	mp95p_spi_write(&command, 1, NULL, 0);
+	int ret = mp95p_spi_write(&command, 1, NULL, 0);
+
+	if (ret != 0) {
+		return ret;
+	}
 	command = m95p_instruction_RESET;
 	for (int i = 10; i > 0; i--) {
 		__NOP();
 	}
-	mp95p_spi_write(&command, 1, NULL, 0);
+	return mp95p_spi_write(&command, 1, NULL, 0);
 }
 
-static inline bool m95p_device_is_busy(void) {
+/**
+ * @brief Read the write-in-progress state from status-register WIP.
+ * @details The caller must own the shared SPI bus.
+ * @param busy Receives true while a modify or power-up operation is active.
+ * @retval 0 The status register was read and @p busy was updated.
+ * @return A negative errno value from the transfer path on failure.
+ */
+static int m95p_device_is_busy(bool* busy) {
 	union m95p_status_register_t status;
-	m95p_spi_read_status_register(&status);
-	return status.bits.WIP != 0;
+	int ret = m95p_spi_read_status_register(&status);
+
+	if (ret == 0) {
+		*busy = status.bits.WIP != 0;
+	}
+	return ret;
 }
 
-static inline bool m95p_device_is_error(void) {
+/**
+ * @brief Check the safety register for program or erase failures.
+ * @details Reports the logical OR of PRF and ERF. The caller must own the
+ *          shared SPI bus.
+ * @param error Receives true when either failure flag is asserted.
+ * @retval 0 The safety register was read and @p error was updated.
+ * @return A negative errno value from the transfer path on failure.
+ */
+static int m95p_device_is_error(bool* error) {
 	struct m95p_configuration_safety_registers_t config;
-	m95p_spi_read_configuration_safety_register(&config);
-	return (config.safety_register.bits.ERF != 0) || (config.safety_register.bits.PRF != 0);
+	int ret = m95p_spi_read_configuration_safety_register(&config);
+
+	if (ret == 0) {
+		*error = (config.safety_register.bits.ERF != 0) || (config.safety_register.bits.PRF != 0);
+	}
+	return ret;
 }
 
-static inline void m95p_device_clear_error(void) {
-	m95p_device_clear_safety_flags();
+/**
+ * @brief Clear program and erase failure state after it has been observed.
+ * @details Delegates to the CLRSF helper. The caller must own the shared bus.
+ * @retval 0 Safety flags were cleared.
+ * @return A negative errno value from the transfer path on failure.
+ */
+static int m95p_device_clear_error(void) {
+	return m95p_device_clear_safety_flags();
 }
 
-static inline void m95p_device_wait_until_not_busy(void) {
-	bool busy = m95p_device_is_busy();
-	bool error;
-	while (busy != false) {
+/**
+ * @brief Poll status-register WIP until the device becomes idle.
+ * @details This helper does not inspect or clear safety flags and is therefore
+ *          suitable immediately after reset. The caller must own the bus.
+ * @retval 0 The device became idle.
+ * @return A negative errno value when status polling fails.
+ */
+static int m95p_device_wait_while_busy(void) {
+	bool busy;
+	int ret = m95p_device_is_busy(&busy);
+
+	while ((ret == 0) && busy) {
 		__NOP();
-		busy = m95p_device_is_busy();
+		ret = m95p_device_is_busy(&busy);
 	}
-	error = m95p_device_is_error();
-	if (error != false) {
-		m95p_device_clear_error();
-	}
+	return ret;
 }
 
-static inline bool m95p_device_is_write_protected(void) {
+/**
+ * @brief Wait for idle and validate the preceding modify operation.
+ * @details After WIP clears, reads PRF and ERF. Failure flags are cleared to
+ *          leave the device usable, but the helper returns -EIO so the failed
+ *          operation is not reported as successful.
+ * @retval 0 The device became idle without a program or erase failure.
+ * @retval -EIO The device reported PRF or ERF.
+ * @return Another negative errno value when polling or flag clearing fails.
+ */
+static int m95p_device_wait_until_not_busy(void) {
+	int ret = m95p_device_wait_while_busy();
+
+	if (ret != 0) {
+		return ret;
+	}
+
+	bool error;
+	ret = m95p_device_is_error(&error);
+	if ((ret == 0) && error) {
+		int clear_ret = m95p_device_clear_error();
+
+		if (clear_ret != 0) {
+			return clear_ret;
+		}
+		LOG_ERR("M95P reported a failed program or erase operation");
+		return -EIO;
+	}
+	return ret;
+}
+
+/**
+ * @brief Read status-register write-disable state.
+ * @details Maps status-register SRWD to a boolean. This does not report BP
+ *          array protection. The caller must own the shared SPI bus.
+ * @param write_protected Receives true when SRWD is asserted.
+ * @retval 0 The status register was read successfully.
+ * @return A negative errno value from the transfer path on failure.
+ */
+static int m95p_device_is_write_protected(bool* write_protected) {
 	union m95p_status_register_t status;
-	m95p_spi_read_status_register(&status);
-	return status.bits.SRWD != 0;
+	int ret = m95p_spi_read_status_register(&status);
+
+	if (ret == 0) {
+		*write_protected = status.bits.SRWD != 0;
+	}
+	return ret;
 }
 
 bool m95p_init(void* arg) {
 	(void) arg;
-	if (!m95p.initialized) {
-		if (!sys_spi_is_ready(&m95p_spi)) {
-			LOG_ERR("SYS_SPI device not ready");
-			return -ENODEV;
-		}
+	if (m95p.initialized) {
+		return true;
+	}
 
-		if (!M95P_SPI_LOCK(NULL, NULL, M95P_SPI_TIMEOUT)) {
-			LOG_ERR("Failed to lock SYS_SPI");
-			return false;
-		}
+	if (!sys_spi_is_ready(&m95p.device)) {
+		LOG_ERR("SYS_SPI device not ready");
+		return false;
+	}
+	if (!gpio_is_ready_dt(&m95p.cs_gpio)) {
+		LOG_ERR("M95P chip-select GPIO not ready");
+		return false;
+	}
 
-		m95p.spi_driver = &m95p_spi;
-		m95p.spi_config = &m95p_spi.config;
+	int ret = gpio_pin_configure_dt(&m95p.cs_gpio, GPIO_OUTPUT_INACTIVE);
+	if (ret != 0) {
+		LOG_ERR("Failed to configure M95P chip-select GPIO (%d)", ret);
+		return false;
+	}
+	if (!m95p_bus_lock()) {
+		return false;
+	}
 
-		//		m95p_deep_power_down_exit();
-		m95p_device_reset();
-		for (int ii = 0; ii < 10000; ii++) {
+	ret = m95p_device_reset();
+	if (ret == 0) {
+		for (int i = 0; i < 10000; i++) {
 			__NOP();
 		}
-		//---------------------------------------------------------------------
-		// first read the device type information
-		m95p_read_jedec_id(&(m95p.jedec_id));
-		if (m95p.jedec_id.fields.manufacturer_id != M95P_MANUFACTURER_ID ||
-			m95p.jedec_id.fields.memory_type != M95P_FAMILY_CODE ||
-			m95p.jedec_id.fields.capacity != M95P_MEMORY_DENSITY) {
-			LOG_ERR("M95P JEDEC identification is invalid!\r\n");
-			assert(false);
-		}
-		//---------------------------------------------------------------------
-		// now read the unique identifier
-		//---------------------------------------------------------------------
-		// if it is needed further configuration can be transmitted to the
-		// device here. For now, we ignore these, and just indicate the device
-		// is configured and exit the function.
-		//---------------------------------------------------------------------
-		// enable writing to the device
-		m95p_spi_write_enable();
-
-		// clear any pending error flags
-		m95p_device_clear_error();
-		m95p.initialized = true;
-		if (!M95P_SPI_UNLOCK(NULL)) {
-			m95p.initialized = false;
-			return false;
-		}
+		ret = m95p_device_wait_while_busy();
 	}
-	return true;
+	if (ret == 0) {
+		ret = m95p_read_jedec_id(&m95p.jedec_id);
+	}
+	if ((ret == 0) && ((m95p.jedec_id.fields.manufacturer_id != M95P_MANUFACTURER_ID) ||
+					   (m95p.jedec_id.fields.memory_type != M95P_FAMILY_CODE) ||
+					   (m95p.jedec_id.fields.capacity != M95P_MEMORY_DENSITY))) {
+		LOG_ERR("Invalid M95P JEDEC ID: %02x %02x %02x (expected %02x %02x %02x)",
+				m95p.jedec_id.data[0],
+				m95p.jedec_id.data[1],
+				m95p.jedec_id.data[2],
+				M95P_MANUFACTURER_ID,
+				M95P_FAMILY_CODE,
+				M95P_MEMORY_DENSITY);
+		ret = -ENODEV;
+	}
+	if (ret == 0) {
+		ret = m95p_device_clear_error();
+	}
+
+	if (ret != 0) {
+		LOG_ERR("M95P initialization failed (%d)", ret);
+	}
+	bool success = (ret == 0);
+	if (!m95p_bus_unlock()) {
+		success = false;
+	}
+	m95p.initialized = success;
+	return success;
 }
 
 bool m95p_is_ready(void) {
@@ -381,93 +707,184 @@ union m95p_jedec_id_t m95p_get_jedec_id(void) {
 	return m95p.jedec_id;
 }
 
-static inline void m95p_device_chip_erase(void) {
+/**
+ * @brief Erase the complete M95P memory array.
+ * @details Waits for idle, sends WREN and CHER, then waits for completion and
+ *          validates the safety flags. The caller must own the shared SPI bus.
+ * @retval 0 Chip erase completed without a device-reported failure.
+ * @return A negative errno value from a command, poll, or safety check.
+ */
+static int m95p_device_chip_erase(void) {
 	uint8_t command = m95p_instruction_CHER;
-	assert(m95p.initialized);
-	// --------------------------------------------------------------------------------------------
-	// wait till not busy
-	m95p_device_wait_until_not_busy();
-	m95p_spi_write_enable();
-	// start erase
-	mp95p_spi_write(&command, 1, NULL, 0);
-	// wait till it ends
-	m95p_device_wait_until_not_busy();
+	int ret = m95p_device_wait_until_not_busy();
+
+	if (ret == 0) {
+		ret = m95p_spi_write_enable();
+	}
+	if (ret == 0) {
+		ret = mp95p_spi_write(&command, 1, NULL, 0);
+	}
+	if (ret == 0) {
+		ret = m95p_device_wait_until_not_busy();
+	}
+	return ret;
 }
 
-static inline void m95p_device_block_erase(uint32_t address) {
+/**
+ * @brief Erase one physical 64-Kbyte block at a byte address.
+ * @details Sends BKER after WREN and validates completion. The caller must own
+ *          the shared SPI bus and provide an aligned, validated address.
+ * @param address Byte address within the target block.
+ * @retval 0 Block erase completed without a device-reported failure.
+ * @return A negative errno value from a command, poll, or safety check.
+ */
+static int m95p_device_block_erase(uint32_t address) {
 	uint8_t command[4];
-	assert(m95p.initialized);
-	//	address /= M95P_PAGE_SIZE;
 	m95p_command_with_address(command, m95p_instruction_BKER, address);
-	// wait till not busy
-	m95p_device_wait_until_not_busy();
-	m95p_spi_write_enable();
-	// start erase
-	mp95p_spi_write(command, 4, NULL, 0);
-	// wait till it ends
-	m95p_device_wait_until_not_busy();
+	int ret = m95p_device_wait_until_not_busy();
+
+	if (ret == 0) {
+		ret = m95p_spi_write_enable();
+	}
+	if (ret == 0) {
+		ret = mp95p_spi_write(command, sizeof(command), NULL, 0);
+	}
+	if (ret == 0) {
+		ret = m95p_device_wait_until_not_busy();
+	}
+	return ret;
 }
 
-static inline void m95p_device_page_erase(uint32_t address) {
+/**
+ * @brief Erase one 512-byte page at a byte address.
+ * @details Sends PGER after WREN and validates completion. The caller must own
+ *          the shared SPI bus and provide an aligned, validated address.
+ * @param address Byte address within the target page.
+ * @retval 0 Page erase completed without a device-reported failure.
+ * @return A negative errno value from a command, poll, or safety check.
+ */
+static int m95p_device_page_erase(uint32_t address) {
 	uint8_t command[4];
-	assert(m95p.initialized);
-
 	m95p_command_with_address(command, m95p_instruction_PGER, address);
-	// wait till not busy
-	m95p_device_wait_until_not_busy();
-	m95p_spi_write_enable();
-	// start erase
-	mp95p_spi_write(command, 4, NULL, 0);
-	// wait till it ends
-	m95p_device_wait_until_not_busy();
+	int ret = m95p_device_wait_until_not_busy();
+
+	if (ret == 0) {
+		ret = m95p_spi_write_enable();
+	}
+	if (ret == 0) {
+		ret = mp95p_spi_write(command, sizeof(command), NULL, 0);
+	}
+	if (ret == 0) {
+		ret = m95p_device_wait_until_not_busy();
+	}
+	return ret;
+}
+
+/**
+ * @brief Program erased bytes within one 512-byte page.
+ * @details Sends PGPR after WREN and validates completion. PGPR does not erase
+ *          existing contents. The caller must own the shared SPI bus.
+ * @param address Starting byte address in the target page.
+ * @param data Bytes to program.
+ * @param size Number of bytes, already validated to fit one page.
+ * @retval 0 Programming completed without a device-reported failure.
+ * @return A negative errno value from a command, poll, or safety check.
+ */
+static int m95p_device_program_page(uint32_t address, const uint8_t* data, size_t size) {
+	uint8_t command[4];
+	m95p_command_with_address(command, m95p_instruction_PGPR, address);
+	int ret = m95p_device_wait_until_not_busy();
+
+	if (ret == 0) {
+		ret = m95p_spi_write_enable();
+	}
+	if (ret == 0) {
+		ret = mp95p_spi_write(command, sizeof(command), data, size);
+	}
+	if (ret == 0) {
+		ret = m95p_device_wait_until_not_busy();
+	}
+	return ret;
+}
+
+/**
+ * @brief Erase and write bytes within one 512-byte page.
+ * @details Sends PGWR after WREN and validates completion. The caller must own
+ *          the shared SPI bus.
+ * @param address Starting byte address in the target page.
+ * @param data Bytes to write.
+ * @param size Number of bytes, already validated to fit one page.
+ * @retval 0 Page write completed without a device-reported failure.
+ * @return A negative errno value from a command, poll, or safety check.
+ */
+static int m95p_device_page_write(uint32_t address, const uint8_t* data, size_t size) {
+	uint8_t command[4];
+	m95p_command_with_address(command, m95p_instruction_PGWR, address);
+	int ret = m95p_device_wait_until_not_busy();
+
+	if (ret == 0) {
+		ret = m95p_spi_write_enable();
+	}
+	if (ret == 0) {
+		ret = mp95p_spi_write(command, sizeof(command), data, size);
+	}
+	if (ret == 0) {
+		ret = m95p_device_wait_until_not_busy();
+	}
+	return ret;
+}
+
+/**
+ * @brief Read bytes from the memory array.
+ * @details Waits for the device to become idle, sends READ with a 24-bit byte
+ *          address, and receives @p size bytes. The caller must own the bus.
+ * @param address Starting byte address.
+ * @param buffer Destination buffer.
+ * @param size Number of bytes to read.
+ * @retval 0 The complete payload was received.
+ * @return A negative errno value from polling or the transfer path.
+ */
+static int m95p_device_read(uint32_t address, uint8_t* buffer, size_t size) {
+	uint8_t command[4];
+	int ret = m95p_device_wait_until_not_busy();
+
+	if (ret != 0) {
+		return ret;
+	}
+	m95p_command_with_address(command, m95p_instruction_READ, address);
+	return mp95p_spi_read(command, sizeof(command), buffer, size);
+}
+
+/**
+ * @brief Validate a byte range against the complete M95P array.
+ * @details Uses subtraction-based bounds checking to avoid address-plus-size
+ *          integer overflow.
+ * @param address Starting byte address.
+ * @param size Number of bytes in the range.
+ * @retval true The complete range lies within the array.
+ * @retval false The size or end address exceeds the array.
+ */
+static bool m95p_range_valid(uint32_t address, size_t size) {
+	return (size <= M95P_SIZE) && (address <= (M95P_SIZE - size));
 }
 
 bool m95p_program_page(uint32_t page, const void* data, size_t size) {
-	uint8_t command[4];
-	uint32_t address = page * M95P_PAGE_SIZE;
-	assert(m95p.spi_driver != NULL);
-	// Lock SPI interface
-	bool bRet = M95P_SPI_LOCK(&m95p, &(m95p.spi_config), M95P_SPI_TIMEOUT);
-	if (bRet == false) {
+	if (!m95p.initialized || (data == NULL) || (size == 0) || (size > SYS_MEMORY_PAGE_SIZE) ||
+		(page >= SYS_MEMORY_PAGE_COUNT)) {
 		return false;
 	}
-	// --------------------------------------------------------------------------------------------
-	// wait till not busy
-	m95p_device_wait_until_not_busy();
-	m95p_spi_write_enable();
-	// start write
-	m95p_command_with_address(command, m95p_instruction_PGPR, address);
-	mp95p_spi_write(command, 4, data, size);
-	// wait till it ends
-	m95p_device_wait_until_not_busy();
-	// --------------------------------------------------------------------------------------------
-	M95P_SPI_UNLOCK(&m95p);
-	return true;
-}
+	if (!m95p_bus_lock()) {
+		return false;
+	}
 
-static inline void m95p_device_page_write(uint32_t address, const uint8_t* data, size_t size) {
-	// wait till not busy
-	uint8_t command[4];
-	assert(m95p.spi_driver != NULL);
-	//	address /= M95P_PAGE_SIZE;
-	m95p_device_wait_until_not_busy();
-	m95p_spi_write_enable();
-	// start write
-	m95p_command_with_address(command, m95p_instruction_PGWR, address);
-	mp95p_spi_write(command, 4, data, size);
-	// wait till it ends
-	m95p_device_wait_until_not_busy();
-}
-
-static inline void m95p_device_read(uint32_t address, uint8_t* buffer, size_t size) {
-	uint8_t command[4];
-	assert(m95p.spi_driver != NULL);
-	// wait till previous operation ends
-	m95p_device_wait_until_not_busy();
-	m95p_command_with_address(command, m95p_instruction_READ, address);
-	mp95p_spi_read(command, 4, buffer, size);
-	// wait till it ends
-	m95p_device_wait_until_not_busy();
+	int ret = m95p_device_program_page(page * SYS_MEMORY_PAGE_SIZE, data, size);
+	if (ret != 0) {
+		LOG_ERR("M95P page program failed (%d)", ret);
+	}
+	if (!m95p_bus_unlock()) {
+		return false;
+	}
+	return ret == 0;
 }
 
 size_t m95p_get_size(void) {
@@ -520,229 +937,287 @@ size_t m95p_get_golden_section_sector_count(void) {
 }
 
 bool m95p_write_sector(uint32_t sector, const void* data, size_t size) {
-	// M95P sector write is not needed since we can perform page level erase and program
-	// instructions THUS: Sector erase actually performs page erase
-	assert(m95p.spi_driver != NULL);
-	uint32_t address = sector * SYS_MEMORY_PAGE_SIZE;
-	// Lock SPI interface
-	bool bRet = M95P_SPI_LOCK(&m95p, &(m95p.spi_config), M95P_SPI_TIMEOUT);
-	if (bRet == false) {
+	if (!m95p.initialized || (data == NULL) || (size == 0) || (size > SYS_MEMORY_PAGE_SIZE) ||
+		(sector >= m95p_get_sector_count())) {
 		return false;
 	}
-	// --------------------------------------------------------------------------------------------
-	m95p_device_page_write(address, data, size);
-	// --------------------------------------------------------------------------------------------
-	M95P_SPI_UNLOCK(&m95p);
-	return true;
+	if (!m95p_bus_lock()) {
+		return false;
+	}
+
+	int ret = m95p_device_page_write(sector * SYS_MEMORY_PAGE_SIZE, data, size);
+	if (ret != 0) {
+		LOG_ERR("M95P sector write failed (%d)", ret);
+	}
+	if (!m95p_bus_unlock()) {
+		return false;
+	}
+	return ret == 0;
 }
 
 bool m95p_read(uint32_t address, void* data, size_t size) {
-	assert(m95p.spi_driver != NULL);
-	// Lock SPI interface
-	bool bRet = M95P_SPI_LOCK(&m95p, &(m95p.spi_config), M95P_SPI_TIMEOUT);
-	if (bRet == false) {
+	if (!m95p.initialized || (data == NULL) || (size == 0) || !m95p_range_valid(address, size)) {
 		return false;
 	}
-	// --------------------------------------------------------------------------------------------
-	m95p_device_read(address, data, size);
-	// --------------------------------------------------------------------------------------------
-	M95P_SPI_UNLOCK(&m95p);
-	return true;
+	if (!m95p_bus_lock()) {
+		return false;
+	}
+
+	int ret = m95p_device_read(address, data, size);
+	if (ret != 0) {
+		LOG_ERR("M95P read failed (%d)", ret);
+	}
+	if (!m95p_bus_unlock()) {
+		return false;
+	}
+	return ret == 0;
 }
 
 bool m95p_erase_sector(uint32_t sector) {
-	// M95P sector erase is not needed since we can perform page level erase and program
-	// instructions THUS: Sector erase actually performs page erase
-	assert(m95p.spi_driver != NULL);
-	// Lock SPI interface
-	bool bRet = M95P_SPI_LOCK(&m95p, &(m95p.spi_config), M95P_SPI_TIMEOUT);
-	if (bRet == false) {
+	if (!m95p.initialized || (sector >= m95p_get_sector_count())) {
 		return false;
 	}
-	// --------------------------------------------------------------------------------------------
-	m95p_device_page_erase(sector * SYS_MEMORY_PAGE_SIZE);
-	// --------------------------------------------------------------------------------------------
-	M95P_SPI_UNLOCK(&m95p);
-	return true;
+	if (!m95p_bus_lock()) {
+		return false;
+	}
+
+	int ret = m95p_device_page_erase(sector * SYS_MEMORY_PAGE_SIZE);
+	if (ret != 0) {
+		LOG_ERR("M95P sector erase failed (%d)", ret);
+	}
+	if (!m95p_bus_unlock()) {
+		return false;
+	}
+	return ret == 0;
 }
 
 bool m95p_erase_block(uint32_t block) {
-	assert(m95p.spi_driver != NULL);
-	// Lock SPI interface
-	bool bRet = M95P_SPI_LOCK(&m95p, &(m95p.spi_config), M95P_SPI_TIMEOUT);
-	if (bRet == false) {
+	if (!m95p.initialized || (block >= m95p_get_block_count())) {
 		return false;
 	}
-	// --------------------------------------------------------------------------------------------
-	m95p_device_block_erase(block * SYS_MEMORY_BLOCK_SIZE);
-	// --------------------------------------------------------------------------------------------
-	M95P_SPI_UNLOCK(&m95p);
-	return true;
+	if (!m95p_bus_lock()) {
+		return false;
+	}
+
+	int ret = m95p_device_block_erase(block * SYS_MEMORY_BLOCK_SIZE);
+	if (ret != 0) {
+		LOG_ERR("M95P block erase failed (%d)", ret);
+	}
+	if (!m95p_bus_unlock()) {
+		return false;
+	}
+	return ret == 0;
 }
 
 bool m95p_reset_to_factory_defaults(void) {
-	assert(m95p.spi_driver != NULL);
-	// Lock SPI interface
-	bool bRet = M95P_SPI_LOCK(&m95p, &(m95p.spi_config), M95P_SPI_TIMEOUT);
-	if (bRet == false) {
+	if (!m95p.initialized || !m95p_bus_lock()) {
 		return false;
 	}
-	// --------------------------------------------------------------------------------------------
-	union m95p_status_register_t statusRegister = {.value = 0};
-	struct m95p_configuration_safety_registers_t configurationSafetyRegisters = {0};
-	m95p_spi_read_status_register(&statusRegister);
-	statusRegister.bits.SRWD = 0;
-	statusRegister.bits.BP = 0;
 
-	m95p_spi_read_configuration_safety_register(&configurationSafetyRegisters);
-	configurationSafetyRegisters.configuration_register.bits.LID = 0;
+	union m95p_status_register_t status = {.value = 0};
+	struct m95p_configuration_safety_registers_t config = {0};
+	int ret = m95p_spi_read_status_register(&status);
 
-	m95p_spi_write_enable();
-	m95p_device_write_status_and_configuration_register(statusRegister,
-														configurationSafetyRegisters
-															.configuration_register,
-														false);
-	m95p_device_wait_until_not_busy();
-	m95p_device_chip_erase();
-	// --------------------------------------------------------------------------------------------
-	M95P_SPI_UNLOCK(&m95p);
-	return true;
+	if (ret == 0) {
+		status.bits.SRWD = 0;
+		status.bits.BP = 0;
+		ret = m95p_spi_read_configuration_safety_register(&config);
+	}
+	if (ret == 0) {
+		config.configuration_register.bits.LID = 0;
+		ret = m95p_spi_write_enable();
+	}
+	if (ret == 0) {
+		ret = m95p_device_write_status_and_configuration_register(status,
+																  config.configuration_register,
+																  false);
+	}
+	if (ret == 0) {
+		ret = m95p_device_wait_until_not_busy();
+	}
+	if (ret == 0) {
+		ret = m95p_device_chip_erase();
+	}
+	if (ret != 0) {
+		LOG_ERR("M95P factory reset failed (%d)", ret);
+	}
+	if (!m95p_bus_unlock()) {
+		return false;
+	}
+	return ret == 0;
 }
 
 bool m95p_reset(void) {
-	assert(m95p.spi_driver != NULL);
-	// Lock SPI interface
-	bool bRet = M95P_SPI_LOCK(&m95p, &(m95p.spi_config), M95P_SPI_TIMEOUT);
-	if (bRet == false) {
+	if (!m95p.initialized || !m95p_bus_lock()) {
 		return false;
 	}
-	// --------------------------------------------------------------------------------------------
-	m95p_device_reset();
-	// --------------------------------------------------------------------------------------------
-	M95P_SPI_UNLOCK(&m95p);
-	return true;
+
+	int ret = m95p_device_reset();
+	if (ret != 0) {
+		LOG_ERR("M95P reset failed (%d)", ret);
+	}
+	if (!m95p_bus_unlock()) {
+		return false;
+	}
+	return ret == 0;
 }
 
 bool m95p_set_write_protection_state(bool bWriteProtect) {
-	assert(m95p.spi_driver != NULL);
-	// Lock SPI interface
-	bool bRet = M95P_SPI_LOCK(&m95p, &(m95p.spi_config), M95P_SPI_TIMEOUT);
-	if (bRet == false) {
+	if (!m95p.initialized || !m95p_bus_lock()) {
 		return false;
 	}
-	union m95p_status_register_t statusRegister = {.value = 0};
-	m95p_spi_read_status_register(&statusRegister);
 
-	bool prevState = statusRegister.bits.SRWD != 0;
-	if (prevState != bWriteProtect) {
-		statusRegister.bits.SRWD = bWriteProtect == false ? 0 : 1;
-		// write enable
-		m95p_device_wait_until_not_busy();
-		m95p_spi_write_enable();
-		// write the status register
-		m95p_device_write_status_and_configuration_register(statusRegister,
-															(union m95p_configuration_register_t) {
-																.value = 0},
-															true);
-		m95p_device_wait_until_not_busy();
+	union m95p_status_register_t status = {.value = 0};
+	int ret = m95p_spi_read_status_register(&status);
+
+	if ((ret == 0) && ((status.bits.SRWD != 0) != bWriteProtect)) {
+		status.bits.SRWD = bWriteProtect;
+		ret = m95p_device_wait_until_not_busy();
+		if (ret == 0) {
+			ret = m95p_spi_write_enable();
+		}
+		if (ret == 0) {
+			ret = m95p_device_write_status_and_configuration_register(
+				status,
+				(union m95p_configuration_register_t) {.value = 0},
+				true);
+		}
+		if (ret == 0) {
+			ret = m95p_device_wait_until_not_busy();
+		}
 	}
-
-	M95P_SPI_UNLOCK(&m95p);
-	return true;
+	if (ret != 0) {
+		LOG_ERR("M95P write-protection update failed (%d)", ret);
+	}
+	if (!m95p_bus_unlock()) {
+		return false;
+	}
+	return ret == 0;
 }
 
 bool m95p_is_write_protected(void) {
-	assert(m95p.spi_driver != NULL);
-	// Lock SPI interface
-	bool bRet = M95P_SPI_LOCK(&m95p, &(m95p.spi_config), M95P_SPI_TIMEOUT);
-	assert(bRet != false);
-	// --------------------------------------------------------------------------------------------
-	bool wpState = m95p_device_is_write_protected();
-	// --------------------------------------------------------------------------------------------
-	M95P_SPI_UNLOCK(&m95p);
-	return wpState;
+	if (!m95p.initialized || !m95p_bus_lock()) {
+		return false;
+	}
+
+	bool write_protected = false;
+	int ret = m95p_device_is_write_protected(&write_protected);
+	if (ret != 0) {
+		LOG_ERR("Failed to read M95P write protection (%d)", ret);
+	}
+	if (!m95p_bus_unlock()) {
+		return false;
+	}
+	return (ret == 0) && write_protected;
 }
 
 uint32_t m95p_write_protected_blocks_count(void) {
-	assert(m95p.spi_driver != NULL);
-	// Lock SPI interface
-	bool bRet = M95P_SPI_LOCK(&m95p, &(m95p.spi_config), M95P_SPI_TIMEOUT);
-	if (bRet == false) {
+	if (!m95p.initialized || !m95p_bus_lock()) {
+		return 0;
+	}
+
+	union m95p_status_register_t status = {.value = 0};
+	int ret = m95p_spi_read_status_register(&status);
+	uint32_t count = (status.bits.BP == 0) ? 0U : BIT(status.bits.BP - 1U);
+
+	if (ret != 0) {
+		LOG_ERR("Failed to read M95P protected block count (%d)", ret);
+	}
+	if (!m95p_bus_unlock()) {
+		return 0U;
+	}
+	return (ret == 0) ? count : 0U;
+}
+
+/**
+ * @brief Encode and apply top-of-array block protection.
+ * @details Converts a supported power-of-two block count to BP[2:0], forces
+ *          TB=0 for top protection, writes the status register, and validates
+ *          completion. The public legacy API discards this result while golden
+ *          section helpers propagate it.
+ * @param count Number of 64-Kbyte blocks to protect, or zero to unprotect.
+ * @param permanent Reserved for a future permanent-lock policy; currently ignored.
+ * @retval true The requested protection state was applied or already active.
+ * @retval false Validation, transfer, or shared-bus ownership failed.
+ */
+static bool m95p_set_protected_blocks(uint32_t count, bool permanent) {
+	(void) permanent;
+	uint8_t bp = 0;
+
+	if (count > 0) {
+		for (uint8_t candidate = 1; candidate <= 7; candidate++) {
+			if (BIT(candidate - 1U) == count) {
+				bp = candidate;
+				break;
+			}
+		}
+		if ((bp == 0) || (count > SYS_MEMORY_MAX_PROTECTION_BLOCK_COUNT)) {
+			LOG_ERR("Unsupported M95P protected block count: %u", count);
+			return false;
+		}
+	}
+	if (!m95p.initialized || !m95p_bus_lock()) {
 		return false;
 	}
-	// wait till previous operation ends
-	union m95p_status_register_t statusRegister = {.value = 0};
-	m95p_spi_read_status_register(&statusRegister);
 
-	unsigned int bpValue = statusRegister.bits.BP;
-	uint32_t wpBlocksCount = 1 << (bpValue - 1);
+	union m95p_status_register_t status = {.value = 0};
+	int ret = m95p_spi_read_status_register(&status);
 
-	M95P_SPI_UNLOCK(&m95p);
-	return wpBlocksCount;
-	;
+	if ((ret == 0) && (status.bits.BP != bp)) {
+		status.bits.BP = bp;
+		status.bits.TB = 0;
+		ret = m95p_device_wait_until_not_busy();
+		if (ret == 0) {
+			ret = m95p_spi_write_enable();
+		}
+		if (ret == 0) {
+			ret = m95p_device_write_status_and_configuration_register(
+				status,
+				(union m95p_configuration_register_t) {.value = 0},
+				true);
+		}
+		if (ret == 0) {
+			ret = m95p_device_wait_until_not_busy();
+		}
+	}
+	if (ret != 0) {
+		LOG_ERR("M95P block-protection update failed (%d)", ret);
+	}
+	if (!m95p_bus_unlock()) {
+		return false;
+	}
+	return ret == 0;
 }
 
 void m95p_write_protect_blocks(uint32_t count, bool permanent) {
-	(void) permanent;
-	assert(m95p.spi_driver != NULL);
-	// Lock SPI interface
-	bool bRet = M95P_SPI_LOCK(&m95p, &(m95p.spi_config), M95P_SPI_TIMEOUT);
-	assert(bRet != false);
-	union m95p_status_register_t statusRegister = {.value = 0};
-	m95p_spi_read_status_register(&statusRegister);
-
-	unsigned int prevCount = 1 << (statusRegister.bits.BP);
-
-	if (prevCount != count) {
-		unsigned int bpValue = 0;
-
-		// validate count is power of 2 and smaller than supported count
-		if (count > 0) {
-			for (unsigned int i = 1; i < 7; i++) {
-				uint32_t mask = 1 << (i - 1);
-				if (mask == count) {
-					bpValue = i;
-					break;
-				}
-			}
-			assert(bpValue != 0);
-		}
-		statusRegister.bits.BP = bpValue;
-		statusRegister.bits.TB = 0;
-		// write enable
-		m95p_device_wait_until_not_busy();
-		m95p_spi_write_enable();
-		// write the status register
-		m95p_device_write_status_and_configuration_register(statusRegister,
-															(union m95p_configuration_register_t) {
-																.value = 0},
-															true);
-		m95p_device_wait_until_not_busy();
-	}
-
-	M95P_SPI_UNLOCK(&m95p);
+	(void) m95p_set_protected_blocks(count, permanent);
 }
 
 bool m95p_is_busy(void) {
-	assert(m95p.spi_driver != NULL);
-	// Lock SPI interface
-	bool bRet = M95P_SPI_LOCK(&m95p, &(m95p.spi_config), M95P_SPI_TIMEOUT);
-	assert(bRet != false);
-	// --------------------------------------------------------------------------------------------
-	bool busy = m95p_device_is_busy();
-	// --------------------------------------------------------------------------------------------
-	M95P_SPI_UNLOCK(&m95p);
-	return busy;
-	;
+	if (!m95p.initialized || !m95p_bus_lock()) {
+		return false;
+	}
+
+	bool busy = false;
+	int ret = m95p_device_is_busy(&busy);
+	if (ret != 0) {
+		LOG_ERR("Failed to read M95P busy state (%d)", ret);
+	}
+	if (!m95p_bus_unlock()) {
+		return false;
+	}
+	return (ret == 0) && busy;
 }
 
 bool m95p_golden_section_read(uint32_t address, void* data, size_t size) {
 #if (SYS_MEMORY_GOLDEN_SECTION_SIZE == 0)
 	return false;
 #else
+	if ((size > SYS_MEMORY_GOLDEN_SECTION_SIZE) ||
+		(address > (SYS_MEMORY_GOLDEN_SECTION_SIZE - size))) {
+		return false;
+	}
 	address += SYS_MEMORY_GOLDEN_SECTION_ADDRESS_START;
-	assert((address + size) < SYS_MEMORY_SIZE);
-
 	return m95p_read(address, data, size);
 #endif
 }
@@ -751,9 +1226,10 @@ bool m95p_golden_section_program_page(uint32_t page, const void* data, size_t si
 #if (SYS_MEMORY_GOLDEN_SECTION_SIZE == 0)
 	return true;
 #else
+	if (page >= SYS_MEMORY_GOLDEN_SECTION_PAGE_COUNT) {
+		return false;
+	}
 	page += SYS_MEMORY_GOLDEN_SECTION_PAGE_START;
-	assert(((page * SYS_MEMORY_PAGE_SIZE) + size) < SYS_MEMORY_SIZE);
-
 	return m95p_write_sector(page, data, size);
 #endif
 }
@@ -762,9 +1238,10 @@ bool m95p_golden_section_erase_sector(uint32_t sector) {
 #if (SYS_MEMORY_GOLDEN_SECTION_SIZE == 0)
 	return true;
 #else
-	assert(false); // --> This must be aligned with page based erase/program of M95P
-	sector += SYS_MEMORY_GOLDEN_SECTION_SECTOR_START;
-	assert(sector < SYS_MEMORY_TOTAL_SECTOR_COUNT);
+	if (sector >= SYS_MEMORY_GOLDEN_SECTION_PAGE_COUNT) {
+		return false;
+	}
+	sector += SYS_MEMORY_GOLDEN_SECTION_PAGE_START;
 	return m95p_erase_sector(sector);
 #endif
 }
@@ -773,59 +1250,24 @@ bool m95p_golden_section_erase(void) {
 #if (SYS_MEMORY_GOLDEN_SECTION_SIZE == 0)
 	return true;
 #else
-	//    uint32_t page = SYS_MEMORY_GOLDEN_SECTION_PAGE_START;
-	//    for (int i = 0; i < SYS_MEMORY_GOLDEN_SECTION_PAGE_COUNT; i++, page++) {
-	//        bool ret = m95p_erase_sector(page);
-	//        if (ret == false) {
-	//            return false;
-	//        }
-	//    }
+	for (uint32_t page = SYS_MEMORY_GOLDEN_SECTION_PAGE_START; page < SYS_MEMORY_PAGE_COUNT;
+		 page++) {
+		if (!m95p_erase_sector(page)) {
+			return false;
+		}
+	}
 	return true;
 #endif
 }
 
 bool m95p_golden_section_is_page_in(uint32_t page) {
-	uint32_t address = page * SYS_MEMORY_PAGE_SIZE;
-	return ((address >= SYS_MEMORY_GOLDEN_SECTION_ADDRESS_START) && (address < SYS_MEMORY_SIZE))
-			   ? true
-			   : false;
+	return (page >= SYS_MEMORY_GOLDEN_SECTION_PAGE_START) && (page < SYS_MEMORY_PAGE_COUNT);
 }
 
 bool m95p_golden_section_lock(void) {
-	m95p_write_protect_blocks(SYS_MEMORY_GOLDEN_SECTION_BLOCK_COUNT, true);
-	return true;
+	return m95p_set_protected_blocks(SYS_MEMORY_GOLDEN_SECTION_BLOCK_COUNT, true);
 }
 
 bool m95p_golden_section_unlock(void) {
-	m95p_write_protect_blocks(0, false);
-	return true;
-}
-
-void test_memory() {
-#define EEPROM_SAMPLE_OFFSET 0
-#define EEPROM_SAMPLE_MAGIC 0xEE9703
-	struct perisistant_values {
-		uint32_t magic;
-		uint32_t boot_count;
-	};
-
-	if (!M95P_SPI_LOCK(NULL, NULL, M95P_SPI_TIMEOUT)) {
-		LOG_ERR("Failed to lock SYS_SPI for memory test");
-		return;
-	}
-
-	struct perisistant_values values;
-	m95p_device_read(EEPROM_SAMPLE_OFFSET, (uint8_t*) &values, sizeof(values));
-	if (values.magic != EEPROM_SAMPLE_MAGIC) {
-		values.magic = EEPROM_SAMPLE_MAGIC;
-		values.boot_count = 0;
-	}
-	values.boot_count++;
-	LOG_INF("Device booted %d times.\n", values.boot_count);
-	m95p_device_page_write(EEPROM_SAMPLE_OFFSET, (const uint8_t*) &values, sizeof(values));
-	LOG_INF("Reset the MCU to see the increasing boot counter.\n\n");
-
-	if (!M95P_SPI_UNLOCK(NULL)) {
-		LOG_ERR("Failed to unlock SYS_SPI after memory test");
-	}
+	return m95p_set_protected_blocks(0, false);
 }

@@ -21,23 +21,20 @@
 
 /**
  * @brief Expected ST manufacturer identifier.
- * @details Compared against byte 0 returned by reading identification-page
- *          address 0 with the RDID instruction.
+ * @details Compared against byte 0 returned by the JEDID instruction.
  */
 #define M95P_MANUFACTURER_ID (0x20)
 
 /**
  * @brief Expected M95P32 memory-family code.
- * @details Compared against byte 1 returned by reading identification-page
- *          address 0 with the RDID instruction.
+ * @details Compared against byte 1 returned by the JEDID instruction.
  */
 #define M95P_FAMILY_CODE (0x00)
 
 /**
  * @brief Expected M95P32 density code.
- * @details Compared against byte 2 returned by reading identification-page
- *          address 0 with the RDID instruction. Code 0x16 identifies the
- *          32-Mbit device used by this board.
+ * @details Compared against byte 2 returned by the JEDID instruction. Code
+ *          0x16 identifies the 32-Mbit device used by this board.
  */
 #define M95P_MEMORY_DENSITY (0x16)
 
@@ -181,16 +178,15 @@ struct m95p_configuration_safety_registers_t {
 
 /**
  * @brief Three-byte M95P32 identification representation used by the driver.
- * @details This software overlay represents the first three bytes read from
- *          identification-page address 0 with RDID. It is not a device
- *          register. The byte array preserves SPI receive order while the
- *          fields provide named access for device validation.
+ * @details This software overlay represents the three bytes returned by JEDID.
+ *          It is not a device register. The byte array preserves SPI receive
+ *          order while the fields provide named access for device validation.
  */
 union m95p_jedec_id_t {
 	uint8_t data[3]; /**< Identification bytes in SPI receive order. */
 	/**
 	 * @brief Named identification-byte mapping.
-	 * @details Maps bytes 0 through 2 returned by the driver's RDID transfer.
+	 * @details Maps bytes 0 through 2 returned by the driver's JEDID transfer.
 	 */
 	struct m95p_jedec_id_fields_t {
 		uint8_t manufacturer_id; /**< Byte 0; expected M95P_MANUFACTURER_ID. */

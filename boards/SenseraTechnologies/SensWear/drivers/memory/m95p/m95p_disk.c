@@ -97,11 +97,17 @@ static int m95p_disk_write(struct disk_info* disk,
 		return -EINVAL;
 	}
 
-	/* Programming is page-bounded: one logical sector == one M95P page. */
+	/*
+	 * Writes are page-bounded: one logical sector == one M95P page. The block
+	 * device has no separate erase step, and filesystems overwrite sectors in
+	 * place, so each sector must be erased and reprogrammed atomically. Use the
+	 * page-write (PGWR) path; page-program (PGPR) only programs already-erased
+	 * pages and would set the program-fail flag on any non-blank sector.
+	 */
 	for (uint32_t i = 0; i < num_sector; i++) {
 		const uint8_t* page = data_buf + (size_t) i * M95P_DISK_SECTOR_SIZE;
 
-		if (!m95p_program_page(start_sector + i, page, M95P_DISK_SECTOR_SIZE)) {
+		if (!m95p_write_sector(start_sector + i, page, M95P_DISK_SECTOR_SIZE)) {
 			return -EIO;
 		}
 	}

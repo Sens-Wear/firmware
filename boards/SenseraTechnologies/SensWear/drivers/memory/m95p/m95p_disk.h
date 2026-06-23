@@ -18,6 +18,13 @@
  * The disk is registered automatically during system init. Mounting is
  * separate: either enable @kconfig{CONFIG_SENSEWEAR_M95P_DISK_AUTOMOUNT} to
  * mount LittleFS at boot, or call m95p_fs_mount() from application code.
+ *
+ * Once mounted, the filesystem is reachable through Zephyr's native `fs_*`
+ * API. When @kconfig{CONFIG_POSIX_API} is enabled (see `prj.conf`), it is also
+ * reachable through POSIX file calls (`open`/`read`/`write`/`close`) and the C
+ * standard-library stdio API (`fopen`/`fread`/`fwrite`/`fclose`), which the
+ * libc retargets onto those POSIX calls. @kconfig{CONFIG_ZVFS_OPEN_MAX} bounds
+ * the number of simultaneously open file descriptors.
  */
 
 #ifndef SENSEWEAR_M95P_DISK_H_

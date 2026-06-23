@@ -54,7 +54,7 @@ SpacesInParentheses: false
 ReflowComments: true
 CommentPragmas: '^\\.+'
 PenaltyBreakBeforeFirstCallParameter: 1000
-PenaltyReturnTypeOnItsOwnLine: 80
+PenaltyReturnTypeOnItsOwnLine: 1000
 PenaltyBreakAssignment: 10
 PenaltyBreakComment: 1000
 ...

@@ -22,7 +22,9 @@ Features
   board sensor: MAX30208 temperature, MAX30101 PPG, or MTCH6102 touch.
 - Actuators: LP5562 LED controller and optional DRV2605 haptics daughter
   board.
-- Power and storage: BQ25180 charger, TPSM83102 regulator, M95P EEPROM.
+- Power and storage: BQ25180 charger, TPSM83102 regulator, and the M95P
+  EEPROM exposed as a LittleFS filesystem reachable through the C standard
+  library and POSIX file APIs.
 - UART logging and shell enabled by default.
 
 Project Layout
@@ -75,6 +77,27 @@ Bluetooth
 The device name is set via ``CONFIG_BT_DEVICE_NAME`` in ``prj.conf``
 (default: ``"Sense Wear"``). On boot, the firmware starts connectable
 advertising and registers the LED and IMU GATT services.
+
+Storage and Filesystem
+**********************
+
+The M95P EEPROM is registered with Zephyr's disk-access subsystem and mounted
+as a LittleFS filesystem at ``/eeprom``. The mount happens automatically at
+boot (``CONFIG_SENSEWEAR_M95P_DISK_AUTOMOUNT``); application code can also mount
+or unmount it explicitly with ``m95p_fs_mount()`` / ``m95p_fs_unmount()``.
+
+``prj.conf`` enables ``CONFIG_POSIX_API`` so the filesystem can be used through
+several layers:
+
+- Zephyr's native filesystem API (``fs_open``/``fs_read``/``fs_write``).
+- POSIX file operations (``open``/``read``/``write``/``close``).
+- The C standard-library stdio API (``fopen``/``fread``/``fwrite``/``fclose``),
+  which the libc retargets onto the POSIX calls above.
+
+``CONFIG_ZVFS_OPEN_MAX`` bounds the number of simultaneously open file
+descriptors. The M95P bring-up test (``tests/drivers/main_test_m95p.c``)
+demonstrates the POSIX file API by round-tripping a text file and a binary file
+against ``/eeprom``.
 
 Logging
 *******

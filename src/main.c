@@ -235,8 +235,6 @@ int main(void)
 
 
 	m95p_init(NULL);
-	test_memory();
-		
 
 	while (1) {
 		k_sleep(K_FOREVER);
