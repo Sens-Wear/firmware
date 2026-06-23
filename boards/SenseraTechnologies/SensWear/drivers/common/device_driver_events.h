@@ -151,7 +151,7 @@ struct device_driver_event_t {
 	uint32_t device_id; /**< Identifier of the device that produced the event. */
 	uint32_t event_id;	/**< Device-specific event code (not ::DEVICE_DRIVER_EVENT_ID_INVALID). */
 	uint32_t v_param;	/**< Inline scalar payload (event code, value, flags, ...). */
-	void* p_param;		/**< Optional pointer payload; pointee must outlive delivery. */
+	uintptr_t p_param;	/**< Optional pointer payload; pointee must outlive delivery. */
 };
 
 /**
@@ -197,7 +197,7 @@ struct k_msgq* device_driver_event_get_queue(void);
 int device_driver_event_post(uint32_t device_id,
 							 uint32_t event_id,
 							 uint32_t v_param,
-							 void* p_param,
+							 uintptr_t p_param,
 							 k_timeout_t timeout);
 
 /**
@@ -218,7 +218,7 @@ int device_driver_event_post(uint32_t device_id,
 int device_driver_event_post_isr(uint32_t device_id,
 								 uint32_t event_id,
 								 uint32_t v_param,
-								 void* p_param);
+								 uintptr_t p_param);
 
 /**
  * @brief Wait for and copy the next queued event (single consumer).

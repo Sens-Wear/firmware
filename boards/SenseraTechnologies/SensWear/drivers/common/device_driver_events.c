@@ -34,7 +34,7 @@ static struct device_manager_t {
 static int device_driver_event_enqueue(uint32_t device_id,
 									   uint32_t event_id,
 									   uint32_t v_param,
-									   void* p_param,
+									   uintptr_t p_param,
 									   k_timeout_t timeout) {
 	if (!device_driver_event_manager.ready) {
 		return -ENODEV;
@@ -82,7 +82,7 @@ struct k_msgq* device_driver_event_get_queue(void) {
 int device_driver_event_post(uint32_t device_id,
 							 uint32_t event_id,
 							 uint32_t v_param,
-							 void* p_param,
+							 uintptr_t p_param,
 							 k_timeout_t timeout) {
 	return device_driver_event_enqueue(device_id, event_id, v_param, p_param, timeout);
 }
@@ -90,7 +90,7 @@ int device_driver_event_post(uint32_t device_id,
 int device_driver_event_post_isr(uint32_t device_id,
 								 uint32_t event_id,
 								 uint32_t v_param,
-								 void* p_param) {
+								 uintptr_t p_param) {
 	return device_driver_event_enqueue(device_id, event_id, v_param, p_param, K_NO_WAIT);
 }
 
