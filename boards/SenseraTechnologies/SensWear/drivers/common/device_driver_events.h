@@ -53,7 +53,7 @@
  *
  * @section sensewear_device_driver_events_ids Device identifiers
  *
- * The @ref device_driver_event_t.device_id values come from @c device_driver_ids.h,
+ * The @ref device_driver_event_t.device_id values come from @c device_driver_dts_ids.h,
  * which is @b generated at build time from the merged Zephyr devicetree by
  * @c generate_device_driver_ids.py (wired up in @c common_drivers.cmake). The generator
  * runs at CMake @e configure time against @c build/.../zephyr/zephyr.dts, which

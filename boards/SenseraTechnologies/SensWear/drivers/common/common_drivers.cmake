@@ -25,7 +25,7 @@ execute_process(
 )
 if(NOT _sensewear_device_ids_result EQUAL 0)
 	message(FATAL_ERROR
-		"Failed to generate device_driver_ids.h from "
+		"Failed to generate device_driver_dts_ids.h from "
 		"${PROJECT_BINARY_DIR}/zephyr/zephyr.dts (exit ${_sensewear_device_ids_result})")
 endif()
 
