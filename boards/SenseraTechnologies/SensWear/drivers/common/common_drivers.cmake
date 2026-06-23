@@ -1,4 +1,33 @@
 # Common driver infrastructure (device event manager, ...).
 file(GLOB _common_src CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/*.c)
 list(APPEND BOARD_DRIVER_SOURCES ${_common_src})
+
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+set(_sensewear_device_ids_header ${CMAKE_CURRENT_BINARY_DIR}/generated/device_driver_dts_ids.h)
+set(_sensewear_device_ids_script ${CMAKE_CURRENT_LIST_DIR}/generate_device_driver_dts_ids.py)
+
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated)
+
+# Generate the header at configure time. The merged devicetree (zephyr.dts) is
+# already produced by find_package(Zephyr) before this file is included, so the
+# header always has real, DTS-derived content before any source is compiled.
+#
+# This runs purely at configure time, so it needs no build target dependency
+# (and makes no assumption about the application target name). The devicetree
+# sources are configure dependencies of the Zephyr build, so any change to the
+# devicetree triggers a reconfigure, which re-runs this generation.
+execute_process(
+	COMMAND ${Python3_EXECUTABLE} ${_sensewear_device_ids_script}
+		--input ${PROJECT_BINARY_DIR}/zephyr/zephyr.dts
+		--output ${_sensewear_device_ids_header}
+	RESULT_VARIABLE _sensewear_device_ids_result
+)
+if(NOT _sensewear_device_ids_result EQUAL 0)
+	message(FATAL_ERROR
+		"Failed to generate device_driver_ids.h from "
+		"${PROJECT_BINARY_DIR}/zephyr/zephyr.dts (exit ${_sensewear_device_ids_result})")
+endif()
+
+list(APPEND BOARD_DRIVER_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/generated)
 list(APPEND BOARD_DRIVER_INCLUDE_DIRS ${CMAKE_CURRENT_LIST_DIR})

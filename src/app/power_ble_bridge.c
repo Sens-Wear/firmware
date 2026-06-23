@@ -8,13 +8,9 @@
 #include "bluetooth/services/power/power_lbs.h"
 #include "bq25180.h"
 #include "bq27427.h"
+#include "device_driver_ids.h"
 
 #define POWER_BLE_POLL_INTERVAL_MS 2000
-
-/* TODO: replace with a centralized device-id enum once the device event
- * manager dispatch is wired up (see drivers/common/device_events.h). */
-#define POWER_BLE_DEVICE_ID_CHARGER 1u
-#define POWER_BLE_DEVICE_ID_GAUGE 2u
 
 static bool power_bridge_started;
 static bool charger_checked;
@@ -34,18 +30,15 @@ static bool have_last_charger_state;
 static bool have_last_gauge_state;
 static bool have_last_daughter_state;
 
-static void power_ble_stub_charger_state(struct power_lbs_charger_state *state)
-{
+static void power_ble_stub_charger_state(struct power_lbs_charger_state* state) {
 	memset(state, 0, sizeof(*state));
 }
 
-static void power_ble_stub_gauge_state(struct power_lbs_gauge_state *state)
-{
+static void power_ble_stub_gauge_state(struct power_lbs_gauge_state* state) {
 	memset(state, 0, sizeof(*state));
 }
 
-static void power_ble_init_optional_charger(void)
-{
+static void power_ble_init_optional_charger(void) {
 	struct bq25180_config_t charger_config;
 
 	if (charger_checked) {
@@ -55,15 +48,14 @@ static void power_ble_init_optional_charger(void)
 	charger_checked = true;
 	charger_available = false;
 
-	if (bq25180_init(POWER_BLE_DEVICE_ID_CHARGER) && bq25180_is_ready()) {
+	if (bq25180_init(BQ25180_DEVICE_ID) && bq25180_is_ready()) {
 		bq25180_get_default_lipo_usb_charger_config(&charger_config);
 		charger_config.battery_uvlo = bq25180_battery_UVLO_threshold_2V8;
 		charger_available = bq25180_config(&charger_config);
 	}
 }
 
-static void power_ble_init_optional_gauge(void)
-{
+static void power_ble_init_optional_gauge(void) {
 	struct bq27427_config_t gauge_config;
 
 	if (gauge_checked) {
@@ -73,15 +65,14 @@ static void power_ble_init_optional_gauge(void)
 	gauge_checked = true;
 	gauge_available = false;
 
-	if (bq27427_init(POWER_BLE_DEVICE_ID_GAUGE) && bq27427_is_ready()) {
+	if (bq27427_init(BQ27427_DEVICE_ID) && bq27427_is_ready()) {
 		bq27427_get_default_config(&gauge_config);
 		gauge_config.battery_capacity = 450;
 		gauge_available = bq27427_config(&gauge_config);
 	}
 }
 
-static int power_ble_get_charger_state(struct power_lbs_charger_state *state)
-{
+static int power_ble_get_charger_state(struct power_lbs_charger_state* state) {
 	union bq25180_charger_state_t charger;
 
 	if (state == NULL) {
@@ -95,12 +86,11 @@ static int power_ble_get_charger_state(struct power_lbs_charger_state *state)
 		return 0;
 	}
 
-	state->flags = (uint32_t)charger.value;
+	state->flags = (uint32_t) charger.value;
 	return 0;
 }
 
-static int power_ble_get_gauge_state(struct power_lbs_gauge_state *state)
-{
+static int power_ble_get_gauge_state(struct power_lbs_gauge_state* state) {
 	struct bq27427_battery_state_t gauge;
 
 	if (state == NULL) {
@@ -114,24 +104,22 @@ static int power_ble_get_gauge_state(struct power_lbs_gauge_state *state)
 		return 0;
 	}
 
-	state->temperature_cdec = (int16_t)gauge.temperature;
-	state->voltage_mv = (uint16_t)gauge.voltage;
-	state->average_current_ma = (int16_t)gauge.average_current;
-	state->average_power_mw = (int16_t)gauge.average_power;
-	state->state_of_charge_cdec = (uint16_t)gauge.state_of_charge;
-	state->nominal_available_capacity_mah = (uint16_t)gauge.nominal_available_capacity;
-	state->full_battery_capacity_mah = (uint16_t)gauge.full_battery_capacity;
-	state->remaining_capacity_mah = (uint16_t)gauge.remaining_capacity;
+	state->temperature_cdec = (int16_t) gauge.temperature;
+	state->voltage_mv = (uint16_t) gauge.voltage;
+	state->average_current_ma = (int16_t) gauge.average_current;
+	state->average_power_mw = (int16_t) gauge.average_power;
+	state->state_of_charge_cdec = (uint16_t) gauge.state_of_charge;
+	state->nominal_available_capacity_mah = (uint16_t) gauge.nominal_available_capacity;
+	state->full_battery_capacity_mah = (uint16_t) gauge.full_battery_capacity;
+	state->remaining_capacity_mah = (uint16_t) gauge.remaining_capacity;
 	return 0;
 }
 
-static int power_ble_get_daughter_state(struct power_lbs_daughter_state *state)
-{
+static int power_ble_get_daughter_state(struct power_lbs_daughter_state* state) {
 	return daughter_board_manager_get_status(state);
 }
 
-static void power_ble_daughter_notify_work_fn(struct k_work *work)
-{
+static void power_ble_daughter_notify_work_fn(struct k_work* work) {
 	struct power_lbs_daughter_state current;
 
 	ARG_UNUSED(work);
@@ -146,11 +134,10 @@ static void power_ble_daughter_notify_work_fn(struct k_work *work)
 
 	last_daughter_state = current;
 	have_last_daughter_state = true;
-	(void)power_lbs_notify_daughter_state(&current);
+	(void) power_lbs_notify_daughter_state(&current);
 }
 
-static void power_ble_poll_work_fn(struct k_work *work)
-{
+static void power_ble_poll_work_fn(struct k_work* work) {
 	ARG_UNUSED(work);
 
 	bool charger_enabled = atomic_get(&charger_notify_enabled);
@@ -166,7 +153,7 @@ static void power_ble_poll_work_fn(struct k_work *work)
 			if (!have_last_charger_state || current.flags != last_charger_state.flags) {
 				last_charger_state = current;
 				have_last_charger_state = true;
-				(void)power_lbs_notify_charger_state(&current);
+				(void) power_lbs_notify_charger_state(&current);
 			}
 		}
 	}
@@ -175,10 +162,10 @@ static void power_ble_poll_work_fn(struct k_work *work)
 		struct power_lbs_gauge_state current;
 		if (power_ble_get_gauge_state(&current) == 0) {
 			if (!have_last_gauge_state ||
-			    memcmp(&current, &last_gauge_state, sizeof(current)) != 0) {
+				memcmp(&current, &last_gauge_state, sizeof(current)) != 0) {
 				last_gauge_state = current;
 				have_last_gauge_state = true;
-				(void)power_lbs_notify_gauge_state(&current);
+				(void) power_lbs_notify_gauge_state(&current);
 			}
 		}
 	}
@@ -186,8 +173,7 @@ static void power_ble_poll_work_fn(struct k_work *work)
 	k_work_schedule(&power_poll_work, K_MSEC(POWER_BLE_POLL_INTERVAL_MS));
 }
 
-static void power_ble_update_polling_state(void)
-{
+static void power_ble_update_polling_state(void) {
 	bool enabled = atomic_get(&charger_notify_enabled) || atomic_get(&gauge_notify_enabled);
 
 	if (enabled) {
@@ -197,23 +183,20 @@ static void power_ble_update_polling_state(void)
 	}
 }
 
-static void power_ble_charger_notify_state_cb(bool enabled, void *user_data)
-{
+static void power_ble_charger_notify_state_cb(bool enabled, void* user_data) {
 	ARG_UNUSED(user_data);
 	atomic_set(&charger_notify_enabled, enabled ? 1 : 0);
 	power_ble_update_polling_state();
 }
 
-static void power_ble_gauge_notify_state_cb(bool enabled, void *user_data)
-{
+static void power_ble_gauge_notify_state_cb(bool enabled, void* user_data) {
 	ARG_UNUSED(user_data);
 	atomic_set(&gauge_notify_enabled, enabled ? 1 : 0);
 	power_ble_update_polling_state();
 }
 
-static void power_ble_daughter_status_changed(const struct power_lbs_daughter_state *state,
-					      void *user_data)
-{
+static void power_ble_daughter_status_changed(const struct power_lbs_daughter_state* state,
+											  void* user_data) {
 	ARG_UNUSED(user_data);
 
 	if ((state == NULL) || !atomic_get(&daughter_notify_enabled)) {
@@ -225,8 +208,7 @@ static void power_ble_daughter_status_changed(const struct power_lbs_daughter_st
 	k_work_submit(&daughter_notify_work);
 }
 
-static void power_ble_daughter_notify_state_cb(bool enabled, void *user_data)
-{
+static void power_ble_daughter_notify_state_cb(bool enabled, void* user_data) {
 	struct power_lbs_daughter_state current;
 
 	ARG_UNUSED(user_data);
@@ -250,8 +232,7 @@ static const struct power_lbs_ops power_ble_ops = {
 	.get_daughter_state = power_ble_get_daughter_state,
 };
 
-int power_ble_bridge_init(void)
-{
+int power_ble_bridge_init(void) {
 	if (power_bridge_started) {
 		return 0;
 	}

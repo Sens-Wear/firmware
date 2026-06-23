@@ -92,15 +92,20 @@ config SENSEWEAR_BQ25180_DRIVER
 	bool "BQ25180 charger driver"
 	depends on I2C
 	default y
+	select SENSEWEAR_DEVICE_DRIVER_EVENTS
 	help
-	  Build the BQ25180 charger / power-path controller driver.
+	  Build the BQ25180 charger / power-path controller driver. The driver
+	  posts interrupt activity through the device driver event manager, so it
+	  is enabled automatically.
 
 config SENSEWEAR_BQ27427_DRIVER
 	bool "BQ27427 fuel-gauge driver"
 	depends on I2C
 	default y
+	select SENSEWEAR_DEVICE_DRIVER_EVENTS
 	help
-	  Build the BQ27427 fuel-gauge driver.
+	  Build the BQ27427 fuel-gauge driver. The driver posts interrupt activity
+	  through the device driver event manager, so it is enabled automatically.
 
 config SENSEWEAR_BHI360_DRIVER
 	bool "BHI360 IMU driver"

@@ -15,6 +15,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+#ifdef CONFIG_SENSEWEAR_DEVICE_DRIVER_EVENTS_AUTO_INIT
+
 LOG_MODULE_REGISTER(device_driver_events_init, CONFIG_LOG_DEFAULT_LEVEL);
 
 /**
@@ -41,3 +43,5 @@ static int device_driver_events_init_hook(void) {
 }
 
 SYS_INIT(device_driver_events_init_hook, POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);
+
+#endif /* CONFIG_SENSEWEAR_DEVICE_DRIVER_EVENTS_AUTO_INIT */

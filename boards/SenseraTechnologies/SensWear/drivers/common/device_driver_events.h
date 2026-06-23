@@ -51,6 +51,32 @@
  * assumes exactly one consumer thread; the queue is otherwise multi-producer and
  * thread-/ISR-safe.
  *
+ * @section sensewear_device_driver_events_ids Device identifiers
+ *
+ * The @ref device_driver_event_t.device_id values come from @c device_driver_ids.h,
+ * which is @b generated at build time from the merged Zephyr devicetree by
+ * @c generate_device_driver_ids.py (wired up in @c common_drivers.cmake). The generator
+ * runs at CMake @e configure time against @c build/.../zephyr/zephyr.dts, which
+ * @c find_package(Zephyr) has already produced, so the header has DTS-derived content
+ * before any source is compiled. Because the devicetree sources are configure
+ * dependencies of the Zephyr build, any devicetree change triggers a reconfigure that
+ * regenerates the header.
+ *
+ * The generator walks the merged DTS in node order and emits one macro per node that is
+ * @b labeled, has a @c compatible property, and is not @c status @c = @c "disabled".
+ * For a node label @c foo the macro is named @c FOO_DEVICE_ID: the label is upper-cased
+ * and every non-alphanumeric character is replaced with an underscore. IDs are assigned
+ * sequentially starting at @c 1u in DTS order; @c DEVICE_ID_INVALID is @c 0u and
+ * @c SENSEWEAR_GENERATED_DEVICE_COUNT holds the total. For example a DTS node
+ * @c sys_spi:&nbsp;spi&nbsp;{&nbsp;compatible&nbsp;=&nbsp;"...";&nbsp;} yields
+ * @c SYS_SPI_DEVICE_ID.
+ *
+ * @warning These IDs are @b build-time identifiers, not a stable ABI. Because they are
+ * positional in the merged DTS, adding, removing, reordering, or enabling/disabling a
+ * node can shift the value of every following ID. Always refer to a device by its
+ * generated @c <LABEL>_DEVICE_ID macro; never hard-code the numeric value and never
+ * persist it off-device (for example in stored records or wire protocols).
+ *
  * @section sensewear_device_driver_events_lifecycle Lifecycle
  *
  * device_driver_event_init() must be called once during start-up to create the backing
@@ -106,6 +132,7 @@
 #include "zephyr/kernel.h"
 #include "zephyr/sys/clock.h"
 #include <stdint.h>
+#include <device_driver_dts_ids.h>
 
 /**
  * @brief Reserved sentinel for an unused or invalid event identifier.

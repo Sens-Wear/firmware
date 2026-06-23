@@ -18,7 +18,7 @@
 
 #include "bq25180.h"
 #include "sys_i2c.h"
-#include "device_events.h"
+#include "device_driver_events.h"
 #include <assert.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -135,7 +135,7 @@ static bool bq25180_probe(void) {
 	}
 	bq25180.state.bits.bProbed = 1;
 	union bq25180_MASK_ID_register_t mask_id_reg = {.value = mask_id};
-	if (mask_id_reg.bits.bDeviceID == BQ25180_DEVICE_ID) {
+	if (mask_id_reg.bits.bDeviceID == BQ25180_HW_DEVICE_ID) {
 		LOG_INF("BQ25180 detected on I2C bus");
 		bq25180.state.bits.bDeviceFound = 1;
 	} else {
@@ -158,10 +158,10 @@ static void bq25180_irq_work_fn(struct k_work* work) {
 	}
 
 	if (state.bits.bPowerGood != newState.bits.bPowerGood) {
-		// when they are not equal, we have to check how to handle the change
-		if (state.bits.bPowerGood && !state.bits.bPowerGood) {
-			// when the charger indicates power good
-			if (!state.bits.bCharged) {
+		// power-good changed; decide how to handle it from the new state
+		if (newState.bits.bPowerGood) {
+			// VIN was just detected (power good asserted)
+			if (!newState.bits.bCharged) {
 				bq25180_enable_charging(true);
 				LOG_INF("BQ25180 VIN detected, charging enabled");
 			} else {
@@ -180,93 +180,101 @@ static void bq25180_irq_work_fn(struct k_work* work) {
 		enum bq25180_event_type eventType = newState.bits.bPowerGood ? bq25180_event_Plugged
 																	 : bq25180_event_Unplugged;
 		// power good, we can generate a charger connected event.
-		device_event_post(bq25180.device_id, eventType, 0, NULL, K_MSEC(BQ25180_I2C_TIMEOUT));
+		device_driver_event_post(bq25180.device_id,
+								 eventType,
+								 0,
+								 NULL,
+								 K_MSEC(BQ25180_I2C_TIMEOUT));
 	}
 	if (changed.bits.bCharged != 0) {
 		enum bq25180_event_type eventType = newState.bits.bCharged ? bq25180_event_ChargingDone
 																   : bq25180_event_Charging;
 		// battery is fully charged, we can generate a battery full event.
-		device_event_post(bq25180.device_id, eventType, 0, NULL, K_MSEC(BQ25180_I2C_TIMEOUT));
+		device_driver_event_post(bq25180.device_id,
+								 eventType,
+								 0,
+								 NULL,
+								 K_MSEC(BQ25180_I2C_TIMEOUT));
 	}
 
 	if (changed.bits.bBatteryOCPFault != 0 && newState.bits.bBatteryOCPFault != 0) {
 		// battery overcurrent fault, we can generate a battery OCP event.
-		device_event_post(bq25180.device_id,
-						  bq25180_event_BatteryOverCurrentProtectionFault,
-						  0,
-						  NULL,
-						  K_MSEC(BQ25180_I2C_TIMEOUT));
+		device_driver_event_post(bq25180.device_id,
+								 bq25180_event_BatteryOverCurrentProtectionFault,
+								 0,
+								 NULL,
+								 K_MSEC(BQ25180_I2C_TIMEOUT));
 	}
 
 	if (changed.bits.bBatteryUVLOFault != 0 && newState.bits.bBatteryUVLOFault != 0) {
 		// battery UVLO fault, we can generate a battery UVLO event.
-		device_event_post(bq25180.device_id,
-						  bq25180_event_BatteryUndervoltageLockoutFault,
-						  0,
-						  NULL,
-						  K_MSEC(BQ25180_I2C_TIMEOUT));
+		device_driver_event_post(bq25180.device_id,
+								 bq25180_event_BatteryUndervoltageLockoutFault,
+								 0,
+								 NULL,
+								 K_MSEC(BQ25180_I2C_TIMEOUT));
 	}
 
 	if (changed.bits.bBatteryUVLO != 0 && newState.bits.bBatteryUVLO != 0) {
 		// battery UVLO status active, we can generate a battery UVLO status event.
-		device_event_post(bq25180.device_id,
-						  bq25180_event_BatteryUnderVoltageLockOut,
-						  0,
-						  NULL,
-						  K_MSEC(BQ25180_I2C_TIMEOUT));
+		device_driver_event_post(bq25180.device_id,
+								 bq25180_event_BatteryUnderVoltageLockOut,
+								 0,
+								 NULL,
+								 K_MSEC(BQ25180_I2C_TIMEOUT));
 	}
 
 	if (changed.bits.bThermalRegulation != 0 && newState.bits.bThermalRegulation != 0) {
 		// thermal regulation active, we can generate a thermal regulation event.
-		device_event_post(bq25180.device_id,
-						  bq25180_event_ThermalRegulation,
-						  0,
-						  NULL,
-						  K_MSEC(BQ25180_I2C_TIMEOUT));
+		device_driver_event_post(bq25180.device_id,
+								 bq25180_event_ThermalRegulation,
+								 0,
+								 NULL,
+								 K_MSEC(BQ25180_I2C_TIMEOUT));
 	}
 
 	if (changed.bits.bSafetyTimerFault != 0 && newState.bits.bSafetyTimerFault != 0) {
 		// safety timer fault, we can generate a safety timer expired event.
-		device_event_post(bq25180.device_id,
-						  bq25180_event_SafetyTimerExpired,
-						  0,
-						  NULL,
-						  K_MSEC(BQ25180_I2C_TIMEOUT));
+		device_driver_event_post(bq25180.device_id,
+								 bq25180_event_SafetyTimerExpired,
+								 0,
+								 NULL,
+								 K_MSEC(BQ25180_I2C_TIMEOUT));
 	}
 
 	if (changed.bits.bThermalSystemFault != 0 && newState.bits.bThermalSystemFault != 0) {
 		// thermal system fault, we can generate a thermal system fault event.
-		device_event_post(bq25180.device_id,
-						  bq25180_event_ThermalSystemFault,
-						  0,
-						  NULL,
-						  K_MSEC(BQ25180_I2C_TIMEOUT));
+		device_driver_event_post(bq25180.device_id,
+								 bq25180_event_ThermalSystemFault,
+								 0,
+								 NULL,
+								 K_MSEC(BQ25180_I2C_TIMEOUT));
 	}
 
 	if (changed.bits.bWake1 != 0 && newState.bits.bWake1 != 0) {
 		// WAKE1 event detected, we can generate a WAKE1 event.
-		device_event_post(bq25180.device_id,
-						  bq25180_event_Wake1,
-						  0,
-						  NULL,
-						  K_MSEC(BQ25180_I2C_TIMEOUT));
+		device_driver_event_post(bq25180.device_id,
+								 bq25180_event_Wake1,
+								 0,
+								 NULL,
+								 K_MSEC(BQ25180_I2C_TIMEOUT));
 	}
 	if (changed.bits.bWake2 != 0 && newState.bits.bWake2 != 0) {
 		// WAKE2 event detected, we can generate a WAKE2 event.
-		device_event_post(bq25180.device_id,
-						  bq25180_event_Wake2,
-						  0,
-						  NULL,
-						  K_MSEC(BQ25180_I2C_TIMEOUT));
+		device_driver_event_post(bq25180.device_id,
+								 bq25180_event_Wake2,
+								 0,
+								 NULL,
+								 K_MSEC(BQ25180_I2C_TIMEOUT));
 	}
 
 	if (changed.bits.bButtonPressed != 0 && newState.bits.bButtonPressed != 0) {
 		// button activity detected, we can generate a button pressed event.
-		device_event_post(bq25180.device_id,
-						  bq25180_event_ButtonPressed,
-						  0,
-						  NULL,
-						  K_MSEC(BQ25180_I2C_TIMEOUT));
+		device_driver_event_post(bq25180.device_id,
+								 bq25180_event_ButtonPressed,
+								 0,
+								 NULL,
+								 K_MSEC(BQ25180_I2C_TIMEOUT));
 	}
 	bq25180.charger_state = newState;
 }
@@ -318,6 +326,16 @@ static int bq25180_irq_init(void) {
 	}
 	return 0;
 }
+
+/** Set the kill GPIO for the BQ25180. */
+static inline void bq25180_kill(bool enable) {
+	if (enable) {
+		gpio_pin_set_dt(&bq25180.kill_gpio, GPIO_OUTPUT_LOW);
+	} else {
+		gpio_pin_set_dt(&bq25180.kill_gpio, GPIO_OUTPUT_HIGH);
+	}
+}
+
 /** Initialize the kill GPIO for the BQ25180. */
 static int bq25180_kill_init(void) {
 	if (bq25180.state.bits.bInitialized == 0) {
@@ -332,17 +350,11 @@ static int bq25180_kill_init(void) {
 			LOG_ERR("BQ25180 kill pin config failed (%d)", ret);
 			return ret;
 		}
+		// set the kill GPIO to inactive state
+		bq25180_kill(false);
 		return 0;
 	}
 	return 0;
-}
-/** Set the kill GPIO for the BQ25180. */
-static inline void bq25180_kill(bool enable) {
-	if (enable) {
-		gpio_pin_set_dt(&bq25180.kill_gpio, GPIO_OUTPUT_ACTIVE);
-	} else {
-		gpio_pin_set_dt(&bq25180.kill_gpio, GPIO_OUTPUT_INACTIVE);
-	}
 }
 
 /* Check if the BQ25180 is available. */
@@ -435,12 +447,25 @@ bool bq25180_init(uint32_t device_id) {
 		LOG_ERR("SYS_I2C bus not ready");
 		return false;
 	}
-	bool deviceReady = bq25180_is_ready();
-	if (!deviceReady) {
+	// we must check whether the device is accessible
+	bq25180_bus_lock();
+	bq25180_probe();
+	bq25180_bus_unlock();
+	if (bq25180.state.bits.bProbed == 0 || bq25180.state.bits.bDeviceFound == 0) {
 		LOG_ERR("BQ25180 device not found during initialization");
 		return false;
 	}
-
+	// lets initialize the GPIOs
+	int ret = bq25180_irq_init();
+	if (ret != 0) {
+		LOG_ERR("BQ25180 interrupt initialization failed (%d)", ret);
+		return false;
+	}
+	ret = bq25180_kill_init();
+	if (ret != 0) {
+		LOG_ERR("BQ25180 kill GPIO initialization failed (%d)", ret);
+		return false;
+	}
 	bq25180_get_default_config(&(bq25180.config));
 	bq25180.state.bits.bInitialized = 1;
 	return true;
@@ -464,7 +489,7 @@ bool bq25180_config(struct bq25180_config_t* config) {
 	union bq25180_SHIP_RST_register_t shipRst = {.value = BQ25180_SHIP_RST_DEFAULT};
 	union bq25180_SYS_REG_register_t sysReg = {.value = 0 /*BQ25180_SYS_REG_DEFAULT*/};
 	union bq25180_TS_CONTROL_register_t tsControlReg = {.value = BQ25180_TS_CONTROL_DEFAULT};
-	//	union bq25180_MASK_ID_register_t maskId = {.value = BQ25180_MASK_ID_DEFAULT};
+	union bq25180_MASK_ID_register_t maskId = {.value = BQ25180_MASK_ID_DEFAULT};
 
 	if (!bq25180_is_ready() || (bq25180.state.bits.bInitialized == 0)) {
 		return false;
@@ -497,12 +522,21 @@ bool bq25180_config(struct bq25180_config_t* config) {
 	tmrIlim.bits.bLongPressDuration = bq25180.config.long_press_duration;
 	tmrIlim.bits.bHardwareResetCondition = 1; // long press and vin
 
-	shipRst.bits.bEnablePush = 1;
+	shipRst.bits.bEnablePush = 0;
 	shipRst.bits.bPushbuttonLongPressAction = bq25180_long_press_action_DoNothing;
 	shipRst.bits.bEnableShipModeAndReset = bq25180_reset_shipment_mode_DoNothing;
 
 	tsControlReg.bits.bThermalSystemColdThreshold = bq25180_cold_threshold_m3;
 	sysReg.bits.bSYSPowerMode = bq25180_sys_power_mode_VIN_or_VBAT;
+
+	// Configure which conditions assert the INT pin (1 = masked). Keep
+	// power-good (plug/unplug) and battery/charge interrupts enabled; mask the
+	// chatty thermal-regulation and thermal-shutdown sources. The device-ID
+	// nibble is read-only and ignored on write.
+	maskId.bits.bPowerGoodMaskInterrupt = 0;
+	maskId.bits.bBatteryMaskInterrupt = 0;
+	maskId.bits.bThermalRegulationMaskInterrupt = 1;
+	maskId.bits.bThermalShutdownMaskInterrupt = 1;
 
 	if (!bq25180_bus_lock()) {
 		return false;
@@ -517,25 +551,14 @@ bool bq25180_config(struct bq25180_config_t* config) {
 		(bq25180_i2c_write_register(bq25180_register_TMR_ILIM, tmrIlim.value) == 0) &&
 		(bq25180_i2c_write_register(bq25180_register_SHIP_RST, shipRst.value) == 0) &&
 		(bq25180_i2c_write_register(bq25180_register_TS_CONTROL, tsControlReg.value) == 0) &&
-		(bq25180_i2c_write_register(bq25180_register_SYS_REG, sysReg.value) == 0);
+		(bq25180_i2c_write_register(bq25180_register_SYS_REG, sysReg.value) == 0) &&
+		(bq25180_i2c_write_register(bq25180_register_MASK_ID, maskId.value) == 0);
 
 	ret &= bq25180_bus_unlock();
 	if (!ret) {
 		return false;
 	}
-	// now everything is configured, and we can set up the interrupt if it is not set up yet.
-	if (bq25180.state.bits.bConfigured == 0) {
-		int iRet = bq25180_irq_init();
-		if (iRet != 0) {
-			LOG_ERR("BQ25180 IRQ initialization failed (%d)", iRet);
-			return false;
-		}
-		iRet = bq25180_kill_init();
-		if (iRet != 0) {
-			LOG_ERR("BQ25180 kill GPIO initialization failed (%d)", iRet);
-			return false;
-		}
-	}
+	// now everything is configured.
 	bq25180.state.bits.bConfigured = 1;
 
 	return true;
@@ -736,33 +759,34 @@ bool bq25180_shutdown_disable(void) {
 /*
  * \brief Prints the charger state of the device
  */
-void bq25180_print_state(void) {
+void bq25180_print_state(union bq25180_charger_state_t* state) {
 	assert(bq25180.state.bits.bConfigured != 0);
 
-	union bq25180_charger_state_t state;
-	state.value = bq25180.charger_state.value;
+	if (state == NULL) {
+		state = &bq25180.charger_state;
+	}
 	LOG_INF("Charger state: PG=%d Charging=%d Charged=%d Shipmode=%d "
 			"Shutdown=%d BT=%d Wake1=%d Wake2=%d ThermalReg=%d UVLO=%d "
 			"TNormal=%d TWarmHot=%d TWarm=%d TCool=%d TimerFault=%d TFault=%d "
 			"UVLOFault=%d OCPFault=%d\r\n",
-			state.bits.bPowerGood,
-			state.bits.bCharging,
-			state.bits.bCharged,
-			state.bits.bShipmentMode,
-			state.bits.bShutdownMode,
-			state.bits.bButtonPressed,
-			state.bits.bWake1,
-			state.bits.bWake2,
-			state.bits.bThermalRegulation,
-			state.bits.bBatteryUVLO,
-			state.bits.bThermalNormal,
-			state.bits.bThermalWarmOrHot,
-			state.bits.bThermalWarm,
-			state.bits.bThermalCool,
-			state.bits.bSafetyTimerFault,
-			state.bits.bThermalSystemFault,
-			state.bits.bBatteryUVLOFault,
-			state.bits.bBatteryOCPFault);
+			state->bits.bPowerGood,
+			state->bits.bCharging,
+			state->bits.bCharged,
+			state->bits.bShipmentMode,
+			state->bits.bShutdownMode,
+			state->bits.bButtonPressed,
+			state->bits.bWake1,
+			state->bits.bWake2,
+			state->bits.bThermalRegulation,
+			state->bits.bBatteryUVLO,
+			state->bits.bThermalNormal,
+			state->bits.bThermalWarmOrHot,
+			state->bits.bThermalWarm,
+			state->bits.bThermalCool,
+			state->bits.bSafetyTimerFault,
+			state->bits.bThermalSystemFault,
+			state->bits.bBatteryUVLOFault,
+			state->bits.bBatteryOCPFault);
 }
 
 /*

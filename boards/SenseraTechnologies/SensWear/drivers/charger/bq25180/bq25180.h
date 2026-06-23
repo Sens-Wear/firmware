@@ -116,8 +116,6 @@
 #define BQ25180_I2C_TIMEOUT (100)
 #endif
 
-
-
 /**
  * @brief Driver-level BQ25180 event identifiers.
  * @details This is a software event namespace rather than a hardware register
@@ -125,21 +123,21 @@
  *          stable event identifiers for higher-level policy code.
  */
 enum bq25180_event_type {
-    bq25180_event_Invalid = -1,                         /**< No valid event. */
-    bq25180_event_Plugged = 0,                        /**< Valid input power detected. */
-    bq25180_event_Unplugged = 1,                         /**< Input power lost. */
-    bq25180_event_Charging = 2,                         /**< Battery is charging. */
-    bq25180_event_ChargingDone = 3,                     /**< Charge cycle completed. */
-    bq25180_event_ThermalRegulation = 4,                /**< Thermal regulation became active. */
-    bq25180_event_VIN_OverVoltageProtection = 5,         /**< VIN overvoltage protection event. */
-    bq25180_event_BatteryUnderVoltageLockOut = 6,       /**< Battery UVLO status event. */
-    bq25180_event_SafetyTimerExpired = 7,               /**< Charge safety timer expired. */
-    bq25180_event_ThermalSystemFault = 8,               /**< Battery TS fault. */
-    bq25180_event_BatteryUndervoltageLockoutFault = 9,  /**< Latched battery UVLO fault. */
-    bq25180_event_BatteryOverCurrentProtectionFault = 10,/**< Latched battery OCP fault. */
-    bq25180_event_Wake1 = 11,                         /**< WAKE1 event detected. */
-    bq25180_event_Wake2 = 12,                         /**< WAKE2 event detected. */
-    bq25180_event_ButtonPressed = 13,                  /**< Button pressed event detected. */
+	bq25180_event_Invalid = -1,							  /**< No valid event. */
+	bq25180_event_Plugged = 0,							  /**< Valid input power detected. */
+	bq25180_event_Unplugged = 1,						  /**< Input power lost. */
+	bq25180_event_Charging = 2,							  /**< Battery is charging. */
+	bq25180_event_ChargingDone = 3,						  /**< Charge cycle completed. */
+	bq25180_event_ThermalRegulation = 4,				  /**< Thermal regulation became active. */
+	bq25180_event_VIN_OverVoltageProtection = 5,		  /**< VIN overvoltage protection event. */
+	bq25180_event_BatteryUnderVoltageLockOut = 6,		  /**< Battery UVLO status event. */
+	bq25180_event_SafetyTimerExpired = 7,				  /**< Charge safety timer expired. */
+	bq25180_event_ThermalSystemFault = 8,				  /**< Battery TS fault. */
+	bq25180_event_BatteryUndervoltageLockoutFault = 9,	  /**< Latched battery UVLO fault. */
+	bq25180_event_BatteryOverCurrentProtectionFault = 10, /**< Latched battery OCP fault. */
+	bq25180_event_Wake1 = 11,							  /**< WAKE1 event detected. */
+	bq25180_event_Wake2 = 12,							  /**< WAKE2 event detected. */
+	bq25180_event_ButtonPressed = 13,					  /**< Button pressed event detected. */
 };
 
 /**
@@ -150,32 +148,33 @@ enum bq25180_event_type {
  *          application and power-policy code.
  */
 union bq25180_charger_state_t {
-    unsigned int value; /**< Complete packed state; zero means no flags are asserted. */
-    /**
-     * @brief Decoded charger-state bit mapping.
-     * @details Each field maps one or more hardware status bits to a normalized
-     *          boolean condition; it is not written back to the BQ25180.
-     */
-    struct bq25180_charger_state_bits {
-        unsigned int bButtonPressed: 1;       /**< Push-button activity detected. */
-        unsigned int bWake1: 1;               /**< WAKE1 event detected. */
-        unsigned int bWake2: 1;               /**< WAKE2 event detected. */
-        unsigned int bShipmentMode: 1;        /**< Ship-mode request is encoded. */
-        unsigned int bShutdownMode: 1;        /**< Shutdown request is encoded. */
-        unsigned int bPowerGood: 1;           /**< VIN is power-good. */
-        unsigned int bCharging: 1;            /**< Constant-current or constant-voltage charging. */
-        unsigned int bCharged: 1;             /**< Charge cycle is complete. */
-        unsigned int bThermalRegulation: 1;   /**< Thermal regulation is active or latched. */
-        unsigned int bBatteryUVLO: 1;         /**< Battery UVLO status is active. */
-        unsigned int bThermalNormal: 1;       /**< Battery temperature is normal. */
-        unsigned int bThermalWarmOrHot: 1;    /**< Battery temperature is outside normal on warm side. */
-        unsigned int bThermalWarm: 1;         /**< Battery temperature is warm. */
-        unsigned int bThermalCool: 1;         /**< Battery temperature is cool. */
-        unsigned int bSafetyTimerFault: 1;    /**< Charge safety timer expired. */
-        unsigned int bThermalSystemFault: 1;  /**< Battery temperature fault is latched. */
-        unsigned int bBatteryUVLOFault: 1;    /**< Battery UVLO fault is latched. */
-        unsigned int bBatteryOCPFault: 1;     /**< Battery overcurrent fault is latched. */
-    } bits;
+	unsigned int value; /**< Complete packed state; zero means no flags are asserted. */
+	/**
+	 * @brief Decoded charger-state bit mapping.
+	 * @details Each field maps one or more hardware status bits to a normalized
+	 *          boolean condition; it is not written back to the BQ25180.
+	 */
+	struct bq25180_charger_state_bits {
+		unsigned int bButtonPressed : 1;	 /**< Push-button activity detected. */
+		unsigned int bWake1 : 1;			 /**< WAKE1 event detected. */
+		unsigned int bWake2 : 1;			 /**< WAKE2 event detected. */
+		unsigned int bShipmentMode : 1;		 /**< Ship-mode request is encoded. */
+		unsigned int bShutdownMode : 1;		 /**< Shutdown request is encoded. */
+		unsigned int bPowerGood : 1;		 /**< VIN is power-good. */
+		unsigned int bCharging : 1;			 /**< Constant-current or constant-voltage charging. */
+		unsigned int bCharged : 1;			 /**< Charge cycle is complete. */
+		unsigned int bThermalRegulation : 1; /**< Thermal regulation is active or latched. */
+		unsigned int bBatteryUVLO : 1;		 /**< Battery UVLO status is active. */
+		unsigned int bThermalNormal : 1;	 /**< Battery temperature is normal. */
+		unsigned int bThermalWarmOrHot
+			: 1;					   /**< Battery temperature is outside normal on warm side. */
+		unsigned int bThermalWarm : 1; /**< Battery temperature is warm. */
+		unsigned int bThermalCool : 1; /**< Battery temperature is cool. */
+		unsigned int bSafetyTimerFault : 1;	  /**< Charge safety timer expired. */
+		unsigned int bThermalSystemFault : 1; /**< Battery temperature fault is latched. */
+		unsigned int bBatteryUVLOFault : 1;	  /**< Battery UVLO fault is latched. */
+		unsigned int bBatteryOCPFault : 1;	  /**< Battery overcurrent fault is latched. */
+	} bits;
 };
 
 /**
@@ -186,35 +185,34 @@ union bq25180_charger_state_t {
  *          a raw register image.
  */
 struct bq25180_config_t {
-    /** Battery regulation voltage in millivolts. */
-    uint16_t charge_voltage;
-    /** Fast-charge current in milliamperes. */
-    uint16_t charge_current;
+	/** Battery regulation voltage in millivolts. */
+	uint16_t charge_voltage;
+	/** Fast-charge current in milliamperes. */
+	uint16_t charge_current;
 
-    /** Input current limit. */
-    enum bq25180_input_current_limit_type input_current;
-    /** Input voltage dynamic power-management threshold. */
-    enum bq25180_VINDPM_level_type vin_dpm_level;
+	/** Input current limit. */
+	enum bq25180_input_current_limit_type input_current;
+	/** Input voltage dynamic power-management threshold. */
+	enum bq25180_VINDPM_level_type vin_dpm_level;
 
-    /** Battery undervoltage lockout threshold. */
-    enum bq25180_battery_UVLO_threshold_type battery_uvlo;
-    /** Battery discharge overcurrent limit. */
-    enum bq25180_battery_discharge_current_limit_type battery_ocp_limit;
+	/** Battery undervoltage lockout threshold. */
+	enum bq25180_battery_UVLO_threshold_type battery_uvlo;
+	/** Battery discharge overcurrent limit. */
+	enum bq25180_battery_discharge_current_limit_type battery_ocp_limit;
 
-    /** Charge-termination current ratio. */
-    enum bq25180_termination_current_type termination_current;
-    /** Precharge current selection. */
-    enum bq25180_precharge_current_type precharge_current;
+	/** Charge-termination current ratio. */
+	enum bq25180_termination_current_type termination_current;
+	/** Precharge current selection. */
+	enum bq25180_precharge_current_type precharge_current;
 
-    /** Voltage threshold below which precharge is used. */
-    enum bq25180_precharge_voltage_threshold_type precharge_threshold;
-    /** Voltage drop below regulation voltage that restarts charging. */
-    enum bq25180_recharge_voltage_threshold_type recharge_voltage_threshold;
+	/** Voltage threshold below which precharge is used. */
+	enum bq25180_precharge_voltage_threshold_type precharge_threshold;
+	/** Voltage drop below regulation voltage that restarts charging. */
+	enum bq25180_recharge_voltage_threshold_type recharge_voltage_threshold;
 
-    /** Push-button long-press duration. */
-    enum bq25180_pb_long_press_duration_type long_press_duration;
+	/** Push-button long-press duration. */
+	enum bq25180_pb_long_press_duration_type long_press_duration;
 };
-
 
 /**
  * @brief Initialize and probe the BQ25180.
@@ -226,7 +224,7 @@ struct bq25180_config_t {
  * This function does not program the charger configuration.
  *
  * @param device_id Identifier this driver uses when posting to the device event
- *        manager (see device_events.h).
+ *        manager (see device_driver_events.h).
  * @retval true The shared bus was ready and the charger responded.
  * @retval false The bus was unavailable, ownership could not be acquired, or
  *         the probe transfer failed.
@@ -254,21 +252,21 @@ bool bq25180_is_ready(void);
  *
  * @note Interrupt initialization is currently disabled.
  */
-bool bq25180_config(struct bq25180_config_t *config);
+bool bq25180_config(struct bq25180_config_t* config);
 
 /**
  * @brief Populate a configuration from BQ25180 register reset defaults.
  *
  * @param config Destination configuration. Must not be NULL.
  */
-void bq25180_get_default_config(struct bq25180_config_t *config);
+void bq25180_get_default_config(struct bq25180_config_t* config);
 
 /**
  * @brief Populate the SenseWear LiPo/USB charging defaults.
  *
  * @param config Destination configuration. Must not be NULL.
  */
-void bq25180_get_default_lipo_usb_charger_config(struct bq25180_config_t *config);
+void bq25180_get_default_lipo_usb_charger_config(struct bq25180_config_t* config);
 
 /**
  * @brief Read and decode the current charger state.
@@ -281,7 +279,7 @@ void bq25180_get_default_lipo_usb_charger_config(struct bq25180_config_t *config
  * @retval false The driver is unavailable or unconfigured, or an I2C operation
  *         failed. When @p state is non-NULL it is cleared on failure.
  */
-bool bq25180_update_state(union bq25180_charger_state_t *state);
+bool bq25180_update_state(union bq25180_charger_state_t* state);
 
 /**
  * @brief Request ship mode through the SHIP_RST register.
@@ -325,7 +323,7 @@ bool bq25180_shutdown_disable(void);
  * @retval true The control write and reconfiguration succeeded.
  * @retval false The driver was unavailable or a bus/configuration step failed.
  */
-bool bq25180_reset(struct bq25180_config_t *config);
+bool bq25180_reset(struct bq25180_config_t* config);
 
 /**
  * @brief Enable or disable battery charging.
@@ -341,8 +339,10 @@ bool bq25180_enable_charging(bool enable);
 
 /**
  * @brief Log the most recently cached charger state.
+ *
+ * @param state Pointer to the charger state to log. If NULL, the internal cached state is logged.
  */
-void bq25180_print_state(void);
+void bq25180_print_state(union bq25180_charger_state_t* state);
 
 /** @} */
 
