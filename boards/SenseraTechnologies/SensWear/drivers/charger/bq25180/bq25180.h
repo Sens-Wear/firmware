@@ -56,8 +56,7 @@
  *
  * The expected lifecycle is:
  *
- * 1. Call bq25180_init() to obtain the DT specification, verify the shared bus,
- *    and probe the charger.
+ * 1. Call bq25180_init() to verify the shared bus and probe the charger.
  * 2. Prepare a struct bq25180_config_t using one of the default helpers.
  * 3. Call bq25180_config() to program the device registers.
  * 4. Call bq25180_update_state() periodically or in response to a system event.
@@ -92,11 +91,9 @@
  *
  * @section sensewear_bq25180_interrupts Interrupt status
  *
- * The source contains GPIO callback and deferred-work support for `int-gpios`.
- * Automatic interrupt setup is currently disabled in bq25180_config(); state is
- * therefore normally polled by the application. Enabling the IRQ path requires
- * restoring the initialization block after its charging policy has been
- * validated.
+ * The GPIO callback for `int-gpios` posts bq25180_event_InterruptDetected from
+ * ISR context. Call bq25180_update_state() from thread context to read the IC,
+ * process the charger state machine, and publish decoded state-change events.
  */
 
 #ifndef BQ25180_H_
@@ -138,6 +135,8 @@ enum bq25180_event_type {
 	bq25180_event_Wake1 = 11,							  /**< WAKE1 event detected. */
 	bq25180_event_Wake2 = 12,							  /**< WAKE2 event detected. */
 	bq25180_event_ButtonPressed = 13,					  /**< Button pressed event detected. */
+	bq25180_event_InterruptDetected = 14,				  /**< INT pin assertion detected. */
+	bq25180_event_Count,								  /**< Number of valid event identifiers. */
 };
 
 /**
@@ -223,13 +222,11 @@ struct bq25180_config_t {
  *
  * This function does not program the charger configuration.
  *
- * @param device_id Identifier this driver uses when posting to the device event
- *        manager (see device_driver_events.h).
  * @retval true The shared bus was ready and the charger responded.
  * @retval false The bus was unavailable, ownership could not be acquired, or
  *         the probe transfer failed.
  */
-bool bq25180_init(uint32_t device_id);
+bool bq25180_init(void);
 
 /**
  * @brief Report whether bq25180_init() successfully detected the charger.
@@ -249,10 +246,16 @@ bool bq25180_is_ready(void);
  * @retval true All configuration registers were written and ownership released.
  * @retval false The driver was not initialized, locking failed, a transfer
  *         failed, or ownership could not be released.
- *
- * @note Interrupt initialization is currently disabled.
  */
 bool bq25180_config(struct bq25180_config_t* config);
+
+/**
+ * @brief Return the printable name for a BQ25180 event identifier.
+ *
+ * @param event_id Event identifier from enum bq25180_event_type.
+ * @return Constant string for the event, or "Unknown" when @p event_id is not valid.
+ */
+const char* bq25180_event_name(uint32_t event_id);
 
 /**
  * @brief Populate a configuration from BQ25180 register reset defaults.

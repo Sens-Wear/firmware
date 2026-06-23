@@ -31,17 +31,6 @@
 K_THREAD_STACK_DEFINE(test_event_stack, TEST_EVENT_STACK_SIZE);
 static struct k_thread test_event_thread;
 
-static const char* bq27427_event_to_string(uint32_t event_id) {
-	switch ((enum bq27427_event_type) event_id) {
-	case bq27427_event_BatteryLow:
-		return "BatteryLow";
-	case bq27427_event_StateUpdated:
-		return "StateUpdated";
-	default:
-		return "Unknown";
-	}
-}
-
 static void bq27427_event_consumer_thread(void* a, void* b, void* c) {
 	ARG_UNUSED(a);
 	ARG_UNUSED(b);
@@ -64,7 +53,7 @@ static void bq27427_event_consumer_thread(void* a, void* b, void* c) {
 		}
 
 		printk("event[bq27427]: %s (%u), v=%u p=%p\n",
-			   bq27427_event_to_string(event.event_id),
+			   bq27427_event_name(event.event_id),
 			   event.event_id,
 			   event.v_param,
 			   event.p_param);
@@ -108,7 +97,7 @@ int main(void) {
 		return 0;
 	}
 
-	if (!bq27427_init(BQ27427_DEVICE_DTS_ID)) {
+	if (!bq27427_init()) {
 		printk("bq27427_init() failed\n");
 		return 0;
 	}

@@ -12,13 +12,15 @@
  * Register helpers in this file intentionally do not lock. They may only be
  * called from a high-level operation that already owns the shared bus.
  *
- * The optional GPIO interrupt path defers policy work to the system work queue.
- * It is implemented but currently not enabled by bq25180_config().
+ * The GPIO interrupt path posts an ISR-safe notification event. Callers should
+ * run bq25180_update_state() from thread context to read the IC and process the
+ * charger state machine.
  */
 
 #include "bq25180.h"
 #include "sys_i2c.h"
 #include "device_driver_events.h"
+#include "device_driver_dts_ids.h"
 #include <assert.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -54,8 +56,6 @@ union bq25180_state_t {
  *          objects. This context is private to this implementation unit.
  */
 static struct bq25180_t {
-	/** Identifier used when posting to the device event manager. */
-	uint32_t device_id;
 	/** Shared-I2C connection and ownership token derived from devicetree. */
 	struct sys_i2c_dt_spec device;
 	/** Interrupt GPIO specification derived from devicetree. */
@@ -70,15 +70,41 @@ static struct bq25180_t {
 	union bq25180_charger_state_t charger_state;
 	/** GPIO callback instance registered for charger interrupt events. */
 	struct gpio_callback irq_cb;
-	/** Work item used to defer interrupt processing from ISR context. */
-	struct k_work irq_work;
+	/** Whether the interrupt GPIO callback has been configured. */
+	bool irq_ready;
 } bq25180 = {
 	.device = SYS_I2C_DT_SPEC_GET(BQ25180_NODE),
 	.irq_gpio = GPIO_DT_SPEC_GET(BQ25180_NODE, int_gpios),
 	.kill_gpio = GPIO_DT_SPEC_GET(BQ25180_NODE, kill_gpios),
-	/* All remaining members (config, state, charger_state, irq_cb, irq_work)
+	/* All remaining members (config, state, charger_state, irq_cb, irq_ready)
 	 * are zero-initialised by static storage duration. */
 };
+
+static const char* const bq25180_event_names[bq25180_event_Count] = {
+	[bq25180_event_Plugged] = "Plugged",
+	[bq25180_event_Unplugged] = "Unplugged",
+	[bq25180_event_Charging] = "Charging",
+	[bq25180_event_ChargingDone] = "ChargingDone",
+	[bq25180_event_ThermalRegulation] = "ThermalRegulation",
+	[bq25180_event_VIN_OverVoltageProtection] = "VIN_OverVoltageProtection",
+	[bq25180_event_BatteryUnderVoltageLockOut] = "BatteryUnderVoltageLockOut",
+	[bq25180_event_SafetyTimerExpired] = "SafetyTimerExpired",
+	[bq25180_event_ThermalSystemFault] = "ThermalSystemFault",
+	[bq25180_event_BatteryUndervoltageLockoutFault] = "BatteryUndervoltageLockoutFault",
+	[bq25180_event_BatteryOverCurrentProtectionFault] = "BatteryOverCurrentProtectionFault",
+	[bq25180_event_Wake1] = "Wake1",
+	[bq25180_event_Wake2] = "Wake2",
+	[bq25180_event_ButtonPressed] = "ButtonPressed",
+	[bq25180_event_InterruptDetected] = "InterruptDetected",
+};
+
+const char* bq25180_event_name(uint32_t event_id) {
+	if (event_id >= (uint32_t) bq25180_event_Count || bq25180_event_names[event_id] == NULL) {
+		return "Unknown";
+	}
+
+	return bq25180_event_names[event_id];
+}
 
 /** Acquire shared-I2C ownership for one high-level charger operation. */
 static inline bool bq25180_bus_lock(void) {
@@ -145,18 +171,8 @@ static bool bq25180_probe(void) {
 	return true;
 }
 
-/** Deferred interrupt policy handler. Currently dormant until IRQ setup is enabled. */
-static void bq25180_irq_work_fn(struct k_work* work) {
-	ARG_UNUSED(work);
-	union bq25180_charger_state_t state = bq25180.charger_state;
-	union bq25180_charger_state_t newState;
-	// lets get the new state. How we handle the charging depends on the AC power
-	// and the charging status of the battery.
-	if (!bq25180_update_state(&newState)) {
-		LOG_WRN("BQ25180 state update failed");
-		return;
-	}
-
+static void bq25180_process_state_change(union bq25180_charger_state_t state,
+										 union bq25180_charger_state_t newState) {
 	if (state.bits.bPowerGood != newState.bits.bPowerGood) {
 		// power-good changed; decide how to handle it from the new state
 		if (newState.bits.bPowerGood) {
@@ -180,7 +196,7 @@ static void bq25180_irq_work_fn(struct k_work* work) {
 		enum bq25180_event_type eventType = newState.bits.bPowerGood ? bq25180_event_Plugged
 																	 : bq25180_event_Unplugged;
 		// power good, we can generate a charger connected event.
-		device_driver_event_post(bq25180.device_id,
+		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
 								 eventType,
 								 0,
 								 NULL,
@@ -190,7 +206,7 @@ static void bq25180_irq_work_fn(struct k_work* work) {
 		enum bq25180_event_type eventType = newState.bits.bCharged ? bq25180_event_ChargingDone
 																   : bq25180_event_Charging;
 		// battery is fully charged, we can generate a battery full event.
-		device_driver_event_post(bq25180.device_id,
+		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
 								 eventType,
 								 0,
 								 NULL,
@@ -199,7 +215,7 @@ static void bq25180_irq_work_fn(struct k_work* work) {
 
 	if (changed.bits.bBatteryOCPFault != 0 && newState.bits.bBatteryOCPFault != 0) {
 		// battery overcurrent fault, we can generate a battery OCP event.
-		device_driver_event_post(bq25180.device_id,
+		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
 								 bq25180_event_BatteryOverCurrentProtectionFault,
 								 0,
 								 NULL,
@@ -208,7 +224,7 @@ static void bq25180_irq_work_fn(struct k_work* work) {
 
 	if (changed.bits.bBatteryUVLOFault != 0 && newState.bits.bBatteryUVLOFault != 0) {
 		// battery UVLO fault, we can generate a battery UVLO event.
-		device_driver_event_post(bq25180.device_id,
+		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
 								 bq25180_event_BatteryUndervoltageLockoutFault,
 								 0,
 								 NULL,
@@ -217,7 +233,7 @@ static void bq25180_irq_work_fn(struct k_work* work) {
 
 	if (changed.bits.bBatteryUVLO != 0 && newState.bits.bBatteryUVLO != 0) {
 		// battery UVLO status active, we can generate a battery UVLO status event.
-		device_driver_event_post(bq25180.device_id,
+		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
 								 bq25180_event_BatteryUnderVoltageLockOut,
 								 0,
 								 NULL,
@@ -226,7 +242,7 @@ static void bq25180_irq_work_fn(struct k_work* work) {
 
 	if (changed.bits.bThermalRegulation != 0 && newState.bits.bThermalRegulation != 0) {
 		// thermal regulation active, we can generate a thermal regulation event.
-		device_driver_event_post(bq25180.device_id,
+		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
 								 bq25180_event_ThermalRegulation,
 								 0,
 								 NULL,
@@ -235,7 +251,7 @@ static void bq25180_irq_work_fn(struct k_work* work) {
 
 	if (changed.bits.bSafetyTimerFault != 0 && newState.bits.bSafetyTimerFault != 0) {
 		// safety timer fault, we can generate a safety timer expired event.
-		device_driver_event_post(bq25180.device_id,
+		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
 								 bq25180_event_SafetyTimerExpired,
 								 0,
 								 NULL,
@@ -244,7 +260,7 @@ static void bq25180_irq_work_fn(struct k_work* work) {
 
 	if (changed.bits.bThermalSystemFault != 0 && newState.bits.bThermalSystemFault != 0) {
 		// thermal system fault, we can generate a thermal system fault event.
-		device_driver_event_post(bq25180.device_id,
+		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
 								 bq25180_event_ThermalSystemFault,
 								 0,
 								 NULL,
@@ -253,7 +269,7 @@ static void bq25180_irq_work_fn(struct k_work* work) {
 
 	if (changed.bits.bWake1 != 0 && newState.bits.bWake1 != 0) {
 		// WAKE1 event detected, we can generate a WAKE1 event.
-		device_driver_event_post(bq25180.device_id,
+		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
 								 bq25180_event_Wake1,
 								 0,
 								 NULL,
@@ -261,7 +277,7 @@ static void bq25180_irq_work_fn(struct k_work* work) {
 	}
 	if (changed.bits.bWake2 != 0 && newState.bits.bWake2 != 0) {
 		// WAKE2 event detected, we can generate a WAKE2 event.
-		device_driver_event_post(bq25180.device_id,
+		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
 								 bq25180_event_Wake2,
 								 0,
 								 NULL,
@@ -270,7 +286,7 @@ static void bq25180_irq_work_fn(struct k_work* work) {
 
 	if (changed.bits.bButtonPressed != 0 && newState.bits.bButtonPressed != 0) {
 		// button activity detected, we can generate a button pressed event.
-		device_driver_event_post(bq25180.device_id,
+		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
 								 bq25180_event_ButtonPressed,
 								 0,
 								 NULL,
@@ -279,51 +295,55 @@ static void bq25180_irq_work_fn(struct k_work* work) {
 	bq25180.charger_state = newState;
 }
 
-/** GPIO ISR that schedules charger policy work outside interrupt context. */
+/** GPIO ISR that posts the charger interrupt notification event. */
 static void bq25180_irq_callback(const struct device* dev,
 								 struct gpio_callback* cb,
 								 uint32_t pins) {
 	ARG_UNUSED(dev);
 	ARG_UNUSED(cb);
-	ARG_UNUSED(pins);
 
-	k_work_submit(&bq25180.irq_work);
+	(void) device_driver_event_post_isr(BQ25180_DEVICE_DTS_ID,
+										bq25180_event_InterruptDetected,
+										pins,
+										NULL);
 }
 
-/** Configure the active-low charger interrupt and its deferred work item. */
+/** Configure the active-low charger interrupt. */
 static int bq25180_irq_init(void) {
-	if (bq25180.state.bits.bInitialized == 0) {
-		int ret;
-		// configure the interrupt with open drain configuration
-		// since we have a pull-up resistor on the board, we don't need to configure
-		// it to have internal pull-ups enabled.
-		if (!device_is_ready(bq25180.irq_gpio.port)) {
-			LOG_WRN("BQ25180 interrupt GPIO not ready");
-			return -ENODEV;
-		}
-
-		ret = gpio_pin_configure_dt(&bq25180.irq_gpio, GPIO_INPUT);
-		if (ret) {
-			LOG_ERR("BQ25180 interrupt pin config failed (%d)", ret);
-			return ret;
-		}
-
-		ret = gpio_pin_interrupt_configure_dt(&bq25180.irq_gpio, GPIO_INT_EDGE_FALLING);
-		if (ret) {
-			LOG_ERR("BQ25180 interrupt config failed (%d)", ret);
-			return ret;
-		}
-		// configure the irq callback
-		gpio_init_callback(&bq25180.irq_cb, bq25180_irq_callback, BIT(bq25180.irq_gpio.pin));
-		ret = gpio_add_callback(bq25180.irq_gpio.port, &bq25180.irq_cb);
-		if (ret) {
-			LOG_ERR("BQ25180 interrupt callback add failed (%d)", ret);
-			return ret;
-		}
-		// configure the deferred work item for the interrupt callback
-		k_work_init(&bq25180.irq_work, bq25180_irq_work_fn);
+	if (bq25180.irq_ready) {
 		return 0;
 	}
+
+	int ret;
+
+	// configure the interrupt with open drain configuration
+	// since we have a pull-up resistor on the board, we don't need to configure
+	// it to have internal pull-ups enabled.
+	if (!device_is_ready(bq25180.irq_gpio.port)) {
+		LOG_WRN("BQ25180 interrupt GPIO not ready");
+		return -ENODEV;
+	}
+
+	ret = gpio_pin_configure_dt(&bq25180.irq_gpio, GPIO_INPUT);
+	if (ret) {
+		LOG_ERR("BQ25180 interrupt pin config failed (%d)", ret);
+		return ret;
+	}
+
+	ret = gpio_pin_interrupt_configure_dt(&bq25180.irq_gpio, GPIO_INT_EDGE_FALLING);
+	if (ret) {
+		LOG_ERR("BQ25180 interrupt config failed (%d)", ret);
+		return ret;
+	}
+	// configure the irq callback
+	gpio_init_callback(&bq25180.irq_cb, bq25180_irq_callback, BIT(bq25180.irq_gpio.pin));
+	ret = gpio_add_callback(bq25180.irq_gpio.port, &bq25180.irq_cb);
+	if (ret) {
+		LOG_ERR("BQ25180 interrupt callback add failed (%d)", ret);
+		return ret;
+	}
+
+	bq25180.irq_ready = true;
 	return 0;
 }
 
@@ -433,13 +453,11 @@ void bq25180_get_default_lipo_usb_charger_config(struct bq25180_config_t* config
 }
 
 /* Initialize the BQ25180 charger. */
-bool bq25180_init(uint32_t device_id) {
+bool bq25180_init(void) {
 	if (bq25180.state.bits.bInitialized != 0) {
 		LOG_WRN("BQ25180 already initialized!");
 		return true;
 	}
-
-	bq25180.device_id = device_id;
 
 	// lets check whether the i2c bus is ready
 	// before we try to acquire the bus lock.
@@ -660,7 +678,7 @@ bool bq25180_update_state(union bq25180_charger_state_t* state) {
 		state->value = currentState.value;
 	}
 	if (currentState.value != bq25180.charger_state.value) {
-		bq25180.charger_state.value = currentState.value;
+		bq25180_process_state_change(bq25180.charger_state, currentState);
 	}
 	return true;
 }

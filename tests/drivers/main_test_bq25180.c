@@ -27,41 +27,6 @@
 K_THREAD_STACK_DEFINE(test_event_stack, TEST_EVENT_STACK_SIZE);
 static struct k_thread test_event_thread;
 
-static const char* bq25180_event_to_string(uint32_t event_id) {
-	switch ((enum bq25180_event_type) event_id) {
-	case bq25180_event_Plugged:
-		return "Plugged";
-	case bq25180_event_Unplugged:
-		return "Unplugged";
-	case bq25180_event_Charging:
-		return "Charging";
-	case bq25180_event_ChargingDone:
-		return "ChargingDone";
-	case bq25180_event_ThermalRegulation:
-		return "ThermalRegulation";
-	case bq25180_event_VIN_OverVoltageProtection:
-		return "VIN_OverVoltageProtection";
-	case bq25180_event_BatteryUnderVoltageLockOut:
-		return "BatteryUnderVoltageLockOut";
-	case bq25180_event_SafetyTimerExpired:
-		return "SafetyTimerExpired";
-	case bq25180_event_ThermalSystemFault:
-		return "ThermalSystemFault";
-	case bq25180_event_BatteryUndervoltageLockoutFault:
-		return "BatteryUndervoltageLockoutFault";
-	case bq25180_event_BatteryOverCurrentProtectionFault:
-		return "BatteryOverCurrentProtectionFault";
-	case bq25180_event_Wake1:
-		return "Wake1";
-	case bq25180_event_Wake2:
-		return "Wake2";
-	case bq25180_event_ButtonPressed:
-		return "ButtonPressed";
-	default:
-		return "Unknown";
-	}
-}
-
 static void bq25180_event_consumer_thread(void* a, void* b, void* c) {
 	ARG_UNUSED(a);
 	ARG_UNUSED(b);
@@ -84,10 +49,22 @@ static void bq25180_event_consumer_thread(void* a, void* b, void* c) {
 		}
 
 		printk("event[bq25180]: %s (%u), v=%u p=%p\n",
-			   bq25180_event_to_string(event.event_id),
+			   bq25180_event_name(event.event_id),
 			   event.event_id,
 			   event.v_param,
 			   event.p_param);
+
+		if (event.event_id == bq25180_event_InterruptDetected) {
+			union bq25180_charger_state_t state;
+
+			if (bq25180_update_state(&state)) {
+				bq25180_print_state(&state);
+			} else {
+				printk("bq25180_update_state() failed\n");
+			}
+			continue;
+		}
+
 		bq25180_print_state(NULL);
 	}
 }
@@ -134,7 +111,7 @@ int main(void) {
 		return 0;
 	}
 
-	if (!bq25180_init(BQ25180_DEVICE_DTS_ID)) {
+	if (!bq25180_init()) {
 		printk("bq25180_init() failed\n");
 		return 0;
 	}

@@ -8,7 +8,7 @@
 #include "bluetooth/services/power/power_lbs.h"
 #include "bq25180.h"
 #include "bq27427.h"
-#include "device_driver_ids.h"
+#include "device_driver_dts_ids.h"
 
 #define POWER_BLE_POLL_INTERVAL_MS 2000
 
@@ -48,7 +48,7 @@ static void power_ble_init_optional_charger(void) {
 	charger_checked = true;
 	charger_available = false;
 
-	if (bq25180_init(BQ25180_DEVICE_ID) && bq25180_is_ready()) {
+	if (bq25180_init() && bq25180_is_ready()) {
 		bq25180_get_default_lipo_usb_charger_config(&charger_config);
 		charger_config.battery_uvlo = bq25180_battery_UVLO_threshold_2V8;
 		charger_available = bq25180_config(&charger_config);
@@ -65,7 +65,7 @@ static void power_ble_init_optional_gauge(void) {
 	gauge_checked = true;
 	gauge_available = false;
 
-	if (bq27427_init(BQ27427_DEVICE_ID) && bq27427_is_ready()) {
+	if (bq27427_init() && bq27427_is_ready()) {
 		bq27427_get_default_config(&gauge_config);
 		gauge_config.battery_capacity = 450;
 		gauge_available = bq27427_config(&gauge_config);

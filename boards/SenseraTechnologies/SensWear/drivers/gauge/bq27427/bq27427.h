@@ -72,7 +72,7 @@
  * struct bq27427_config_t config;
  * struct bq27427_battery_state_t state;
  *
- * if (!bq27427_init(MY_GAUGE_DEVICE_ID)) {
+ * if (!bq27427_init()) {
  *     // Gauge absent or bus unavailable.
  *     return;
  * }
@@ -114,7 +114,8 @@
 enum bq27427_event_type {
 	bq27427_event_Invalid = -1,
 	bq27427_event_BatteryLow = 0,
-	bq27427_event_StateUpdated = 1
+	bq27427_event_StateUpdated = 1,
+	bq27427_event_Count,
 };
 
 /**
@@ -171,13 +172,11 @@ struct bq27427_battery_state_t {
  *
  * This function does not program the gauge design parameters.
  *
- * @param device_id Identifier reserved for the device event manager (see
- *        device_driver_events.h). It is stored but not yet used to post events.
  * @retval true The bus was ready and the gauge responded with the expected
  *         device type.
  * @retval false The bus was not ready or the device-type probe failed.
  */
-bool bq27427_init(uint32_t device_id);
+bool bq27427_init(void);
 
 /**
  * @brief Report whether bq27427_init() successfully detected the gauge.
@@ -250,6 +249,14 @@ bool bq27427_update_state(struct bq27427_battery_state_t* state);
  * @brief Log the most recently cached battery state.
  */
 void bq27427_print_state(void);
+
+/**
+ * @brief Return the printable name for a BQ27427 event identifier.
+ *
+ * @param event_id Event identifier from enum bq27427_event_type.
+ * @return Constant string for the event, or "Unknown" when @p event_id is not valid.
+ */
+const char* bq27427_event_name(enum bq27427_event_type event_id);
 
 /** @} */
 

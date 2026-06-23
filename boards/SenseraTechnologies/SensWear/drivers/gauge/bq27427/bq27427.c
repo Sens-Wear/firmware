@@ -1,6 +1,7 @@
 #include "bq27427.h"
 #include "sys_i2c.h"
 #include "device_driver_events.h"
+#include "device_driver_dts_ids.h"
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
@@ -67,8 +68,6 @@ union bq27427_state_t {
 static struct bq27427_t {
 	/** Shared-I2C connection and ownership token derived from devicetree. */
 	struct sys_i2c_dt_spec device;
-	/** Identifier used when posting to the device event manager. */
-	uint32_t device_id;
 	/** Interrupt GPIO specification (GAUGE_IRQ / battery-low) from devicetree. */
 	struct gpio_dt_spec irq_gpio;
 	/** GPIO callback instance registered for the battery-low interrupt. */
@@ -79,11 +78,23 @@ static struct bq27427_t {
 	struct bq27427_battery_state_t battery_state;
 } bq27427 = {
 	.device = SYS_I2C_DT_SPEC_GET(BQ27427_NODE),
-	.device_id = DEVICE_DRIVER_EVENT_ID_INVALID,
 	.irq_gpio = GPIO_DT_SPEC_GET(BQ27427_NODE, int_gpios),
 	/* All remaining members (irq_cb, config, state, battery_state) are
 	 * zero-initialised by static storage duration. */
 };
+
+static const char* const bq27427_event_names[bq27427_event_Count] = {
+	[bq27427_event_BatteryLow] = "BatteryLow",
+	[bq27427_event_StateUpdated] = "StateUpdated",
+};
+
+const char* bq27427_event_name(enum bq27427_event_type event_id) {
+	if (event_id >= bq27427_event_Count || bq27427_event_names[event_id] == NULL) {
+		return "Unknown";
+	}
+
+	return bq27427_event_names[event_id];
+}
 
 /** Acquire shared-I2C ownership for one high-level gauge operation. */
 static inline bool bq27427_bus_lock(void) {
@@ -472,7 +483,7 @@ static void bq27427_irq_callback(const struct device* dev,
 	ARG_UNUSED(cb);
 	ARG_UNUSED(pins);
 
-	device_driver_event_post_isr(bq27427.device_id, bq27427_event_BatteryLow, 0, NULL);
+	device_driver_event_post_isr(BQ27427_DEVICE_DTS_ID, bq27427_event_BatteryLow, 0, NULL);
 }
 
 /** Configure the active-low battery-low interrupt and register its callback. */
@@ -511,13 +522,11 @@ static int bq27427_irq_init(void) {
 	return 0;
 }
 
-bool bq27427_init(uint32_t device_id) {
+bool bq27427_init(void) {
 	if (bq27427.state.bits.bInitialized != 0) {
 		LOG_WRN("BQ27427 already initialized!");
 		return true;
 	}
-
-	bq27427.device_id = device_id;
 
 	if (!sys_i2c_is_ready(&bq27427.device)) {
 		LOG_ERR("SYS_I2C bus not ready");
@@ -908,7 +917,7 @@ bool bq27427_update_state(struct bq27427_battery_state_t* state) {
 	}
 
 	// notify consumers that a fresh battery state is available.
-	device_driver_event_post(bq27427.device_id,
+	device_driver_event_post(BQ27427_DEVICE_DTS_ID,
 							 bq27427_event_StateUpdated,
 							 0,
 							 NULL,
