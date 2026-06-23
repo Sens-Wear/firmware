@@ -1,9 +1,6 @@
-#include "common.h"
-#include <zephyr/logging/log.h>
+#include "bhi360_api_error.h"
 
-LOG_MODULE_DECLARE(COMMON);
-
-const char *get_api_error(int8_t error_code)
+const char *bhi360_api_get_error(int8_t error_code)
 {
     switch (error_code)
     {
@@ -18,7 +15,7 @@ const char *get_api_error(int8_t error_code)
     }
 }
 
-const char *get_sensor_error_text(uint8_t sensor_error)
+const char *bhi360_api_get_sensor_error_text(uint8_t sensor_error)
 {
     switch (sensor_error)
     {
@@ -52,7 +49,7 @@ const char *get_sensor_error_text(uint8_t sensor_error)
     }
 }
 
-const char *get_sensor_name(uint8_t sensor_id)
+const char *bhi360_api_get_sensor_name(uint8_t sensor_id)
 {
     switch (sensor_id)
     {

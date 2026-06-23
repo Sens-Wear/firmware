@@ -30,17 +30,17 @@
  * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * @file    common.h
+ * @file    bhi360_api_error.h
+ * @brief   BHI360 / BHY2 API error- and identifier-management helpers.
+ * @details Maps BHY2 API return codes, device sensor-error codes, and sensor
+ *          IDs to human-readable strings for logging and diagnostics. These are
+ *          pure lookup helpers and perform no device I/O.
  */
 
-#ifndef COMMON_H_
-#define COMMON_H_
+#ifndef BHI360_API_ERROR_H_
+#define BHI360_API_ERROR_H_
 
 #include <stdint.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <zephyr/logging/log.h>
-#include <zephyr/device.h>
 
 #include "bhy2.h"
 
@@ -48,12 +48,29 @@
 extern "C" {
 #endif
 
-const char *get_api_error(int8_t error_code);
-const char *get_sensor_error_text(uint8_t sensor_error);
-const char *get_sensor_name(uint8_t sensor_id);
+/**
+ * @brief Return a human-readable string for a BHY2 API return code.
+ * @param error_code A BHY2_OK / BHY2_E_* status returned by the BHY2 API.
+ * @return Static, NUL-terminated description; never NULL.
+ */
+const char *bhi360_api_get_error(int8_t error_code);
+
+/**
+ * @brief Return a human-readable string for a BHI360 sensor-error code.
+ * @param sensor_error The device sensor-error register value.
+ * @return Static, NUL-terminated description; never NULL.
+ */
+const char *bhi360_api_get_sensor_error_text(uint8_t sensor_error);
+
+/**
+ * @brief Return a human-readable name for a BHY2 virtual-sensor ID.
+ * @param sensor_id A BHY2_SENSOR_ID_* identifier.
+ * @return Static, NUL-terminated sensor name; never NULL.
+ */
+const char *bhi360_api_get_sensor_name(uint8_t sensor_id);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* COMMON_H_ */ 
+#endif /* BHI360_API_ERROR_H_ */

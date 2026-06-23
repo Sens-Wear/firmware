@@ -24,7 +24,6 @@ target_sources(app_src INTERFACE
     ${APP_SRC_DIR}/bluetooth/services/power/power_lbs.c
     ${APP_SRC_DIR}/bluetooth/services/pressure/pressure_lbs.c
     ${APP_SRC_DIR}/drivers/actuators/led/led_controller.c
-    ${APP_SRC_DIR}/drivers/sensors/imu/common.c
 )
 
 # Daughter-board sources, selected by the active SENSEWEAR_DAUGHTER_* choice.
@@ -62,7 +61,6 @@ endif()
 
 target_include_directories(app_src INTERFACE
     ${APP_SRC_DIR}
-    ${APP_SRC_DIR}/drivers/sensors/imu
     ${APP_SRC_DIR}/drivers/sensors/temperature
     ${APP_SRC_DIR}/drivers/actuators/led
     ${CMAKE_SOURCE_DIR}/boards/SenseraTechnologies/SensWear
