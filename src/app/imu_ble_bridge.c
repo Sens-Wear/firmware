@@ -33,21 +33,22 @@ static void imu_event_thread_fn(void *a, void *b, void *c)
 			continue;
 		}
 
-		if ((event.device_id == BHI360_DEVICE_DTS_ID) &&
-		    (event.event_id == bhi360_event_Irq)) {
-			(void)bhi360_process_irq();
-			continue;
-		}
-
 		if (event.device_id != BHI360_DEVICE_DTS_ID) {
 			continue;
 		}
 
-		if ((event.event_id == bhi360_event_Quaternion) &&
+		if (event.event_id == bhi360_event_Irq) {
+			(void)bhi360_process_irq();
+			continue;
+		}
+
+		if ((event.event_id == bhi360_event_QuaternionBatch) &&
 		    atomic_get(&imu_streaming_enabled) &&
-		    (event.p_param != 0U)) {
-			const struct bhi360_quat_data *data =
+		    (event.p_param != 0U) &&
+		    (event.v_param > 0U)) {
+			const struct bhi360_quat_data *samples =
 				(const struct bhi360_quat_data *)(uintptr_t)event.p_param;
+			const struct bhi360_quat_data *data = &samples[event.v_param - 1U];
 			struct imu_lbs_quat ble_data = {
 				.x = data->x,
 				.y = data->y,
@@ -58,11 +59,13 @@ static void imu_event_thread_fn(void *a, void *b, void *c)
 			(void)imu_lbs_notify_quat(&ble_data);
 		}
 
-		if ((event.event_id == bhi360_event_LinearAcceleration) &&
+		if ((event.event_id == bhi360_event_LinearAccelerationBatch) &&
 		    atomic_get(&imu_streaming_enabled) &&
-		    (event.p_param != 0U)) {
-			const struct bhi360_lacc_data *data =
+		    (event.p_param != 0U) &&
+		    (event.v_param > 0U)) {
+			const struct bhi360_lacc_data *samples =
 				(const struct bhi360_lacc_data *)(uintptr_t)event.p_param;
+			const struct bhi360_lacc_data *data = &samples[event.v_param - 1U];
 			struct imu_lbs_lacc ble_data = {
 				.x = data->x,
 				.y = data->y,

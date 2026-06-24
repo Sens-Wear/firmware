@@ -20,8 +20,9 @@
  *   uploads firmware, discovers available virtual sensors, and enables the
  *   driver's default sensor sets.
  * - bhi360_irq_callback() posts bhi360_event_Irq from ISR context.
- * - bhi360_process_irq() reads interrupt status and drains the FIFO from thread
- *   context. BHY2 dispatches FIFO packets into the parser callbacks below.
+ * - bhi360_process_irq() runs from caller thread context, reads interrupt
+ *   status, and drains the FIFO. BHY2 dispatches FIFO packets into the parser
+ *   callbacks below.
  * - Parser callbacks decode payloads into cached driver-owned structs and post
  *   higher-level device_driver_event_t messages for the application.
  *
@@ -34,11 +35,19 @@
  *   user-routable GPIO pins,
  * - a BHY2 device context,
  * - a FIFO work buffer used by bhy2_get_and_process_fifo(), and
- * - per-event cached sample structs whose addresses are published in p_param.
+ * - per-event cached sample storage whose addresses are published in p_param.
  *
- * Sample payload pointers remain valid until the next event of the same class is
- * parsed, because each event class reuses one cached struct inside the driver.
- * Consumers that need long-lived copies must duplicate the pointed-to data.
+ * The high-rate streams (quaternion, linear acceleration, gyroscope) cache their
+ * samples in per-drain arrays: a single interrupt can decode many samples of the
+ * same stream. These streams are not posted per sample. Instead each drain emits
+ * one summary event (bhi360_event_QuaternionBatch, _LinearAccelerationBatch,
+ * _GyroBatch) whose v_param is the number of samples collected and whose p_param
+ * points at the first element of the array. The arrays are reset at the start of
+ * each bhi360_process_irq() pass, so a published pointer stays valid only until
+ * the next FIFO drain; bhi360_copy_*() returns a thread-safe snapshot. The
+ * remaining low-rate classes are still posted one event per sample and reuse one
+ * cached struct each. Consumers that need long-lived copies must duplicate the
+ * pointed-to data.
  *
  * @section bhi360_impl_enabled_sensors Enabled Sensors
  *
@@ -62,6 +71,7 @@
 
 #include <errno.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "bhi3_defs.h"
 #include "bhi360.h"
@@ -95,6 +105,22 @@ LOG_MODULE_REGISTER(bhi360, CONFIG_LOG_DEFAULT_LEVEL);
 #endif
 
 #define BHI360_SPI_TIMEOUT K_MSEC(100)
+#define BHI360_REPORT_LATENCY_MS 100U
+#define BHI360_WAKE_FIFO_WATERMARK_BYTES 8U
+#define BHI360_NONWAKE_FIFO_WATERMARK_BYTES 8U
+
+/**
+ * @brief Maximum number of high-rate samples cached per FIFO drain.
+ * @details A single bhi360_process_irq() pass can decode several samples of the
+ *          same high-rate stream (quaternion, accelerometer, gyroscope). Each
+ *          decoded sample is stored in its own slot so the pointer published in
+ *          a posted event stays valid until the next FIFO drain, instead of
+ *          being overwritten by the next sample in the same batch. At 100 Hz with
+ *          a 100 ms report latency a batch holds roughly ten samples per stream;
+ *          this bound leaves comfortable headroom. Excess samples in an unusually
+ *          large batch are dropped with a warning.
+ */
+#define BHI360_MAX_SAMPLES_PER_IRQ 32U
 
 /**
  * @brief Sensor configuration descriptor used during enable/disable passes.
@@ -104,7 +130,7 @@ LOG_MODULE_REGISTER(bhi360, CONFIG_LOG_DEFAULT_LEVEL);
  *          driver events.
  */
 struct bhi360_sensor_enable {
-	/** @brief BHY2 sensor ID constant (e.g., BHY2_SENSOR_ID_RV, BHY2_SENSOR_ID_GYRO). */
+	/** @brief BHY2 sensor ID constant (e.g., BHY2_SENSOR_ID_GAMERV_WU, BHY2_SENSOR_ID_GYRO_WU). */
 	uint8_t sensor_id;
 	/** @brief Human-readable sensor name for logging. */
 	const char* name;
@@ -165,14 +191,35 @@ static struct bhi360_t {
 	union bhi360_state_t state;
 	/** @brief Human-readable driver name used in log messages. */
 	char name[32];
+
 	/** @brief Driver-owned FIFO work buffer passed to bhy2_get_and_process_fifo(). */
 	uint8_t work_buffer[WORK_BUFFER_SIZE];
-	/** @brief Cached quaternion sample published through bhi360_event_Quaternion p_param. */
-	struct bhi360_quat_data quat_data;
-	/** @brief Cached linear-acceleration sample published through bhi360_event_LinearAcceleration p_param. */
-	struct bhi360_lacc_data lacc_data;
-	/** @brief Cached gyroscope sample published through bhi360_event_Gyro p_param. */
-	struct bhi360_gyro_data gyro_data;
+	bool enable_phy_sensor_streams;
+	struct k_timer phy_sensor_stream_timer;
+
+	/** @brief Guards the per-drain sample arrays and counts against concurrent drain/copy access.
+	 */
+	struct k_mutex lock;
+	/** @brief Quaternion samples decoded in the current FIFO drain, published as one batch event.
+	 */
+	struct bhi360_quat_data quat_data[BHI360_MAX_SAMPLES_PER_IRQ];
+	/** @brief Number of valid entries in quat_data for the current FIFO drain. */
+	size_t quat_count;
+	size_t quat_skipped_count; /**< @brief Number of quaternion samples skipped due to array
+								  overflow. */
+	/** @brief Linear-acceleration samples decoded in the current FIFO drain, published as one batch
+	 * event. */
+	struct bhi360_lacc_data lacc_data[BHI360_MAX_SAMPLES_PER_IRQ];
+	/** @brief Number of valid entries in lacc_data for the current FIFO drain. */
+	size_t lacc_count;
+	size_t lacc_skipped_count; /**< @brief Number of linear-acceleration samples skipped due to
+								  array overflow. */
+	/** @brief Gyroscope samples decoded in the current FIFO drain, published as one batch event. */
+	struct bhi360_gyro_data gyro_data[BHI360_MAX_SAMPLES_PER_IRQ];
+	/** @brief Number of valid entries in gyro_data for the current FIFO drain. */
+	size_t gyro_count;
+	size_t gyro_skipped_count; /**< @brief Number of gyroscope samples skipped due to array
+								  overflow. */
 	/** @brief Cached pedometer sample published through bhi360_event_Pedometer p_param. */
 	struct bhi360_pedometer_data pedometer_data;
 	/** @brief Cached gesture sample published through bhi360_event_Gesture p_param. */
@@ -191,9 +238,9 @@ static struct bhi360_t {
 
 static const char* const bhi360_event_names[bhi360_event_Count] = {
 	[bhi360_event_Irq] = "Irq",
-	[bhi360_event_Quaternion] = "Quaternion",
-	[bhi360_event_LinearAcceleration] = "LinearAcceleration",
-	[bhi360_event_Gyro] = "Gyro",
+	[bhi360_event_QuaternionBatch] = "QuaternionBatch",
+	[bhi360_event_LinearAccelerationBatch] = "LinearAccelerationBatch",
+	[bhi360_event_GyroBatch] = "GyroBatch",
 	[bhi360_event_Pedometer] = "Pedometer",
 	[bhi360_event_Gesture] = "Gesture",
 	[bhi360_event_Activity] = "Activity",
@@ -301,8 +348,10 @@ static const char* bhi360_activity_event_name(enum bhi360_activity_event_type ev
 
 /**
  * @brief Look up an activity transition bit name.
- * @param event Single activity-transition bit decoded from bits 15:0 of bhi360_event_Activity v_param.
- * @return Constant parent-and-transition-name string, or NULL if the value is zero, multi-bit, or unsupported.
+ * @param event Single activity-transition bit decoded from bits 15:0 of bhi360_event_Activity
+ * v_param.
+ * @return Constant parent-and-transition-name string, or NULL if the value is zero, multi-bit, or
+ * unsupported.
  */
 static const char* bhi360_activity_transition_name(enum bhi360_activity_transition_type event) {
 	switch (event) {
@@ -407,21 +456,111 @@ static void parse_activity(const struct bhy2_fifo_parse_data_info* callback_info
 static void print_api_error(int8_t rslt, struct bhy2_dev* dev);
 
 /**
- * @brief Base motion and pedometer sensors enabled by default.
+ * @brief Program and log the BHI360 host interrupt routing.
+ * @details The firmware image can reinitialize host-interface registers during
+ *          boot, so this is applied after firmware boot before sensors are
+ *          enabled. Edge mode is used because the firmware generates HIRQ pulses.
+ *
+ *          Wake and non-wake FIFO interrupt sources remain enabled. Status and
+ *          debug HIRQ sources are disabled to avoid meta/status traffic waking
+ *          the host independently of FIFO data.
+ */
+static bool bhi360_configure_host_interrupts(struct bhi360_t* imu) {
+	uint8_t hintr_ctrl = BHY2_ICTL_DISABLE_DEBUG | BHY2_ICTL_ACTIVE_LOW | BHY2_ICTL_OPEN_DRAIN |
+						 BHY2_ICTL_EDGE;
+	int8_t rslt = bhy2_set_host_interrupt_ctrl(hintr_ctrl, &imu->bhy2);
+	print_api_error(rslt, &imu->bhy2);
+	if (rslt != BHY2_OK) {
+		return false;
+	}
+
+	rslt = bhy2_get_host_interrupt_ctrl(&hintr_ctrl, &imu->bhy2);
+	print_api_error(rslt, &imu->bhy2);
+	if (rslt != BHY2_OK) {
+		return false;
+	}
+
+	LOG_INF("%s: host interrupt ctrl=0x%02x W:%s NW:%s ST:%s DBG:%s polarity:%s drive:%s mode:%s",
+			imu->name,
+			hintr_ctrl,
+			(hintr_ctrl & BHY2_ICTL_DISABLE_FIFO_W) ? "off" : "on",
+			(hintr_ctrl & BHY2_ICTL_DISABLE_FIFO_NW) ? "off" : "on",
+			(hintr_ctrl & BHY2_ICTL_DISABLE_STATUS_FIFO) ? "off" : "on",
+			(hintr_ctrl & BHY2_ICTL_DISABLE_DEBUG) ? "off" : "on",
+			(hintr_ctrl & BHY2_ICTL_ACTIVE_LOW) ? "active-low" : "active-high",
+			(hintr_ctrl & BHY2_ICTL_OPEN_DRAIN) ? "open-drain" : "push-pull",
+			(hintr_ctrl & BHY2_ICTL_EDGE) ? "edge" : "level");
+
+	return true;
+}
+
+/**
+ * @brief Program FIFO watermarks used for host interrupt generation.
+ * @details The BHY2 helper performs a FIFO-control parameter read, write, and
+ *          read-back verification. Run this during configuration before sensor
+ *          streaming starts; doing the same transaction while async status and
+ *          stream data are active can collide with status-channel traffic.
+ */
+static bool bhi360_configure_fifo_watermark(struct bhi360_t* imu) {
+	int8_t rslt = bhy2_set_fifo_wmark_wkup(BHI360_WAKE_FIFO_WATERMARK_BYTES, &imu->bhy2);
+	print_api_error(rslt, &imu->bhy2);
+	if (rslt != BHY2_OK) {
+		LOG_ERR("%s: failed to set wake FIFO watermark to %u bytes",
+				imu->name,
+				BHI360_WAKE_FIFO_WATERMARK_BYTES);
+		return false;
+	}
+
+	rslt = bhy2_set_fifo_wmark_nonwkup(BHI360_NONWAKE_FIFO_WATERMARK_BYTES, &imu->bhy2);
+	print_api_error(rslt, &imu->bhy2);
+	if (rslt != BHY2_OK) {
+		LOG_ERR("%s: failed to set non-wake FIFO watermark to %u bytes",
+				imu->name,
+				BHI360_NONWAKE_FIFO_WATERMARK_BYTES);
+		return false;
+	}
+
+	uint32_t wake_watermark = 0;
+	rslt = bhy2_get_fifo_wmark_wkup(&wake_watermark, &imu->bhy2);
+	print_api_error(rslt, &imu->bhy2);
+	if (rslt != BHY2_OK) {
+		return false;
+	}
+
+	uint32_t nonwake_watermark = 0;
+	rslt = bhy2_get_fifo_wmark_nonwkup(&nonwake_watermark, &imu->bhy2);
+	print_api_error(rslt, &imu->bhy2);
+	if (rslt != BHY2_OK) {
+		return false;
+	}
+
+	LOG_INF("%s: FIFO watermarks W=%u bytes NW=%u bytes",
+			imu->name,
+			wake_watermark,
+			nonwake_watermark);
+	if ((wake_watermark != BHI360_WAKE_FIFO_WATERMARK_BYTES) ||
+		(nonwake_watermark != BHI360_NONWAKE_FIFO_WATERMARK_BYTES)) {
+		LOG_ERR("%s: FIFO watermark readback mismatch, expected W=%u bytes NW=%u bytes",
+				imu->name,
+				BHI360_WAKE_FIFO_WATERMARK_BYTES,
+				BHI360_NONWAKE_FIFO_WATERMARK_BYTES);
+		return false;
+	}
+
+	return true;
+}
+
+/**
+ * @brief Physical sensors enabled by default.
  * @details These are the primary motion outputs exposed by the public API.
  */
-static const struct bhi360_sensor_enable bhi360_base_sensors[] = {
-	{BHY2_SENSOR_ID_RV, "Rotation vector", 100.0f, 0, parse_quaternion},
-	{BHY2_SENSOR_ID_LACC, "Linear acceleration", 100.0f, 0, parse_linear_acceleration},
-	{BHY2_SENSOR_ID_GYRO, "Gyroscope", 100.0f, 0, parse_gyro},
-	{BHY2_SENSOR_ID_STC, "Step counter", 1.0f, 0, parse_step_counter},
-	{BHY2_SENSOR_ID_STC_WU, "Step counter wake-up", 1.0f, 0, parse_step_counter},
-	{BHY2_SENSOR_ID_STC_LP, "Step counter low-power", 1.0f, 0, parse_step_counter},
-	{BHY2_SENSOR_ID_STC_LP_WU, "Step counter low-power wake-up", 1.0f, 0, parse_step_counter},
-	{BHY2_SENSOR_ID_STD, "Step detector", 1.0f, 0, parse_scalar_event},
-	{BHY2_SENSOR_ID_STD_WU, "Step detector wake-up", 1.0f, 0, parse_scalar_event},
-	{BHY2_SENSOR_ID_STD_LP, "Step detector low-power", 1.0f, 0, parse_scalar_event},
-	{BHY2_SENSOR_ID_STD_LP_WU, "Step detector low-power wake-up", 1.0f, 0, parse_scalar_event},
+static const struct bhi360_sensor_enable bhi360_phy_sensors[] = {
+	/* Use wake-up variants for high-rate streams so their samples go through the
+	 * wake FIFO. Step Counter LP is only available as a non-wake stream in this
+	 * firmware, so both wake and non-wake FIFO watermarks are configured small. */
+	{BHY2_SENSOR_ID_GAMERV_WU, "Quaternion", 100.0f, BHI360_REPORT_LATENCY_MS, parse_quaternion},
+	{BHY2_SENSOR_ID_ACC_WU, "Accel.", 100.0f, BHI360_REPORT_LATENCY_MS, parse_linear_acceleration},
+	{BHY2_SENSOR_ID_GYRO_WU, "Gyroscope", 100.0f, BHI360_REPORT_LATENCY_MS, parse_gyro},
 };
 
 /**
@@ -430,25 +569,8 @@ static const struct bhi360_sensor_enable bhi360_base_sensors[] = {
  *          bhi360_event_Gesture events.
  */
 static const struct bhi360_sensor_enable bhi360_gesture_sensors[] = {
-	{BHY2_SENSOR_ID_WAKE_GESTURE, "Wake gesture", 1.0f, 0, parse_scalar_event},
-	{BHY2_SENSOR_ID_GLANCE_GESTURE, "Glance gesture", 1.0f, 0, parse_scalar_event},
-	{BHY2_SENSOR_ID_PICKUP_GESTURE, "Pickup gesture", 1.0f, 0, parse_scalar_event},
-	{BHY2_SENSOR_ID_WRIST_TILT_GESTURE, "Wrist tilt gesture", 1.0f, 0, parse_scalar_event},
-	{BHY2_SENSOR_ID_TILT_DETECTOR, "Tilt detector", 1.0f, 0, parse_scalar_event},
-	{BHY2_SENSOR_ID_STATIONARY_DET, "Stationary detector", 1.0f, 0, parse_scalar_event},
-	{BHY2_SENSOR_ID_MOTION_DET, "Motion detector", 1.0f, 0, parse_scalar_event},
-	{BHY2_SENSOR_ID_SIG, "Significant motion", 1.0f, 0, parse_scalar_event},
-	{BHY2_SENSOR_ID_SIG_LP, "Significant motion low-power", 1.0f, 0, parse_scalar_event},
-	{BHY2_SENSOR_ID_SIG_LP_WU, "Significant motion low-power wake-up", 1.0f, 0, parse_scalar_event},
-	{BHY2_SENSOR_ID_ANY_MOTION_LP, "Any motion low-power", 1.0f, 0, parse_scalar_event},
-	{BHY2_SENSOR_ID_ANY_MOTION_LP_WU, "Any motion low-power wake-up", 1.0f, 0, parse_scalar_event},
-	{BHI3_SENSOR_ID_NO_MOTION_LP_WU, "No motion low-power wake-up", 1.0f, 0, parse_scalar_event},
-	{BHI3_SENSOR_ID_WRIST_GEST_DETECT_LP_WU,
-	 "Wrist gesture detect low-power wake-up",
-	 1.0f,
-	 0,
-	 parse_scalar_event},
-	{BHI3_SENSOR_ID_WRIST_WEAR_LP_WU, "Wrist wear low-power wake-up", 1.0f, 0, parse_scalar_event},
+	{BHI3_SENSOR_ID_WRIST_GEST_DETECT_LP_WU, "Wrist gesture detect", 1.0f, 0, parse_scalar_event},
+	{BHI3_SENSOR_ID_WRIST_WEAR_LP_WU, "Wrist wear", 1.0f, 0, parse_scalar_event},
 };
 
 /**
@@ -457,8 +579,11 @@ static const struct bhi360_sensor_enable bhi360_gesture_sensors[] = {
  *          bhi360_event_Activity.
  */
 static const struct bhi360_sensor_enable bhi360_activity_sensors[] = {
-	{BHY2_SENSOR_ID_AR, "Activity recognition", 1.0f, 0, parse_activity},
-	{BHI3_SENSOR_ID_AR_WEAR_WU, "Wear activity recognition wake-up", 1.0f, 0, parse_activity},
+	{BHY2_SENSOR_ID_ANY_MOTION_LP, "Any motion", 1.0f, 0, parse_scalar_event},
+	{BHI3_SENSOR_ID_NO_MOTION_LP_WU, "No motion", 1.0f, 0, parse_scalar_event},
+	{BHI3_SENSOR_ID_AR_WEAR_WU, "Wear activity", 1.0f, BHI360_REPORT_LATENCY_MS, parse_activity},
+	{BHY2_SENSOR_ID_STC_LP, "Step counter", 1.0f, BHI360_REPORT_LATENCY_MS, parse_step_counter},
+	{BHY2_SENSOR_ID_STD_LP, "Step detector", 1.0f, BHI360_REPORT_LATENCY_MS, parse_scalar_event},
 };
 
 /**
@@ -584,14 +709,21 @@ static int8_t upload_firmware(struct bhy2_dev* dev) {
 
 /**
  * @brief GPIO callback that translates hardware IRQ edges into queue events.
- * @details No FIFO work is performed here; only the pin bitmap is forwarded to
- *          the central driver-event queue as bhi360_event_Irq.
+ * @details No SPI/FIFO work is performed here; only the pin bitmap is forwarded
+ *          to the central driver-event queue as bhi360_event_Irq. The consumer
+ *          calls bhi360_process_irq() from its own thread context.
  */
 static void bhi360_irq_callback(const struct device* dev, struct gpio_callback* cb, uint32_t pins) {
 	ARG_UNUSED(dev);
 	ARG_UNUSED(cb);
 
 	bhi360_post_event_isr(bhi360_event_Irq, pins);
+}
+
+static void bhi360_phy_sensor_stream_timer_callback(struct k_timer* timer) {
+	ARG_UNUSED(timer);
+
+	bhi360_post_event_isr(bhi360_event_Irq, 0);
 }
 
 /**
@@ -630,6 +762,19 @@ static int bhi360_irq_init(struct bhi360_t* imu) {
 	return 0;
 }
 
+static int bhi360_init_phy_sensor_streams_timer(void) {
+	if (bhi360.state.bits.initialized != 0U) {
+		return 0;
+	}
+	if (bhi360.state.bits.configured != 0U) {
+		return -EINVAL;
+	}
+	bhi360.enable_phy_sensor_streams = false;
+	k_timer_init(&bhi360.phy_sensor_stream_timer,
+				 bhi360_phy_sensor_stream_timer_callback,
+				 NULL); /* stop callback optional */
+	return 0;
+}
 /**
  * @brief BHY2 transport hook for SPI register reads.
  * @details Shared SPI ownership is acquired for the transaction, the read bit
@@ -791,7 +936,7 @@ const char* bhi360_event_name(enum bhi360_event_type event_id, uint32_t v_param)
 	case bhi360_event_Pedometer:
 		return bhi360_pedometer_event_name((enum bhi360_pedometer_event_type) v_param);
 	case bhi360_event_Gesture:
-		return bhi360_gesture_event_name((enum bhi360_gesture_event_type) ((v_param >> 8) & 0xFFU));
+		return bhi360_gesture_event_name((enum bhi360_gesture_event_type)((v_param >> 8) & 0xFFU));
 	case bhi360_event_Activity: {
 		const uint16_t transition = (uint16_t) (v_param & 0xFFFFU);
 		const char* transition_name;
@@ -805,10 +950,10 @@ const char* bhi360_event_name(enum bhi360_event_type event_id, uint32_t v_param)
 		}
 
 		return bhi360_activity_event_name(
-			(enum bhi360_activity_event_type) ((v_param >> 16) & 0xFFU));
+			(enum bhi360_activity_event_type)((v_param >> 16) & 0xFFU));
 	}
 	case bhi360_event_MetaEvent:
-		return bhi360_meta_event_name((enum bhi360_meta_event_type) ((v_param >> 16) & 0xFFU));
+		return bhi360_meta_event_name((enum bhi360_meta_event_type)((v_param >> 16) & 0xFFU));
 	default:
 		return bhi360_base_event_name(event_id);
 	}
@@ -821,6 +966,8 @@ bool bhi360_init(void) {
 	if (imu->state.bits.initialized) {
 		return true;
 	}
+
+	k_mutex_init(&imu->lock);
 
 	LOG_INF("%s: Starting initialization", imu->name);
 
@@ -856,16 +1003,20 @@ bool bhi360_init(void) {
 		return false;
 	}
 
+	ret = bhi360_init_phy_sensor_streams_timer();
+	if (ret != 0) {
+		return false;
+	}
+
 	imu->state.bits.initialized = 1U;
 	return true;
 }
 
-bool bhi360_configure(void) {
+bool bhi360_configure(bool enable_phy_streams, uint32_t phy_stream_period_ms) {
 	struct bhi360_t* imu = &bhi360;
 	int8_t rslt;
 	uint8_t product_id = 0;
 	uint16_t version = 0;
-	uint8_t hintr_ctrl;
 	uint8_t hif_ctrl;
 	uint8_t boot_status;
 
@@ -917,20 +1068,6 @@ bool bhi360_configure(void) {
 		return false;
 	}
 
-	hintr_ctrl = BHY2_ICTL_ACTIVE_LOW | BHY2_ICTL_OPEN_DRAIN;
-	rslt = bhy2_set_host_interrupt_ctrl(hintr_ctrl, &imu->bhy2);
-	print_api_error(rslt, &imu->bhy2);
-	if (rslt != BHY2_OK) {
-		return false;
-	}
-
-	hif_ctrl = BHY2_HIF_CTRL_ASYNC_STATUS_CHANNEL;
-	rslt = bhy2_set_host_intf_ctrl(hif_ctrl, &imu->bhy2);
-	print_api_error(rslt, &imu->bhy2);
-	if (rslt != BHY2_OK) {
-		return false;
-	}
-
 	rslt = bhy2_get_boot_status(&boot_status, &imu->bhy2);
 	if (!(boot_status & BHY2_BST_HOST_INTERFACE_READY)) {
 		LOG_ERR("%s: Host interface not ready", imu->name);
@@ -953,9 +1090,46 @@ bool bhi360_configure(void) {
 	}
 	LOG_INF("%s: Boot successful, kernel version %u", imu->name, version);
 
+	if (!bhi360_configure_host_interrupts(imu)) {
+		return false;
+	}
+
+	hif_ctrl = BHY2_HIF_CTRL_ASYNC_STATUS_CHANNEL;
+	rslt = bhy2_set_host_intf_ctrl(hif_ctrl, &imu->bhy2);
+	print_api_error(rslt, &imu->bhy2);
+	if (rslt != BHY2_OK) {
+		return false;
+	}
+
+	/* This populates dev->event_size[], which the FIFO parser uses to advance past
+	 * each frame. If it fails, the table stays zero and the parser cannot advance
+	 * past a meta-event frame (read position never moves), spinning and flooding
+	 * "Invalid meta event size 0". Treat a failure as fatal for configuration. */
 	LOG_INF("%s: Updating virtual sensor list", imu->name);
 	rslt = bhy2_update_virtual_sensor_list(&imu->bhy2);
 	print_api_error(rslt, &imu->bhy2);
+	if (rslt != BHY2_OK) {
+		LOG_ERR("%s: Failed to update virtual sensor list", imu->name);
+		return false;
+	}
+
+	hif_ctrl = 0U;
+	rslt = bhy2_set_host_intf_ctrl(hif_ctrl, &imu->bhy2);
+	print_api_error(rslt, &imu->bhy2);
+	if (rslt != BHY2_OK) {
+		return false;
+	}
+
+	if (!bhi360_configure_fifo_watermark(imu)) {
+		return false;
+	}
+
+	hif_ctrl = BHY2_HIF_CTRL_ASYNC_STATUS_CHANNEL;
+	rslt = bhy2_set_host_intf_ctrl(hif_ctrl, &imu->bhy2);
+	print_api_error(rslt, &imu->bhy2);
+	if (rslt != BHY2_OK) {
+		return false;
+	}
 
 	LOG_INF("%s: Registering meta-event callbacks", imu->name);
 	rslt = bhy2_register_fifo_parse_callback(BHY2_SYS_ID_META_EVENT,
@@ -976,13 +1150,57 @@ bool bhi360_configure(void) {
 		return false;
 	}
 
-	bhi360_enable_sensor_table(imu, bhi360_base_sensors, ARRAY_SIZE(bhi360_base_sensors));
+	/* FIFO control is configured above before streaming starts. Do not query it
+	 * again while sensors are running; the parameter exchange shares the status
+	 * channel with async firmware status traffic. */
+
 	bhi360_enable_sensor_table(imu, bhi360_gesture_sensors, ARRAY_SIZE(bhi360_gesture_sensors));
 	bhi360_enable_sensor_table(imu, bhi360_activity_sensors, ARRAY_SIZE(bhi360_activity_sensors));
+	if (enable_phy_streams) {
+		bhi360_enable_sensor_table(&bhi360, bhi360_phy_sensors, ARRAY_SIZE(bhi360_phy_sensors));
+		k_timer_start(&bhi360.phy_sensor_stream_timer,
+					  K_MSEC(phy_stream_period_ms),
+					  K_MSEC(phy_stream_period_ms));
+		bhi360.enable_phy_sensor_streams = true;
+	} else {
+		bhi360.enable_phy_sensor_streams = false;
+	}
 
 	imu->state.bits.configured = 1U;
 	LOG_INF("%s: Configuration complete", imu->name);
 	return true;
+}
+
+int bhi360_start_phy_sensor_streams(uint32_t period_ms) {
+	if (!bhi360.state.bits.initialized || !bhi360.state.bits.configured) {
+		return -ENODEV;
+	}
+	if (bhi360.enable_phy_sensor_streams) {
+		return -EBUSY;
+	}
+	k_mutex_lock(&bhi360.lock, K_FOREVER);
+
+	bhi360_enable_sensor_table(&bhi360, bhi360_phy_sensors, ARRAY_SIZE(bhi360_phy_sensors));
+	k_timer_start(&bhi360.phy_sensor_stream_timer, K_MSEC(period_ms), K_MSEC(period_ms));
+	bhi360.enable_phy_sensor_streams = true;
+	k_mutex_unlock(&bhi360.lock);
+	return 0;
+}
+
+int bhi360_stop_phy_sensor_streams(void) {
+	if (!bhi360.state.bits.initialized || !bhi360.state.bits.configured) {
+		return -ENODEV;
+	}
+	if (!bhi360.enable_phy_sensor_streams) {
+		return -EINVAL;
+	}
+	k_mutex_lock(&bhi360.lock, K_FOREVER);
+	k_timer_stop(&bhi360.phy_sensor_stream_timer);
+	bhi360_disable_sensor_table(&bhi360, bhi360_phy_sensors, ARRAY_SIZE(bhi360_phy_sensors));
+	bhi360.enable_phy_sensor_streams = false;
+	bhi360_post_event(bhi360_event_Irq, 0, 0);
+	k_mutex_unlock(&bhi360.lock);
+	return 0;
 }
 
 int bhi360_process_irq(void) {
@@ -990,22 +1208,167 @@ int bhi360_process_irq(void) {
 		return -ENODEV;
 	}
 
-	uint8_t int_status = 0;
-	int8_t rslt = bhy2_get_interrupt_status(&int_status, &bhi360.bhy2);
+	/* Hold the cache lock across the whole drain so the high-rate parsers can
+	 * refill the per-drain arrays without a copy-out reader observing a partial
+	 * batch. Start a fresh batch by resetting the counts before draining. */
+	k_mutex_lock(&bhi360.lock, K_FOREVER);
+
+	bhi360.quat_count = 0;
+	bhi360.lacc_count = 0;
+	bhi360.gyro_count = 0;
+
+	bhi360.quat_skipped_count = 0;
+	bhi360.lacc_skipped_count = 0;
+	bhi360.gyro_skipped_count = 0;
+	LOG_DBG("bhi360_process_irq() starting processing... ");
+	/* BHY2 reads INT_STATUS internally; a separate pre-read can consume FIFO cause bits. */
+	int8_t rslt =
+		bhy2_get_and_process_fifo(bhi360.work_buffer, sizeof(bhi360.work_buffer), &bhi360.bhy2);
+
+	/* Snapshot the per-stream counts collected during this drain, then release the
+	 * lock before posting so the queue operations run unlocked. */
+	size_t quat_count = bhi360.quat_count;
+	size_t lacc_count = bhi360.lacc_count;
+	size_t gyro_count = bhi360.gyro_count;
+
+	k_mutex_unlock(&bhi360.lock);
+
 	print_api_error(rslt, &bhi360.bhy2);
 	if (rslt != BHY2_OK) {
 		return -EIO;
 	}
 
-	ARG_UNUSED(int_status);
-
-	rslt = bhy2_get_and_process_fifo(bhi360.work_buffer, sizeof(bhi360.work_buffer), &bhi360.bhy2);
-	print_api_error(rslt, &bhi360.bhy2);
-	if (rslt != BHY2_OK) {
-		return -EIO;
+	/* Post one summary event per high-rate stream that produced samples this drain.
+	 * v_param carries the number of samples; p_param points at the first element of
+	 * the driver-owned array, which stays valid until the next drain. */
+	if (quat_count > 0U) {
+		bhi360_post_event(bhi360_event_QuaternionBatch, (uint32_t) quat_count, bhi360.quat_data);
+	}
+	if (lacc_count > 0U) {
+		bhi360_post_event(bhi360_event_LinearAccelerationBatch,
+						  (uint32_t) lacc_count,
+						  bhi360.lacc_data);
+	}
+	if (gyro_count > 0U) {
+		bhi360_post_event(bhi360_event_GyroBatch, (uint32_t) gyro_count, bhi360.gyro_data);
 	}
 
+	if (bhi360.quat_skipped_count > 0) {
+		LOG_WRN("Quaternion sample dropped: batch exceeded %u samples. %u skipped",
+				BHI360_MAX_SAMPLES_PER_IRQ,
+				bhi360.quat_skipped_count);
+	}
+	if (bhi360.lacc_skipped_count > 0) {
+		LOG_WRN("Linear acceleration sample dropped: batch exceeded %u samples. %u skipped",
+				BHI360_MAX_SAMPLES_PER_IRQ,
+				bhi360.lacc_skipped_count);
+	}
+	if (bhi360.gyro_skipped_count > 0) {
+		LOG_WRN("Gyro sample dropped: batch exceeded %u samples. %u skipped",
+				BHI360_MAX_SAMPLES_PER_IRQ,
+				bhi360.gyro_skipped_count);
+	}
+	LOG_DBG("bhi360_process_irq() finished processing. ");
 	return 0;
+}
+
+/**
+ * @brief Copy a cached high-rate stream out under the driver lock.
+ * @details Reads the sample count and array contents while holding the cache
+ *          mutex so a concurrent FIFO drain cannot publish a partial batch. The
+ *          count is read inside the lock to stay consistent with the data.
+ * @param array Base address of the cached sample array.
+ * @param count_ptr Pointer to the live sample count for @p array.
+ * @param elem_size Size of one sample in bytes.
+ * @param out Destination buffer for up to @p max_samples elements.
+ * @param max_samples Capacity of @p out in elements.
+ * @return Number of samples copied (>= 0), or a negative errno on error.
+ */
+static int bhi360_copy_stream(const void* array,
+							  const size_t* count_ptr,
+							  size_t elem_size,
+							  void* out,
+							  size_t max_samples) {
+	if ((out == NULL) || (max_samples == 0U)) {
+		return -EINVAL;
+	}
+
+	if (!bhi360.state.bits.initialized || !bhi360.state.bits.configured) {
+		return -ENODEV;
+	}
+
+	k_mutex_lock(&bhi360.lock, K_FOREVER);
+	size_t count = MIN(*count_ptr, max_samples);
+	if (count > 0U) {
+		memcpy(out, array, count * elem_size);
+	}
+	k_mutex_unlock(&bhi360.lock);
+
+	return (int) count;
+}
+
+int bhi360_copy_quaternion(struct bhi360_quat_data* out, size_t max_samples) {
+	return bhi360_copy_stream(bhi360.quat_data,
+							  &bhi360.quat_count,
+							  sizeof(bhi360.quat_data[0]),
+							  out,
+							  max_samples);
+}
+
+int bhi360_copy_linear_acceleration(struct bhi360_lacc_data* out, size_t max_samples) {
+	return bhi360_copy_stream(bhi360.lacc_data,
+							  &bhi360.lacc_count,
+							  sizeof(bhi360.lacc_data[0]),
+							  out,
+							  max_samples);
+}
+
+int bhi360_copy_gyro(struct bhi360_gyro_data* out, size_t max_samples) {
+	return bhi360_copy_stream(bhi360.gyro_data,
+							  &bhi360.gyro_count,
+							  sizeof(bhi360.gyro_data[0]),
+							  out,
+							  max_samples);
+}
+
+/**
+ * @brief Read the firmware FIFO control parameter into a status snapshot.
+ * @details The FIFO control read is a status-channel parameter exchange. The
+ *          caller must ensure the status channel has been drained first (a FIFO
+ *          drain does this) so no async status message larger than the library's
+ *          internal buffer is pending, otherwise the read returns BHY2_E_BUFFER.
+ */
+static int bhi360_read_fifo_status(struct bhi360_t* imu, struct bhi360_fifo_status* out) {
+	uint32_t fifo_ctrl[4] = {0};
+	int8_t rslt = bhy2_get_fifo_ctrl(fifo_ctrl, &imu->bhy2);
+	if (rslt != BHY2_OK) {
+		print_api_error(rslt, &imu->bhy2);
+		return -EIO;
+	}
+
+	out->wakeup_watermark = fifo_ctrl[0];
+	out->wakeup_size = fifo_ctrl[1];
+	out->nonwakeup_watermark = fifo_ctrl[2];
+	out->nonwakeup_size = fifo_ctrl[3];
+	return 0;
+}
+
+int bhi360_get_fifo_status(struct bhi360_fifo_status* out) {
+	if (out == NULL) {
+		return -EINVAL;
+	}
+
+	if (!bhi360.state.bits.initialized || !bhi360.state.bits.configured) {
+		return -ENODEV;
+	}
+
+	/* Serialize the status-channel exchange against a concurrent FIFO drain;
+	 * both touch the shared BHY2 device context. */
+	k_mutex_lock(&bhi360.lock, K_FOREVER);
+	int ret = bhi360_read_fifo_status(&bhi360, out);
+	k_mutex_unlock(&bhi360.lock);
+
+	return ret;
 }
 
 void bhi360_stop(void) {
@@ -1013,7 +1376,7 @@ void bhi360_stop(void) {
 		return;
 	}
 
-	bhi360_disable_sensor_table(&bhi360, bhi360_base_sensors, ARRAY_SIZE(bhi360_base_sensors));
+	bhi360_disable_sensor_table(&bhi360, bhi360_phy_sensors, ARRAY_SIZE(bhi360_phy_sensors));
 	bhi360_disable_sensor_table(&bhi360,
 								bhi360_gesture_sensors,
 								ARRAY_SIZE(bhi360_gesture_sensors));
@@ -1025,10 +1388,10 @@ void bhi360_stop(void) {
 }
 
 /**
- * @brief Parse a rotation-vector FIFO packet into quaternion output.
- * @details The decoded quaternion sample is written into the cached quaternion
- *          buffer and posted as bhi360_event_Quaternion. v_param carries the
- *          source sensor ID and p_param points at struct bhi360_quat_data.
+ * @brief Parse a rotation-vector FIFO packet into the per-drain quaternion array.
+ * @details Samples are only collected here; no event is posted per sample.
+ *          bhi360_process_irq() posts a single bhi360_event_QuaternionBatch once
+ *          the drain finishes, carrying the collected count in v_param.
  */
 static void parse_quaternion(const struct bhy2_fifo_parse_data_info* callback_info,
 							 void* callback_ref) {
@@ -1040,52 +1403,66 @@ static void parse_quaternion(const struct bhy2_fifo_parse_data_info* callback_in
 		return;
 	}
 
+	if (dev->quat_count >= BHI360_MAX_SAMPLES_PER_IRQ) {
+		bhi360.quat_skipped_count++;
+		return;
+	}
+
 	bhy2_parse_quaternion(callback_info->data_ptr, &data);
 
-	dev->quat_data.x = data.x;
-	dev->quat_data.y = data.y;
-	dev->quat_data.z = data.z;
-	dev->quat_data.w = data.w;
-	dev->quat_data.accuracy = data.accuracy;
-
-	bhi360_post_event(bhi360_event_Quaternion, callback_info->sensor_id, &dev->quat_data);
+	struct bhi360_quat_data* slot = &dev->quat_data[dev->quat_count++];
+	slot->x = data.x;
+	slot->y = data.y;
+	slot->z = data.z;
+	slot->w = data.w;
+	slot->accuracy = data.accuracy;
 }
 
 /**
- * @brief Parse a linear-acceleration FIFO packet into cached XYZ output.
- * @details The decoded sample is posted as bhi360_event_LinearAcceleration with
- *          the sensor ID in v_param and struct bhi360_lacc_data in p_param.
+ * @brief Parse a linear-acceleration FIFO packet into the per-drain array.
+ * @details Samples are only collected here; no event is posted per sample.
+ *          bhi360_process_irq() posts a single bhi360_event_LinearAccelerationBatch
+ *          once the drain finishes, carrying the collected count in v_param.
  */
 static void parse_linear_acceleration(const struct bhy2_fifo_parse_data_info* callback_info,
 									  void* callback_ref) {
 	struct bhi360_t* dev = (callback_ref != NULL) ? (struct bhi360_t*) callback_ref : &bhi360;
 	struct bhy2_data_xyz data;
 
+	if (dev->lacc_count >= BHI360_MAX_SAMPLES_PER_IRQ) {
+		bhi360.lacc_skipped_count++;
+		return;
+	}
+
 	bhy2_parse_xyz(callback_info->data_ptr, &data);
 
-	dev->lacc_data.x = data.x;
-	dev->lacc_data.y = data.y;
-	dev->lacc_data.z = data.z;
-
-	bhi360_post_event(bhi360_event_LinearAcceleration, callback_info->sensor_id, &dev->lacc_data);
+	struct bhi360_lacc_data* slot = &dev->lacc_data[dev->lacc_count++];
+	slot->x = data.x;
+	slot->y = data.y;
+	slot->z = data.z;
 }
 
 /**
- * @brief Parse a gyroscope FIFO packet into cached XYZ angular velocity.
- * @details The decoded sample is posted as bhi360_event_Gyro with the sensor ID
- *          in v_param and struct bhi360_gyro_data in p_param.
+ * @brief Parse a gyroscope FIFO packet into the per-drain gyroscope array.
+ * @details Samples are only collected here; no event is posted per sample.
+ *          bhi360_process_irq() posts a single bhi360_event_GyroBatch once the
+ *          drain finishes, carrying the collected count in v_param.
  */
 static void parse_gyro(const struct bhy2_fifo_parse_data_info* callback_info, void* callback_ref) {
 	struct bhi360_t* dev = (callback_ref != NULL) ? (struct bhi360_t*) callback_ref : &bhi360;
 	struct bhy2_data_xyz data;
 
+	if (dev->gyro_count >= BHI360_MAX_SAMPLES_PER_IRQ) {
+		bhi360.gyro_skipped_count++;
+		return;
+	}
+
 	bhy2_parse_xyz(callback_info->data_ptr, &data);
 
-	dev->gyro_data.x = data.x;
-	dev->gyro_data.y = data.y;
-	dev->gyro_data.z = data.z;
-
-	bhi360_post_event(bhi360_event_Gyro, callback_info->sensor_id, &dev->gyro_data);
+	struct bhi360_gyro_data* slot = &dev->gyro_data[dev->gyro_count++];
+	slot->x = data.x;
+	slot->y = data.y;
+	slot->z = data.z;
 }
 
 /**
@@ -1100,9 +1477,7 @@ static void parse_scalar_event(const struct bhy2_fifo_parse_data_info* callback_
 	uint8_t value = (callback_info->data_size > 0) ? callback_info->data_ptr[0] : 1U;
 	uint32_t event_value = ((uint32_t) callback_info->sensor_id << 8) | value;
 
-	if ((callback_info->sensor_id == BHY2_SENSOR_ID_STD) ||
-		(callback_info->sensor_id == BHY2_SENSOR_ID_STD_WU) ||
-		(callback_info->sensor_id == BHY2_SENSOR_ID_STD_LP) ||
+	if ((callback_info->sensor_id == BHY2_SENSOR_ID_STD_LP) ||
 		(callback_info->sensor_id == BHY2_SENSOR_ID_STD_LP_WU)) {
 		dev->pedometer_data.sensor_id = callback_info->sensor_id;
 		dev->pedometer_data.step_detected = true;
@@ -1216,10 +1591,28 @@ static void bhi360_post_meta_event(uint8_t type, uint8_t byte1, uint8_t byte2) {
 }
 
 /**
+ * @brief Decide whether a meta-event should be visible to the application.
+ * @details Routine spacer and initialized meta packets can be emitted repeatedly
+ *          by the firmware and are not actionable during normal streaming. Keep
+ *          them out of the shared application event queue while preserving
+ *          diagnostics such as errors, overflows, resets, status, and watermark
+ *          notifications.
+ */
+static bool bhi360_should_publish_meta_event(uint8_t type) {
+	switch (type) {
+	case BHY2_META_EVENT_SPACER:
+	case BHY2_META_EVENT_INITIALIZED:
+		return false;
+	default:
+		return true;
+	}
+}
+
+/**
  * @brief Parse and publish a BHY2 meta-event packet.
  * @details Both the regular and wake-up meta-event streams are routed here.
- *          The function validates the three-byte payload and publishes a packed
- *          bhi360_event_MetaEvent for consumers.
+ *          The function validates the three-byte payload and publishes actionable
+ *          packed bhi360_event_MetaEvent notifications for consumers.
  */
 static void parse_meta_event(const struct bhy2_fifo_parse_data_info* callback_info,
 							 void* callback_ref) {
@@ -1236,6 +1629,10 @@ static void parse_meta_event(const struct bhy2_fifo_parse_data_info* callback_in
 
 	if ((callback_info->sensor_id != BHY2_SYS_ID_META_EVENT) &&
 		(callback_info->sensor_id != BHY2_SYS_ID_META_EVENT_WU)) {
+		return;
+	}
+
+	if (!bhi360_should_publish_meta_event(meta_event_type)) {
 		return;
 	}
 

@@ -11,33 +11,19 @@
  * exercise the driver on hardware.
  */
 
+#include <errno.h>
 #include <stdint.h>
 #include <zephyr/kernel.h>
-#include <zephyr/sys/atomic.h>
 
 #include "bhi360.h"
 #include "device_driver_dts_ids.h"
 #include "device_driver_events.h"
+#include "zephyr/logging/log.h"
 
-#define TEST_POLL_INTERVAL K_SECONDS(2)
+LOG_MODULE_REGISTER(bhi360_test, CONFIG_LOG_DEFAULT_LEVEL);
+
 #define TEST_EVENT_THREAD_PRIO 7
 #define TEST_EVENT_STACK_SIZE 2048
-
-static struct bhi360_quat_data last_quat;
-static struct bhi360_lacc_data last_lacc;
-static struct bhi360_gyro_data last_gyro;
-static struct bhi360_pedometer_data last_pedometer;
-static struct bhi360_gesture_data last_gesture;
-static struct bhi360_activity_data last_activity;
-static uint32_t last_meta_event;
-
-static atomic_t have_quat;
-static atomic_t have_lacc;
-static atomic_t have_gyro;
-static atomic_t have_pedometer;
-static atomic_t have_activity;
-static atomic_t have_meta_event;
-static atomic_t have_gesture;
 
 K_THREAD_STACK_DEFINE(test_event_stack, TEST_EVENT_STACK_SIZE);
 static struct k_thread test_event_thread;
@@ -60,58 +46,85 @@ static void bhi360_event_consumer_thread(void* a, void* b, void* c) {
 
 		const char* event_name = bhi360_event_name(event.event_id, event.v_param);
 
-		printk("event[bhi360]: %s (%u), v=0x%08x p=%p\n",
-			   event_name,
-			   event.event_id,
-			   event.v_param,
-			   (void*) event.p_param);
-
 		if (event.event_id == bhi360_event_Irq) {
 			int ret = bhi360_process_irq();
-			if (ret != 0) {
+			if ((ret != 0) && (ret != -ENODEV)) {
 				printk("bhi360_process_irq() failed: %d\n", ret);
 			}
 			continue;
 		}
 
-		if ((event.event_id == bhi360_event_Quaternion) && (event.p_param != 0U)) {
-			last_quat = *(const struct bhi360_quat_data*) (uintptr_t) event.p_param;
-			atomic_set(&have_quat, 1);
-			printk("  %s sensor=%u\n", event_name, event.v_param);
-		} else if ((event.event_id == bhi360_event_LinearAcceleration) && (event.p_param != 0U)) {
-			last_lacc = *(const struct bhi360_lacc_data*) (uintptr_t) event.p_param;
-			atomic_set(&have_lacc, 1);
-			printk("  %s sensor=%u\n", event_name, event.v_param);
-		} else if ((event.event_id == bhi360_event_Gyro) && (event.p_param != 0U)) {
-			last_gyro = *(const struct bhi360_gyro_data*) (uintptr_t) event.p_param;
-			atomic_set(&have_gyro, 1);
-			printk("  %s sensor=%u\n", event_name, event.v_param);
+		if ((event.event_id == bhi360_event_QuaternionBatch) && (event.p_param != 0U)) {
+			/* v_param is the number of samples in this batch; p_param points at the
+			 * first of that many. Print the count and the most recent sample only,
+			 * so the consumer stays fast and the FIFO does not back up. */
+			uint32_t count = event.v_param;
+			const struct bhi360_quat_data* quat =
+				(const struct bhi360_quat_data*) (uintptr_t) event.p_param;
+			const struct bhi360_quat_data* last = &quat[count - 1U];
+			printk("  %s n=%u last: x=%6d y=%6d z=%6d w=%6d acc=%u\n",
+				   event_name,
+				   count,
+				   last->x,
+				   last->y,
+				   last->z,
+				   last->w,
+				   last->accuracy);
+		} else if ((event.event_id == bhi360_event_LinearAccelerationBatch) &&
+				   (event.p_param != 0U)) {
+			uint32_t count = event.v_param;
+			const struct bhi360_lacc_data* lacc =
+				(const struct bhi360_lacc_data*) (uintptr_t) event.p_param;
+			const struct bhi360_lacc_data* last = &lacc[count - 1U];
+			printk("  %s n=%u last: x=%6d y=%6d z=%6d\n",
+				   event_name,
+				   count,
+				   last->x,
+				   last->y,
+				   last->z);
+		} else if ((event.event_id == bhi360_event_GyroBatch) && (event.p_param != 0U)) {
+			uint32_t count = event.v_param;
+			const struct bhi360_gyro_data* gyro =
+				(const struct bhi360_gyro_data*) (uintptr_t) event.p_param;
+			const struct bhi360_gyro_data* last = &gyro[count - 1U];
+			printk("  %s n=%u last: x=%6d y=%6d z=%6d\n",
+				   event_name,
+				   count,
+				   last->x,
+				   last->y,
+				   last->z);
 		} else if ((event.event_id == bhi360_event_Pedometer) && (event.p_param != 0U)) {
-			last_pedometer = *(const struct bhi360_pedometer_data*) (uintptr_t) event.p_param;
-			atomic_set(&have_pedometer, 1);
-			printk("  %s sensor=%u\n", event_name, event.v_param);
+			const struct bhi360_pedometer_data* pedometer =
+				(const struct bhi360_pedometer_data*) (uintptr_t) event.p_param;
+			printk("  %s sensor=%u: ", event_name, event.v_param);
+			printk("count=%u detected=%u\n",
+				   pedometer->step_count,
+				   pedometer->step_detected ? 1 : 0);
 		} else if ((event.event_id == bhi360_event_Gesture) && (event.p_param != 0U)) {
-			last_gesture = *(const struct bhi360_gesture_data*) (uintptr_t) event.p_param;
-			atomic_set(&have_gesture, 1);
-			printk("  %s sensor=%u value=0x%02x\n",
-				   event_name,
-				   last_gesture.sensor_id,
-				   last_gesture.value);
+			const struct bhi360_gesture_data* gesture =
+				(const struct bhi360_gesture_data*) (uintptr_t) event.p_param;
+			printk("  %s sensor=%u value=0x%02x: ", event_name, gesture->sensor_id, gesture->value);
+			printk("value=0x%02x\n", gesture->value);
 		} else if ((event.event_id == bhi360_event_Activity) && (event.p_param != 0U)) {
-			last_activity = *(const struct bhi360_activity_data*) (uintptr_t) event.p_param;
-			atomic_set(&have_activity, 1);
-			printk("  %s sensor=%u activity=0x%04x\n",
+			const struct bhi360_activity_data* activity =
+				(const struct bhi360_activity_data*) (uintptr_t) event.p_param;
+			printk("  %s sensor=%u activity=0x%04x: ",
 				   event_name,
-				   last_activity.sensor_id,
-				   last_activity.activity);
+				   activity->sensor_id,
+				   activity->activity);
+			printk("activity=0x%04x\n", activity->activity);
 		} else if (event.event_id == bhi360_event_MetaEvent) {
-			last_meta_event = event.v_param;
-			atomic_set(&have_meta_event, 1);
 			printk("  %s type=0x%02x byte1=0x%02x byte2=0x%02x\n",
 				   event_name,
 				   (uint8_t) (event.v_param >> 16),
 				   (uint8_t) (event.v_param >> 8),
 				   (uint8_t) event.v_param);
+		} else {
+			printk("event[bhi360]: %s (%u), v=0x%08x p=%p\n",
+				   event_name,
+				   event.event_id,
+				   event.v_param,
+				   (void*) event.p_param);
 		}
 	}
 }
@@ -147,77 +160,50 @@ static bool start_bhi360_event_consumer(void) {
 int main(void) {
 	printk("\n=== BHI360 IMU driver test ===\n");
 
-	if (!start_bhi360_event_consumer()) {
-		printk("failed to start BHI360 event consumer\n");
-		return 0;
-	}
-
 	if (!bhi360_init()) {
 		printk("bhi360_init() failed\n");
 		return 0;
 	}
 
-	if (!bhi360_configure()) {
+	if (!bhi360_configure(false, 0)) {
 		printk("bhi360_configure() failed\n");
 		return 0;
 	}
 
-	printk("streaming; printing latest sample every 2 s and consuming events...\n");
+	if (!start_bhi360_event_consumer()) {
+		printk("failed to start BHI360 event consumer\n");
+		return 0;
+	}
 
+	printk("streaming; consuming and printing events from consumer thread...\n");
+
+	uint32_t startTime = k_uptime_get_32();
+	bool streamsStarted = false;
+	bool streamsStopped = false;
 	while (1) {
-		if (atomic_get(&have_quat)) {
-			printk("quat:  x=%6d y=%6d z=%6d w=%6d acc=%u\n",
-				   last_quat.x,
-				   last_quat.y,
-				   last_quat.z,
-				   last_quat.w,
-				   last_quat.accuracy);
-		} else {
-			printk("quat:  <no sample yet>\n");
+		uint32_t currentTime = k_uptime_get_32();
+		uint32_t elapsedTime = currentTime - startTime;
+		if ((elapsedTime >= 10000) && !streamsStarted) {
+			int ret = bhi360_start_phy_sensor_streams(250);
+			if (ret == 0) {
+				LOG_INF("Started physical sensor streams after 10 seconds");
+				streamsStarted = true;
+			} else {
+				LOG_ERR("Failed to start physical sensor streams: %d", ret);
+			}
 		}
 
-		if (atomic_get(&have_lacc)) {
-			printk("lacc:  x=%6d y=%6d z=%6d\n", last_lacc.x, last_lacc.y, last_lacc.z);
-		} else {
-			printk("lacc:  <no sample yet>\n");
+		if ((elapsedTime >= 30000) && streamsStarted && !streamsStopped) {
+			int ret = bhi360_stop_phy_sensor_streams();
+			if (ret == 0) {
+				LOG_INF("Stopped physical sensor streams after 30 seconds");
+				streamsStopped = true;
+			} else {
+				LOG_ERR("Failed to stop physical sensor streams: %d", ret);
+			}
 		}
 
-		if (atomic_get(&have_gyro)) {
-			printk("gyro:  x=%6d y=%6d z=%6d\n", last_gyro.x, last_gyro.y, last_gyro.z);
-		} else {
-			printk("gyro:  <no sample yet>\n");
-		}
-
-		if (atomic_get(&have_pedometer)) {
-			printk("pedometer: sensor=%u count=%u detected=%u\n",
-				   last_pedometer.sensor_id,
-				   last_pedometer.step_count,
-				   last_pedometer.step_detected ? 1 : 0);
-		} else {
-			printk("pedometer: <no event yet>\n");
-		}
-
-		if (atomic_get(&have_gesture)) {
-			printk("gesture: sensor=%u value=0x%02x\n", last_gesture.sensor_id, last_gesture.value);
-		} else {
-			printk("gesture: <no event yet>\n");
-		}
-
-		if (atomic_get(&have_activity)) {
-			printk("activity: sensor=%u activity=0x%04x\n",
-				   last_activity.sensor_id,
-				   last_activity.activity);
-		} else {
-			printk("activity: <no event yet>\n");
-		}
-
-		if (atomic_get(&have_meta_event)) {
-			printk("meta: v=0x%08x\n", last_meta_event);
-		} else {
-			printk("meta: <no event yet>\n");
-		}
-
-		k_sleep(TEST_POLL_INTERVAL);
+		k_sleep(K_MSEC(1000));
 	}
 
 	return 0;

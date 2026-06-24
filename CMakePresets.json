@@ -19,9 +19,7 @@
             },
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
-                "BOARD_ROOT": "${sourceDir}",
-                "CONFIG_SHELL": "n",
-                "CONFIG_I2C_SHELL": "n"
+                "BOARD_ROOT": "${sourceDir}"
             }
         },
         {
@@ -42,7 +40,9 @@
             "inherits": "test_base",
             "binaryDir": "${sourceDir}/build/tests/bq25180",
             "cacheVariables": {
-                "CONFIG_SENSEWEAR_TEST_BQ25180_DRIVER": "y"
+                "CONFIG_SENSEWEAR_TEST_BQ25180_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
             }
         },
         {
@@ -51,7 +51,9 @@
             "inherits": "test_base",
             "binaryDir": "${sourceDir}/build/tests/bq27427",
             "cacheVariables": {
-                "CONFIG_SENSEWEAR_TEST_BQ27427_DRIVER": "y"
+                "CONFIG_SENSEWEAR_TEST_BQ27427_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
             }
         },
         {
@@ -60,7 +62,9 @@
             "inherits": "test_base",
             "binaryDir": "${sourceDir}/build/tests/bhi360",
             "cacheVariables": {
-                "CONFIG_SENSEWEAR_TEST_BHI360_DRIVER": "y"
+                "CONFIG_SENSEWEAR_TEST_BHI360_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
             }
         },
         {
@@ -69,7 +73,9 @@
             "inherits": "test_base",
             "binaryDir": "${sourceDir}/build/tests/lp5562",
             "cacheVariables": {
-                "CONFIG_SENSEWEAR_TEST_LP5562_DRIVER": "y"
+                "CONFIG_SENSEWEAR_TEST_LP5562_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
             }
         },
         {
@@ -78,7 +84,9 @@
             "inherits": "test_base",
             "binaryDir": "${sourceDir}/build/tests/m95p",
             "cacheVariables": {
-                "CONFIG_SENSEWEAR_TEST_M95P_DRIVER": "y"
+                "CONFIG_SENSEWEAR_TEST_M95P_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
             }
         },
         {
@@ -87,7 +95,9 @@
             "inherits": "test_base",
             "binaryDir": "${sourceDir}/build/tests/tpsm83102",
             "cacheVariables": {
-                "CONFIG_SENSEWEAR_TEST_TPSM83102_DRIVER": "y"
+                "CONFIG_SENSEWEAR_TEST_TPSM83102_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
             }
         }
     ],
