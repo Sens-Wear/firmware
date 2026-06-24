@@ -62,6 +62,7 @@
  * surfaced to the event system and logs.
  */
 
+#include <assert.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/spi.h>
@@ -194,8 +195,14 @@ static struct bhi360_t {
 
 	/** @brief Driver-owned FIFO work buffer passed to bhy2_get_and_process_fifo(). */
 	uint8_t work_buffer[WORK_BUFFER_SIZE];
+	/**< @brief Flag indicating whether the physical sensor streams are enabled. */
 	bool enable_phy_sensor_streams;
-	struct k_timer phy_sensor_stream_timer;
+	/**< @brief Flag indicating whether the sample timer is running. */
+	bool timer_running;
+	/**< @brief Timer period in milliseconds. */
+	uint32_t timer_period_ms;
+	/**< @brief Zephyr timer used to trigger FIFO processing at a fixed interval. */
+	struct k_timer fifo_timer;
 
 	/** @brief Guards the per-drain sample arrays and counts against concurrent drain/copy access.
 	 */
@@ -762,7 +769,7 @@ static int bhi360_irq_init(struct bhi360_t* imu) {
 	return 0;
 }
 
-static int bhi360_init_phy_sensor_streams_timer(void) {
+static int bhi360_init_fifo_timer(void) {
 	if (bhi360.state.bits.initialized != 0U) {
 		return 0;
 	}
@@ -770,7 +777,9 @@ static int bhi360_init_phy_sensor_streams_timer(void) {
 		return -EINVAL;
 	}
 	bhi360.enable_phy_sensor_streams = false;
-	k_timer_init(&bhi360.phy_sensor_stream_timer,
+	bhi360.timer_running = false;
+	bhi360.timer_period_ms = UINT32_MAX;
+	k_timer_init(&bhi360.fifo_timer,
 				 bhi360_phy_sensor_stream_timer_callback,
 				 NULL); /* stop callback optional */
 	return 0;
@@ -1003,7 +1012,7 @@ bool bhi360_init(void) {
 		return false;
 	}
 
-	ret = bhi360_init_phy_sensor_streams_timer();
+	ret = bhi360_init_fifo_timer();
 	if (ret != 0) {
 		return false;
 	}
@@ -1158,10 +1167,12 @@ bool bhi360_configure(bool enable_phy_streams, uint32_t phy_stream_period_ms) {
 	bhi360_enable_sensor_table(imu, bhi360_activity_sensors, ARRAY_SIZE(bhi360_activity_sensors));
 	if (enable_phy_streams) {
 		bhi360_enable_sensor_table(&bhi360, bhi360_phy_sensors, ARRAY_SIZE(bhi360_phy_sensors));
-		k_timer_start(&bhi360.phy_sensor_stream_timer,
+		k_timer_start(&bhi360.fifo_timer,
 					  K_MSEC(phy_stream_period_ms),
 					  K_MSEC(phy_stream_period_ms));
 		bhi360.enable_phy_sensor_streams = true;
+		bhi360.timer_running = true;
+		bhi360.timer_period_ms = phy_stream_period_ms;
 	} else {
 		bhi360.enable_phy_sensor_streams = false;
 	}
@@ -1178,11 +1189,18 @@ int bhi360_start_phy_sensor_streams(uint32_t period_ms) {
 	if (bhi360.enable_phy_sensor_streams) {
 		return -EBUSY;
 	}
+	if (bhi360.timer_running && bhi360.timer_period_ms != period_ms) {
+		return -EBUSY;
+	}
 	k_mutex_lock(&bhi360.lock, K_FOREVER);
 
 	bhi360_enable_sensor_table(&bhi360, bhi360_phy_sensors, ARRAY_SIZE(bhi360_phy_sensors));
-	k_timer_start(&bhi360.phy_sensor_stream_timer, K_MSEC(period_ms), K_MSEC(period_ms));
-	bhi360.enable_phy_sensor_streams = true;
+	if (!bhi360.timer_running) {
+		k_timer_start(&bhi360.fifo_timer, K_MSEC(period_ms), K_MSEC(period_ms));
+		bhi360.enable_phy_sensor_streams = true;
+		bhi360.timer_running = true;
+		bhi360.timer_period_ms = period_ms;
+	}
 	k_mutex_unlock(&bhi360.lock);
 	return 0;
 }
@@ -1195,9 +1213,48 @@ int bhi360_stop_phy_sensor_streams(void) {
 		return -EINVAL;
 	}
 	k_mutex_lock(&bhi360.lock, K_FOREVER);
-	k_timer_stop(&bhi360.phy_sensor_stream_timer);
+	k_timer_stop(&bhi360.fifo_timer);
 	bhi360_disable_sensor_table(&bhi360, bhi360_phy_sensors, ARRAY_SIZE(bhi360_phy_sensors));
 	bhi360.enable_phy_sensor_streams = false;
+	bhi360.timer_running = false;
+	bhi360.timer_period_ms = UINT32_MAX;
+	bhi360_post_event(bhi360_event_Irq, 0, 0);
+	k_mutex_unlock(&bhi360.lock);
+	return 0;
+}
+
+int bhi360_start_periodic_timer(uint32_t period_ms) {
+	assert(period_ms > 0 && period_ms < UINT32_MAX);
+	if (!bhi360.state.bits.initialized || !bhi360.state.bits.configured) {
+		return -ENODEV;
+	}
+	if (bhi360.timer_running) {
+		return (bhi360.timer_period_ms == period_ms) ? 0 : -EBUSY;
+	}
+	k_mutex_lock(&bhi360.lock, K_FOREVER);
+	k_timer_start(&bhi360.fifo_timer, K_MSEC(period_ms), K_MSEC(period_ms));
+	bhi360.timer_running = true;
+	bhi360.timer_period_ms = period_ms;
+	bhi360_post_event(bhi360_event_Irq, 0, 0);
+	k_mutex_unlock(&bhi360.lock);
+	return 0;
+}
+
+int bhi360_stop_periodic_timer(void) {
+	if (!bhi360.state.bits.initialized || !bhi360.state.bits.configured) {
+		return -ENODEV;
+	}
+	if (!bhi360.timer_running) {
+		return -EINVAL;
+	}
+	k_mutex_lock(&bhi360.lock, K_FOREVER);
+	k_timer_stop(&bhi360.fifo_timer);
+	bhi360.timer_running = false;
+	bhi360.timer_period_ms = UINT32_MAX;
+	if (bhi360.enable_phy_sensor_streams) {
+		bhi360_disable_sensor_table(&bhi360, bhi360_phy_sensors, ARRAY_SIZE(bhi360_phy_sensors));
+		bhi360.enable_phy_sensor_streams = false;
+	}
 	bhi360_post_event(bhi360_event_Irq, 0, 0);
 	k_mutex_unlock(&bhi360.lock);
 	return 0;

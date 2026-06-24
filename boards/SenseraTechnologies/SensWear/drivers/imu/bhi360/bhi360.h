@@ -585,12 +585,17 @@ int bhi360_process_irq(void);
  *          event consumer can drain the FIFO in thread context. Hardware FIFO
  *          interrupts may also post bhi360_event_Irq.
  *
+ *          The physical streams share the same timer used by
+ *          bhi360_start_periodic_timer(). If that timer is already running at a
+ *          different period, this call fails with -EBUSY.
+ *
  *          Calling this function does not affect the low-rate event sensors that
  *          were enabled by bhi360_configure().
  * @param period_ms Software stream-drain period in milliseconds.
  * @retval 0 Physical streams were enabled and the stream timer was started.
  * @retval -ENODEV Driver is not initialized and configured.
- * @retval -EBUSY Physical streams are already enabled.
+ * @retval -EBUSY Physical streams are already enabled, or the shared timer is
+ *         already running at a different period.
  * @pre bhi360_init() and bhi360_configure(false, 0) or equivalent configuration
  *      have completed successfully.
  */
@@ -613,6 +618,48 @@ int bhi360_start_phy_sensor_streams(uint32_t period_ms);
  * @pre bhi360_init() and bhi360_configure() have completed successfully.
  */
 int bhi360_stop_phy_sensor_streams(void);
+
+/**
+ * @brief Start periodic FIFO drain requests.
+ * @details Starts the driver's shared FIFO timer without enabling any additional
+ *          virtual sensors. Each timer expiry posts bhi360_event_Irq to the
+ *          common device-driver event queue; the caller's event consumer must
+ *          still call bhi360_process_irq() from thread context to drain and
+ *          parse FIFO data.
+ *
+ *          Use this when low-rate event sensors need bounded latency even when
+ *          BHI360 hardware FIFO interrupts are sparse or watermark-driven. For
+ *          high-rate quaternion/accelerometer/gyroscope streaming, prefer
+ *          bhi360_start_phy_sensor_streams(), which enables those sensors and
+ *          uses the same periodic drain mechanism.
+ *
+ *          If the shared timer is already running with the same period, this
+ *          call succeeds without changing state. If it is running with a
+ *          different period, this call fails with -EBUSY.
+ * @param period_ms Periodic FIFO drain request interval in milliseconds.
+ * @retval 0 Timer is running at @p period_ms.
+ * @retval -ENODEV Driver is not initialized and configured.
+ * @retval -EBUSY Shared timer is already running at a different period.
+ * @pre bhi360_init() and bhi360_configure() have completed successfully.
+ */
+int bhi360_start_periodic_timer(uint32_t period_ms);
+
+/**
+ * @brief Stop periodic FIFO drain requests.
+ * @details Stops the shared FIFO timer. If high-rate physical streams are
+ *          currently enabled, this also disables and flushes the physical stream
+ *          sensor table because those streams depend on the same timer for
+ *          bounded FIFO draining. Low-rate event sensors configured by
+ *          bhi360_configure() remain enabled.
+ *
+ *          A final bhi360_event_Irq is posted after stopping so the caller can
+ *          drain any remaining FIFO, flush, or meta packets from thread context.
+ * @retval 0 Timer was stopped.
+ * @retval -ENODEV Driver is not initialized and configured.
+ * @retval -EINVAL Periodic timer is not currently running.
+ * @pre bhi360_init() and bhi360_configure() have completed successfully.
+ */
+int bhi360_stop_periodic_timer(void);
 
 /**
  * @brief Copy the most recently decoded quaternion samples out of the driver.
