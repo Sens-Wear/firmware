@@ -4,7 +4,7 @@
 # library: consumers that link it pick up the sources, the include directory
 # (which also covers the firmware/ blobs) and the BHY2 configuration define.
 
-set(BHY2_DIR ${CMAKE_CURRENT_LIST_DIR}/BHY2-Sensor-API)
+set(BHY2_DIR ${CMAKE_CURRENT_LIST_DIR})
 
 file(GLOB BHY2_SOURCES CONFIGURE_DEPENDS ${BHY2_DIR}/*.c)
 

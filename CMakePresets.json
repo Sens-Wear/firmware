@@ -19,7 +19,9 @@
             },
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
-                "BOARD_ROOT": "${sourceDir}"
+                "BOARD_ROOT": "${sourceDir}",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
             }
         },
         {
@@ -76,9 +78,7 @@
             "inherits": "test_base",
             "binaryDir": "${sourceDir}/build/tests/m95p",
             "cacheVariables": {
-                "CONFIG_SENSEWEAR_TEST_M95P_DRIVER": "y",
-                "CONFIG_SHELL": "n",
-                "CONFIG_I2C_SHELL": "n"
+                "CONFIG_SENSEWEAR_TEST_M95P_DRIVER": "y"
             }
         },
         {

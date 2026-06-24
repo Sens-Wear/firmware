@@ -12,14 +12,12 @@
  */
 
 #include <stdint.h>
-#include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
 
 #include "bhi360.h"
+#include "device_driver_dts_ids.h"
 #include "device_driver_events.h"
-
-#define BHI360_DEVICE_ID DT_DEP_ORD(DT_NODELABEL(bhi360))
 
 #define TEST_POLL_INTERVAL K_SECONDS(2)
 #define TEST_EVENT_THREAD_PRIO 7
@@ -32,39 +30,9 @@ static struct bhi360_pedometer_data last_pedometer;
 static struct bhi360_gesture_data last_gesture;
 static struct bhi360_activity_data last_activity;
 static uint32_t last_meta_event;
-static atomic_t have_quat;
-static atomic_t have_lacc;
-static atomic_t have_gyro;
-static atomic_t have_pedometer;
-static atomic_t have_gesture;
-static atomic_t have_activity;
-static atomic_t have_meta;
 
 K_THREAD_STACK_DEFINE(test_event_stack, TEST_EVENT_STACK_SIZE);
 static struct k_thread test_event_thread;
-
-static const char* bhi360_event_to_string(uint32_t event_id) {
-	switch ((enum bhi360_event_type) event_id) {
-	case bhi360_event_Irq:
-		return "Irq";
-	case bhi360_event_Quaternion:
-		return "Quaternion";
-	case bhi360_event_LinearAcceleration:
-		return "LinearAcceleration";
-	case bhi360_event_Gyro:
-		return "Gyro";
-	case bhi360_event_Pedometer:
-		return "Pedometer";
-	case bhi360_event_Gesture:
-		return "Gesture";
-	case bhi360_event_Activity:
-		return "Activity";
-	case bhi360_event_MetaEvent:
-		return "MetaEvent";
-	default:
-		return "Unknown";
-	}
-}
 
 static void bhi360_event_consumer_thread(void* a, void* b, void* c) {
 	ARG_UNUSED(a);
@@ -78,12 +46,14 @@ static void bhi360_event_consumer_thread(void* a, void* b, void* c) {
 			continue;
 		}
 
-		if (event.device_id != BHI360_DEVICE_ID) {
+		if (event.device_id != BHI360_DEVICE_DTS_ID) {
 			continue;
 		}
 
+		const char* event_name = bhi360_event_name(event.event_id, event.v_param);
+
 		printk("event[bhi360]: %s (%u), v=0x%08x p=%p\n",
-			   bhi360_event_to_string(event.event_id),
+			   event_name,
 			   event.event_id,
 			   event.v_param,
 			   (void*) event.p_param);
@@ -98,36 +68,32 @@ static void bhi360_event_consumer_thread(void* a, void* b, void* c) {
 
 		if ((event.event_id == bhi360_event_Quaternion) && (event.p_param != 0U)) {
 			last_quat = *(const struct bhi360_quat_data*) (uintptr_t) event.p_param;
-			atomic_set(&have_quat, 1);
-			printk("  quaternion sensor=%u\n", event.v_param);
+			printk("  %s sensor=%u\n", event_name, event.v_param);
 		} else if ((event.event_id == bhi360_event_LinearAcceleration) && (event.p_param != 0U)) {
 			last_lacc = *(const struct bhi360_lacc_data*) (uintptr_t) event.p_param;
-			atomic_set(&have_lacc, 1);
-			printk("  linear-accel sensor=%u\n", event.v_param);
+			printk("  %s sensor=%u\n", event_name, event.v_param);
 		} else if ((event.event_id == bhi360_event_Gyro) && (event.p_param != 0U)) {
 			last_gyro = *(const struct bhi360_gyro_data*) (uintptr_t) event.p_param;
-			atomic_set(&have_gyro, 1);
-			printk("  gyro sensor=%u\n", event.v_param);
+			printk("  %s sensor=%u\n", event_name, event.v_param);
 		} else if ((event.event_id == bhi360_event_Pedometer) && (event.p_param != 0U)) {
 			last_pedometer = *(const struct bhi360_pedometer_data*) (uintptr_t) event.p_param;
-			atomic_set(&have_pedometer, 1);
-			printk("  pedometer sensor=%u\n", event.v_param);
+			printk("  %s sensor=%u\n", event_name, event.v_param);
 		} else if ((event.event_id == bhi360_event_Gesture) && (event.p_param != 0U)) {
 			last_gesture = *(const struct bhi360_gesture_data*) (uintptr_t) event.p_param;
-			atomic_set(&have_gesture, 1);
-			printk("  gesture sensor=%u value=0x%02x\n",
+			printk("  %s sensor=%u value=0x%02x\n",
+				   event_name,
 				   last_gesture.sensor_id,
 				   last_gesture.value);
 		} else if ((event.event_id == bhi360_event_Activity) && (event.p_param != 0U)) {
 			last_activity = *(const struct bhi360_activity_data*) (uintptr_t) event.p_param;
-			atomic_set(&have_activity, 1);
-			printk("  activity sensor=%u activity=0x%04x\n",
+			printk("  %s sensor=%u activity=0x%04x\n",
+				   event_name,
 				   last_activity.sensor_id,
 				   last_activity.activity);
 		} else if (event.event_id == bhi360_event_MetaEvent) {
 			last_meta_event = event.v_param;
-			atomic_set(&have_meta, 1);
-			printk("  meta type=0x%02x byte1=0x%02x byte2=0x%02x\n",
+			printk("  %s type=0x%02x byte1=0x%02x byte2=0x%02x\n",
+				   event_name,
 				   (uint8_t) (event.v_param >> 16),
 				   (uint8_t) (event.v_param >> 8),
 				   (uint8_t) event.v_param);
