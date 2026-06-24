@@ -5,7 +5,7 @@
 #include "app/temperature_ble_bridge.h"
 #include "bluetooth/services/power/power_lbs.h"
 #include "bluetooth/services/temperature/temperature_lbs.h"
-#include "drivers/sensors/temperature/max30208.h"
+#include "max30208.h"
 
 static bool temperature_bridge_started;
 static bool temperature_board_connected;

@@ -11,19 +11,19 @@
 #include "app/daughter_board_manager.h"
 
 #if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
-#include "drivers/actuators/haptic/drv2605.h"
+#include "drv2605.h"
 #endif
 
 #if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_PPG)
-#include "drivers/sensors/ppg/max30101.h"
+#include "max30101.h"
 #endif
 
 #if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TEMPERATURE)
-#include "drivers/sensors/temperature/max30208.h"
+#include "max30208.h"
 #endif
 
 #if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
-#include "drivers/sensors/touch/mtch6102.h"
+#include "mtch6102.h"
 #endif
 
 LOG_MODULE_REGISTER(SENSE_WEAR_DAUGHTER_BOARD_MANAGER);

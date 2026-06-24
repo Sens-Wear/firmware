@@ -7,7 +7,7 @@
 #include "app/haptic_ble_bridge.h"
 #include "bluetooth/services/power/power_lbs.h"
 #include "bluetooth/services/haptic/haptic_lbs.h"
-#include "drivers/actuators/haptic/drv2605.h"
+#include "drv2605.h"
 
 BUILD_ASSERT(HAPTIC_ACTUATOR_MAX_FRAMES >= HAPTIC_LBS_MAX_FRAMES,
 	     "Actuator frame capacity must cover BLE haptic payloads");

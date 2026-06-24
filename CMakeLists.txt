@@ -69,7 +69,11 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/libs/libs.cmake)
 # include directories into the `board_drivers` INTERFACE library.
 include(${CMAKE_CURRENT_SOURCE_DIR}/boards/SenseraTechnologies/SensWear/drivers/board_drivers.cmake)
 
-target_link_libraries(app PRIVATE board_drivers libs)
+# Shield driver subsystem: the shields aggregator checks enabled shields and
+# collects their colocated driver sources into the `shield_drivers` INTERFACE library.
+include(${CMAKE_CURRENT_SOURCE_DIR}/boards/shields/shields.cmake)
+
+target_link_libraries(app PRIVATE board_drivers shield_drivers libs)
 
 if(TEST_DRIVERS)
     # A driver bring-up test replaces the application: the test provides main()

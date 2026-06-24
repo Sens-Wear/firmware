@@ -8,7 +8,7 @@
 #include "app/touch_ble_bridge.h"
 #include "bluetooth/services/power/power_lbs.h"
 #include "bluetooth/services/touch/touch_lbs.h"
-#include "drivers/sensors/touch/mtch6102.h"
+#include "mtch6102.h"
 
 static bool touch_bridge_started;
 static bool touch_board_connected;

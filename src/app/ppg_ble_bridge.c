@@ -5,7 +5,7 @@
 #include "app/ppg_ble_bridge.h"
 #include "bluetooth/services/power/power_lbs.h"
 #include "bluetooth/services/ppg/ppg_lbs.h"
-#include "drivers/sensors/ppg/max30101.h"
+#include "max30101.h"
 
 static bool ppg_bridge_started;
 static bool ppg_sensor_initialized;

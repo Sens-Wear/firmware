@@ -31,7 +31,6 @@ if(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
     target_sources(app_src INTERFACE
         ${APP_SRC_DIR}/app/haptic_ble_bridge.c
         ${APP_SRC_DIR}/bluetooth/services/haptic/haptic_lbs.c
-        ${APP_SRC_DIR}/drivers/actuators/haptic/drv2605.c
     )
 endif()
 
@@ -39,7 +38,6 @@ if(CONFIG_SENSEWEAR_DAUGHTER_PPG)
     target_sources(app_src INTERFACE
         ${APP_SRC_DIR}/app/ppg_ble_bridge.c
         ${APP_SRC_DIR}/bluetooth/services/ppg/ppg_lbs.c
-        ${APP_SRC_DIR}/drivers/sensors/ppg/max30101.c
     )
 endif()
 
@@ -47,7 +45,6 @@ if(CONFIG_SENSEWEAR_DAUGHTER_TEMPERATURE)
     target_sources(app_src INTERFACE
         ${APP_SRC_DIR}/app/temperature_ble_bridge.c
         ${APP_SRC_DIR}/bluetooth/services/temperature/temperature_lbs.c
-        ${APP_SRC_DIR}/drivers/sensors/temperature/max30208.c
     )
 endif()
 
@@ -55,13 +52,11 @@ if(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
     target_sources(app_src INTERFACE
         ${APP_SRC_DIR}/app/touch_ble_bridge.c
         ${APP_SRC_DIR}/bluetooth/services/touch/touch_lbs.c
-        ${APP_SRC_DIR}/drivers/sensors/touch/mtch6102.c
     )
 endif()
 
 target_include_directories(app_src INTERFACE
     ${APP_SRC_DIR}
-    ${APP_SRC_DIR}/drivers/sensors/temperature
     ${APP_SRC_DIR}/drivers/actuators/led
     ${CMAKE_SOURCE_DIR}/boards/SenseraTechnologies/SensWear
     ${CMAKE_SOURCE_DIR}/boards/SenseraTechnologies/SensWear/drivers/bus
