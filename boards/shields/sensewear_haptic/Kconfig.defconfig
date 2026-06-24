@@ -11,13 +11,13 @@ config SENSEWEAR_SYS_I2C
 config GPIO
 	default y
 
-config HAPTICS
-	default y
-
 config SENSEWEAR_TPSM83102_DRIVER
 	default y
 
 config SENSEWEAR_DAUGHTER_IF_DRIVER
+	default y
+
+config SENSEWEAR_DEVICE_DRIVER_EVENTS
 	default y
 
 endif # SHIELD_SENSEWEAR_HAPTIC

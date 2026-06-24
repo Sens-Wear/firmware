@@ -2,7 +2,7 @@
 
 # SenseWear haptic shield drivers.
 list(APPEND SHIELD_DRIVER_SOURCES
-    ${CMAKE_CURRENT_LIST_DIR}/haptic/drv2605/drv2605.c
+    ${CMAKE_CURRENT_LIST_DIR}/haptic/drv2605/haptic_drv2605.c
 )
 
 list(APPEND SHIELD_DRIVER_INCLUDE_DIRS

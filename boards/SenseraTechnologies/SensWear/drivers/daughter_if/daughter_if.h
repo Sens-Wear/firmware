@@ -53,10 +53,10 @@
  *          valid line.
  */
 enum daughter_if_gpio {
-	daughter_if_gpio_0 = 0, /**< SENSOR_GPIO_0 (P1.14). */
-	daughter_if_gpio_1,		/**< SENSOR_GPIO_1 (P1.13). */
-	daughter_if_gpio_2,		/**< SENSOR_GPIO_2 (P1.12). */
-	daughter_if_gpio_3,		/**< SENSOR_GPIO_3 (P1.11). */
+	daughter_if_GPIO0 = 0, /**< SENSOR_GPIO_0 (P1.14). */
+	daughter_if_GPIO1,	   /**< SENSOR_GPIO_1 (P1.13). */
+	daughter_if_GPIO2,	   /**< SENSOR_GPIO_2 (P1.12). */
+	daughter_if_GPIO3,	   /**< SENSOR_GPIO_3 (P1.11). */
 	daughter_if_gpio_count,
 };
 
@@ -69,7 +69,7 @@ enum daughter_if_gpio {
  *         by another driver, @p line is out of range, or the underlying GPIO
  *         controller is not ready.
  */
-const struct gpio_dt_spec *daughter_if_gpio_claim(enum daughter_if_gpio line);
+const struct gpio_dt_spec* daughter_if_gpio_claim(enum daughter_if_gpio line);
 
 /**
  * @brief Release a connector GPIO line, returning it to the free pool.
@@ -92,7 +92,7 @@ bool daughter_if_gpio_is_claimed(enum daughter_if_gpio line);
  * @param line The connector line to query.
  * @return The @c gpio-line-names entry, or NULL if @p line is invalid.
  */
-const char *daughter_if_gpio_name(enum daughter_if_gpio line);
+const char* daughter_if_gpio_name(enum daughter_if_gpio line);
 
 /** @} */
 
