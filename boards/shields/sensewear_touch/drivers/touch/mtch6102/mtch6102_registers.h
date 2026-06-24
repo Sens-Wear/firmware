@@ -1,35 +1,37 @@
 
-#ifndef      _MTCHh6102_REGISTERS_H
-#define      _MTCHh6102_REGISTERS_H
+#ifndef _MTCHh6102_REGISTERS_H
+#define _MTCHh6102_REGISTERS_H
+
+#include <stdint.h>
+#include <stdbool.h>
 
 struct mtch6102_position {
-	bool touched;      /* true if a touch is currently present */
-	uint16_t x;        /* reconstructed X (0..4095 typical) */
-	uint16_t y;        /* reconstructed Y (0..4095 typical) */
+	bool touched;		 /* true if a touch is currently present */
+	uint16_t x;			 /* reconstructed X (0..4095 typical) */
+	uint16_t y;			 /* reconstructed Y (0..4095 typical) */
 	uint8_t touch_state; /* raw TOUCH_STATE */
 };
 
-typedef enum MTCH6102_Core  {
-	MTCH6102__FW_MAJOR = 0x00,		// Default Value 0x02
-	MTCH6102__FW_MINOR,				// Default Value 0x00
-	MTCH6102__APP_ID_H,				// Default Value 0x00
-	MTCH6102__APP_ID_L,				// Default Value 0x12
-	MTCH6102__CMD,					// Default Value 0x00
-	MTCH6102__MODE,					// Default Value 0x03
-	MTCH6102__MODE_CON,				// Default Value 0x00
+typedef enum MTCH6102_Core {
+	MTCH6102__FW_MAJOR = 0x00, // Default Value 0x02
+	MTCH6102__FW_MINOR,		   // Default Value 0x00
+	MTCH6102__APP_ID_H,		   // Default Value 0x00
+	MTCH6102__APP_ID_L,		   // Default Value 0x12
+	MTCH6102__CMD,			   // Default Value 0x00
+	MTCH6102__MODE,			   // Default Value 0x03
+	MTCH6102__MODE_CON,		   // Default Value 0x00
 } MTCH6102_Core_Ram_Memory;
 
-typedef enum MTCH6102_Touch
- {
-	MTCH6102__TOUCH_STATE = 0x10,	// Default Value 0x00
-	MTCH6102__TOUCH_X,		    	// Default Value 0x00
-	MTCH6102__TOUCH_Y,		        // Default Value 0x00
-	MTCH6102__TOUCH_LSB,			// Default Value 0x00
-	MTCH6102__GESTURE_STATE,		// Default Value 0x00
-	MTCH6102__GESTURE_DIAG			// Default Value 0x00
+typedef enum MTCH6102_Touch {
+	MTCH6102__TOUCH_STATE = 0x10, // Default Value 0x00
+	MTCH6102__TOUCH_X,			  // Default Value 0x00
+	MTCH6102__TOUCH_Y,			  // Default Value 0x00
+	MTCH6102__TOUCH_LSB,		  // Default Value 0x00
+	MTCH6102__GESTURE_STATE,	  // Default Value 0x00
+	MTCH6102__GESTURE_DIAG		  // Default Value 0x00
 } MTCH6102_Touch_Ram_Memory;
 
-typedef enum MTCH6102_Compensation{
+typedef enum MTCH6102_Compensation {
 	MTCH6102__SENSOR_COMP_RX0 = 0x50,
 	MTCH6102__SENSOR_COMP_RX1,
 	MTCH6102__SENSOR_COMP_RX2,
@@ -47,7 +49,7 @@ typedef enum MTCH6102_Compensation{
 	MTCH6102__SENSOR_COMP_RX14,
 } MTCH6102_Compensation_Ram_Memory;
 
-typedef enum MTCH6102_Acquisition{
+typedef enum MTCH6102_Acquisition {
 	MTCH6102__SENSOR_VALUE_RX0 = 0x80,
 	MTCH6102__SENSOR_VALUE_RX1,
 	MTCH6102__SENSOR_VALUE_RX2,
@@ -63,7 +65,7 @@ typedef enum MTCH6102_Acquisition{
 	MTCH6102__SENSOR_VALUE_RX12,
 	MTCH6102__SENSOR_VALUE_RX13,
 	MTCH6102__SENSOR_VALUE_RX14,
-	
+
 	MTCH6102__RAW_VALUE_RX0_L = 0x90,
 	MTCH6102__RAW_VALUE_RX0_H,
 	MTCH6102__RAW_VALUE_RX1_L,
@@ -94,7 +96,7 @@ typedef enum MTCH6102_Acquisition{
 	MTCH6102__RAW_VALUE_RX13_H,
 	MTCH6102__RAW_VALUE_RX14_L,
 	MTCH6102__RAW_VALUE_RX14_H,
-	
+
 	MTCH6102__BASE_VALUE_RX0_L = 0xB0,
 	MTCH6102__BASE_VALUE_RX0_H,
 	MTCH6102__BASE_VALUE_RX1_L,
@@ -125,7 +127,7 @@ typedef enum MTCH6102_Acquisition{
 	MTCH6102__BASE_VALUE_RX13_H,
 	MTCH6102__BASE_VALUE_RX14_L,
 	MTCH6102__BASE_VALUE_RX14_H,
-	
+
 	MTCH6102__RAW_ADC_00 = 0xD0,
 	MTCH6102__RAW_ADC_01,
 	MTCH6102__RAW_ADC_02,
@@ -160,45 +162,43 @@ typedef enum MTCH6102_Acquisition{
 	MTCH6102__RAW_ADC_31
 } MTCH6102_Acquisition_Ram_Memory;
 
-typedef enum MTCH6102_Configuration{
-	MTCH6102__NUMBER_OF_X_CHANNELS = 0x20,	// Default Value 0x09
-	MTCH6102__NUMBER_OF_Y_CHANNELS,			// Default Value 0x06
-	MTCH6102__SCAN_COUNT,					// Default Value 0x06
-	MTCH6102__TOUCH_THRESH_X,				// Default Value 0x37
-	MTCH6102__TOUCH_THRESH_Y,				// Default Value 0x28
-	MTCH6102__ACTIVE_PERIOD_L,				// Default Value 0x85
-	MTCH6102__ACTIVE_PERIOD_H,				// Default Value 0x02
-	MTCH6102__IDLE_PERIOD_L,				// Default Value 0x4C
-	MTCH6102__IDLE_PERIOD_H,				// Default Value 0x06
-	MTCH6102__IDLE_TIMEOUT,					// Default Value 0x10
-	MTCH6102__HYSTERESIS,					// Default Value 0x04
-	MTCH6102__DEBOUNCE_UP,					// Default Value 0x01
-	MTCH6102__DEBOUNCE_DOWN,				// Default Value 0x01
-	MTCH6102__BASE_INTERVAL_L,				// Default Value 0x0A
-	MTCH6102__BASE_INTERVAL_H,				// Default Value 0x00
-	MTCH6102__BASE_POS_FILTER,				// Default Value 0x14
-	MTCH6102__BASE_NEG_FILTER,				// Default Value 0x14
-	MTCH6102__FILTER_TYPE,					// Default Value 0x02
-	MTCH6102__FILTER_STRENGTH,				// Default Value 0x01
-	MTCH6102__BASE_FILTER_TYPE,				// Default Value 0x01
-	MTCH6102__BASE_FILTER_STRENGTH,			// Default Value 0x05
-	MTCH6102__LARGE_ACTIVATION_THRESH_L,	// Default Value 0x00
-	MTCH6102__LARGE_ACTIVATION_THRESH_H,	// Default Value 0x00
-	MTCH6102__HORIZONTAL_SWIPE_DISTANCE,	// Default Value 0x40
-	MTCH6102__VERTICAL_SWIPE_DISTANCE,		// Default Value 0x40
-	MTCH6102__SWIPE_HOLD_BOUNDARY,			// Default Value 0x19
-	MTCH6102__TAP_DISTANCE,					// Default Value 0x19
-	MTCH6102__DISTANCE_BETWEEN_TAPS,		// Default Value 0x40
-	MTCH6102__TAP_HOLD_TIME_L,				// Default Value 0x32
-	MTCH6102__TAP_HOLD_TIME_H,				// Default Value 0x09
-	MTCH6102__GESTURE_CLICK_TIME,			// Default Value 0x0C
-	MTCH6102__SWIPE_HOLD_THRESH,			// Default Value 0x20
-	MTCH6102__MIN_SWIPE_VELOCITY,		    // Default Value 0x04
-	MTCH6102__HORIZONTAL_GESTURE_ANGLE,	    // Default Value 0x2D
-	MTCH6102__VERTICAL_GESTURE_ANGLE,	    // Default Value 0x2D
-	MTCH6102__I2CADDR					    // Default Value 0x25
+typedef enum MTCH6102_Configuration {
+	MTCH6102__NUMBER_OF_X_CHANNELS = 0x20, // Default Value 0x09
+	MTCH6102__NUMBER_OF_Y_CHANNELS,		   // Default Value 0x06
+	MTCH6102__SCAN_COUNT,				   // Default Value 0x06
+	MTCH6102__TOUCH_THRESH_X,			   // Default Value 0x37
+	MTCH6102__TOUCH_THRESH_Y,			   // Default Value 0x28
+	MTCH6102__ACTIVE_PERIOD_L,			   // Default Value 0x85
+	MTCH6102__ACTIVE_PERIOD_H,			   // Default Value 0x02
+	MTCH6102__IDLE_PERIOD_L,			   // Default Value 0x4C
+	MTCH6102__IDLE_PERIOD_H,			   // Default Value 0x06
+	MTCH6102__IDLE_TIMEOUT,				   // Default Value 0x10
+	MTCH6102__HYSTERESIS,				   // Default Value 0x04
+	MTCH6102__DEBOUNCE_UP,				   // Default Value 0x01
+	MTCH6102__DEBOUNCE_DOWN,			   // Default Value 0x01
+	MTCH6102__BASE_INTERVAL_L,			   // Default Value 0x0A
+	MTCH6102__BASE_INTERVAL_H,			   // Default Value 0x00
+	MTCH6102__BASE_POS_FILTER,			   // Default Value 0x14
+	MTCH6102__BASE_NEG_FILTER,			   // Default Value 0x14
+	MTCH6102__FILTER_TYPE,				   // Default Value 0x02
+	MTCH6102__FILTER_STRENGTH,			   // Default Value 0x01
+	MTCH6102__BASE_FILTER_TYPE,			   // Default Value 0x01
+	MTCH6102__BASE_FILTER_STRENGTH,		   // Default Value 0x05
+	MTCH6102__LARGE_ACTIVATION_THRESH_L,   // Default Value 0x00
+	MTCH6102__LARGE_ACTIVATION_THRESH_H,   // Default Value 0x00
+	MTCH6102__HORIZONTAL_SWIPE_DISTANCE,   // Default Value 0x40
+	MTCH6102__VERTICAL_SWIPE_DISTANCE,	   // Default Value 0x40
+	MTCH6102__SWIPE_HOLD_BOUNDARY,		   // Default Value 0x19
+	MTCH6102__TAP_DISTANCE,				   // Default Value 0x19
+	MTCH6102__DISTANCE_BETWEEN_TAPS,	   // Default Value 0x40
+	MTCH6102__TAP_HOLD_TIME_L,			   // Default Value 0x32
+	MTCH6102__TAP_HOLD_TIME_H,			   // Default Value 0x09
+	MTCH6102__GESTURE_CLICK_TIME,		   // Default Value 0x0C
+	MTCH6102__SWIPE_HOLD_THRESH,		   // Default Value 0x20
+	MTCH6102__MIN_SWIPE_VELOCITY,		   // Default Value 0x04
+	MTCH6102__HORIZONTAL_GESTURE_ANGLE,	   // Default Value 0x2D
+	MTCH6102__VERTICAL_GESTURE_ANGLE,	   // Default Value 0x2D
+	MTCH6102__I2CADDR					   // Default Value 0x25
 } MTCH6102_Configuration_Ram_Memory;
-
-
 
 #endif
