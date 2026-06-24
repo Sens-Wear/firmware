@@ -44,7 +44,7 @@ static void bq27427_event_consumer_thread(void* a, void* b, void* c) {
 		}
 
 		if (event.device_id != BQ27427_DEVICE_DTS_ID) {
-			printk("event[other]: dev=%u id=%u v=%u p=%p\n",
+			printk("event[other]: dev=%u id=%u v=%u p=%lu\n",
 				   event.device_id,
 				   event.event_id,
 				   event.v_param,
@@ -52,7 +52,7 @@ static void bq27427_event_consumer_thread(void* a, void* b, void* c) {
 			continue;
 		}
 
-		printk("event[bq27427]: %s (%u), v=%u p=%p\n",
+		printk("event[bq27427]: %s (%u), v=%u p=%lu\n",
 			   bq27427_event_name(event.event_id),
 			   event.event_id,
 			   event.v_param,

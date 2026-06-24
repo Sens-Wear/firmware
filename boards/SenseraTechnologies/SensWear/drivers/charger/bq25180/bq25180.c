@@ -150,6 +150,21 @@ static inline int bq25180_i2c_read_register(enum bq25180_register_type address, 
 	return sys_i2c_write_read(&bq25180.device, &reg, sizeof(reg), value, sizeof(*value));
 }
 
+static inline void bq25180_post_event(enum bq25180_event_type event) {
+	(void) device_driver_event_post(BQ25180_DEVICE_DTS_ID,
+									(uint32_t) event,
+									0,
+									(uintptr_t) NULL,
+									K_MSEC(BQ25180_I2C_TIMEOUT));
+}
+
+static inline void bq25180_post_event_isr(enum bq25180_event_type event, uint32_t vParam) {
+	(void) device_driver_event_post_isr(BQ25180_DEVICE_DTS_ID,
+										(uint32_t) event,
+										vParam,
+										(uintptr_t) NULL);
+}
+
 /** Probe for an I2C response by reading MASK_ID. The caller must own the bus. */
 static bool bq25180_probe(void) {
 	uint8_t mask_id = 0xffu;
@@ -196,101 +211,57 @@ static void bq25180_process_state_change(union bq25180_charger_state_t state,
 		enum bq25180_event_type eventType = newState.bits.bPowerGood ? bq25180_event_Plugged
 																	 : bq25180_event_Unplugged;
 		// power good, we can generate a charger connected event.
-		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
-								 eventType,
-								 0,
-								 NULL,
-								 K_MSEC(BQ25180_I2C_TIMEOUT));
+		bq25180_post_event(eventType);
 	}
 	if (changed.bits.bCharged != 0) {
 		enum bq25180_event_type eventType = newState.bits.bCharged ? bq25180_event_ChargingDone
 																   : bq25180_event_Charging;
 		// battery is fully charged, we can generate a battery full event.
-		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
-								 eventType,
-								 0,
-								 NULL,
-								 K_MSEC(BQ25180_I2C_TIMEOUT));
+		bq25180_post_event(eventType);
 	}
 
 	if (changed.bits.bBatteryOCPFault != 0 && newState.bits.bBatteryOCPFault != 0) {
 		// battery overcurrent fault, we can generate a battery OCP event.
-		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
-								 bq25180_event_BatteryOverCurrentProtectionFault,
-								 0,
-								 NULL,
-								 K_MSEC(BQ25180_I2C_TIMEOUT));
+		bq25180_post_event(bq25180_event_BatteryOverCurrentProtectionFault);
 	}
 
 	if (changed.bits.bBatteryUVLOFault != 0 && newState.bits.bBatteryUVLOFault != 0) {
 		// battery UVLO fault, we can generate a battery UVLO event.
-		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
-								 bq25180_event_BatteryUndervoltageLockoutFault,
-								 0,
-								 NULL,
-								 K_MSEC(BQ25180_I2C_TIMEOUT));
+		bq25180_post_event(bq25180_event_BatteryUndervoltageLockoutFault);
 	}
 
 	if (changed.bits.bBatteryUVLO != 0 && newState.bits.bBatteryUVLO != 0) {
 		// battery UVLO status active, we can generate a battery UVLO status event.
-		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
-								 bq25180_event_BatteryUnderVoltageLockOut,
-								 0,
-								 NULL,
-								 K_MSEC(BQ25180_I2C_TIMEOUT));
+		bq25180_post_event(bq25180_event_BatteryUnderVoltageLockOut);
 	}
 
 	if (changed.bits.bThermalRegulation != 0 && newState.bits.bThermalRegulation != 0) {
 		// thermal regulation active, we can generate a thermal regulation event.
-		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
-								 bq25180_event_ThermalRegulation,
-								 0,
-								 NULL,
-								 K_MSEC(BQ25180_I2C_TIMEOUT));
+		bq25180_post_event(bq25180_event_ThermalRegulation);
 	}
 
 	if (changed.bits.bSafetyTimerFault != 0 && newState.bits.bSafetyTimerFault != 0) {
 		// safety timer fault, we can generate a safety timer expired event.
-		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
-								 bq25180_event_SafetyTimerExpired,
-								 0,
-								 NULL,
-								 K_MSEC(BQ25180_I2C_TIMEOUT));
+		bq25180_post_event(bq25180_event_SafetyTimerExpired);
 	}
 
 	if (changed.bits.bThermalSystemFault != 0 && newState.bits.bThermalSystemFault != 0) {
 		// thermal system fault, we can generate a thermal system fault event.
-		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
-								 bq25180_event_ThermalSystemFault,
-								 0,
-								 NULL,
-								 K_MSEC(BQ25180_I2C_TIMEOUT));
+		bq25180_post_event(bq25180_event_ThermalSystemFault);
 	}
 
 	if (changed.bits.bWake1 != 0 && newState.bits.bWake1 != 0) {
 		// WAKE1 event detected, we can generate a WAKE1 event.
-		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
-								 bq25180_event_Wake1,
-								 0,
-								 NULL,
-								 K_MSEC(BQ25180_I2C_TIMEOUT));
+		bq25180_post_event(bq25180_event_Wake1);
 	}
 	if (changed.bits.bWake2 != 0 && newState.bits.bWake2 != 0) {
 		// WAKE2 event detected, we can generate a WAKE2 event.
-		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
-								 bq25180_event_Wake2,
-								 0,
-								 NULL,
-								 K_MSEC(BQ25180_I2C_TIMEOUT));
+		bq25180_post_event(bq25180_event_Wake2);
 	}
 
 	if (changed.bits.bButtonPressed != 0 && newState.bits.bButtonPressed != 0) {
 		// button activity detected, we can generate a button pressed event.
-		device_driver_event_post(BQ25180_DEVICE_DTS_ID,
-								 bq25180_event_ButtonPressed,
-								 0,
-								 NULL,
-								 K_MSEC(BQ25180_I2C_TIMEOUT));
+		bq25180_post_event(bq25180_event_ButtonPressed);
 	}
 	bq25180.charger_state = newState;
 }
@@ -301,11 +272,7 @@ static void bq25180_irq_callback(const struct device* dev,
 								 uint32_t pins) {
 	ARG_UNUSED(dev);
 	ARG_UNUSED(cb);
-
-	(void) device_driver_event_post_isr(BQ25180_DEVICE_DTS_ID,
-										bq25180_event_InterruptDetected,
-										pins,
-										NULL);
+	bq25180_post_event_isr(bq25180_event_InterruptDetected, pins);
 }
 
 /** Configure the active-low charger interrupt. */

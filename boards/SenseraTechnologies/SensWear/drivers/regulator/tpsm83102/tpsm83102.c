@@ -101,7 +101,7 @@ static void tpsm83102_post_event(enum tpsm83102_event_type event, uint32_t v_par
 	(void) device_driver_event_post(TPSM83102_DEVICE_DTS_ID,
 									(uint32_t) event,
 									v_param,
-									NULL,
+									(uintptr_t) NULL,
 									K_NO_WAIT);
 }
 

@@ -72,7 +72,7 @@ static void tpsm83102_event_consumer_thread(void* a, void* b, void* c) {
 		}
 
 		if (event.device_id != TPSM83102_DEVICE_DTS_ID) {
-			printk("event[other]: dev=%u id=%u v=%u p=%p\n",
+			printk("event[other]: dev=%u id=%u v=%u p=%lu\n",
 				   event.device_id,
 				   event.event_id,
 				   event.v_param,

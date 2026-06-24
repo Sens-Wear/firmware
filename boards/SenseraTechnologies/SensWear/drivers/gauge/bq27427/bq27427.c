@@ -483,7 +483,10 @@ static void bq27427_irq_callback(const struct device* dev,
 	ARG_UNUSED(cb);
 	ARG_UNUSED(pins);
 
-	device_driver_event_post_isr(BQ27427_DEVICE_DTS_ID, bq27427_event_BatteryLow, 0, NULL);
+	device_driver_event_post_isr(BQ27427_DEVICE_DTS_ID,
+								 bq27427_event_BatteryLow,
+								 0,
+								 (uintptr_t) NULL);
 }
 
 /** Configure the active-low battery-low interrupt and register its callback. */
@@ -920,7 +923,7 @@ bool bq27427_update_state(struct bq27427_battery_state_t* state) {
 	device_driver_event_post(BQ27427_DEVICE_DTS_ID,
 							 bq27427_event_StateUpdated,
 							 0,
-							 NULL,
+							 (uintptr_t) NULL,
 							 K_MSEC(BQ27427_I2C_TIMEOUT));
 	return true;
 }
