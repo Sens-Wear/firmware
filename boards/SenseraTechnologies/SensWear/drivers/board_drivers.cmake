@@ -10,6 +10,7 @@ set(BOARD_DRIVER_INCLUDE_DIRS "")
 
 include(${CMAKE_CURRENT_LIST_DIR}/bus/bus_drivers.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/common/common_drivers.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/daughter_if/daughter_if.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/charger/charger_drivers.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/gauge/gauge_drivers.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/imu/imu_drivers.cmake)

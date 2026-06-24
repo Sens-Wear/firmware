@@ -71,31 +71,35 @@
  * The BHI360 is declared with its INT pins and SPI bus specification:
  *
  * @code{.dts}
- * bhi360: imu@0 {
- *     compatible = "sensewear,bhi360";
- *     reg = <0>;
- *     spi-max-frequency = <10000000>;
- *     int0-gpios = <&gpio0 20 GPIO_ACTIVE_HIGH>;
- *     int1-gpios = <&gpio0 21 GPIO_ACTIVE_HIGH>;
+ * bhi360: bhi360@1 {
+ *     compatible = "bosch,bhi360";
+ *     reg = <1>;
+ *     spi-max-frequency = <8000000>;
+ *     cs-gpios = <&gpio2 5 GPIO_ACTIVE_LOW>;
+ *     int-gpios = <&gpio1 9 GPIO_ACTIVE_LOW>;
+ *     reset-gpios = <&gpio2 7 GPIO_ACTIVE_LOW>;
+ *     gpio0-gpios = <&gpio1 10 GPIO_ACTIVE_HIGH>;
+ *     gpio1-gpios = <&gpio2 6 GPIO_ACTIVE_HIGH>;
  *     status = "okay";
  * };
  * @endcode
  *
- * `int0-gpios` and `int1-gpios` are unconfigured GPIO pins wired to the ASDX
- * and ASCX pins of the MPU. These can be configured in custom firmware as
- * user-defined functions.
+ * `int-gpios` is the active-low host IRQ. `gpio0-gpios` and `gpio1-gpios` are
+ * unconfigured auxiliary GPIO pins exposed to callers through
+ * bhi360_get_gpio0() and bhi360_get_gpio1().
  *
  * @section sensewear_bhi360_lifecycle Driver lifecycle
  *
  * The expected lifecycle is:
  *
- * 1. Call bhi360_init() to probe the device, verify boot loader completion,
- *    and initialize interrupt handlers.
- * 2. Call bhi360_configure() to upload firmware, enable sensors, and configure
- *    virtual-sensor channels.
+ * 1. Call bhi360_init() to verify the shared SPI/GPIO resources and initialize
+ *    interrupt handlers.
+ * 2. Call bhi360_configure() to bind the BHY2 transport hooks, probe the
+ *    product ID, upload firmware, enable sensors, and configure virtual-sensor
+ *    channels.
  * 3. Process BHI360 device events as they arrive via the event queue.
- * 4. Call bhi360_stop() to disable interrupts and put the device into standby
- *    (typically during power-down sequences).
+ * 4. Call bhi360_stop() to disable configured virtual sensors and soft-reset
+ *    the device.
  *
  * @section sensewear_bhi360_sensors Configured Sensors
  *
@@ -145,7 +149,7 @@
  * // Consume events in a dedicated thread
  * struct device_driver_event_t event;
  * while (device_driver_event_wait(K_FOREVER, &event)) {
- *     if (event.device_id != BHI360_DEVICE_ID) {
+ *     if (event.device_id != BHI360_DEVICE_DTS_ID) {
  *         continue;
  *     }
  *
@@ -242,6 +246,9 @@
 #include <stdint.h>
 #include <zephyr/drivers/gpio.h>
 
+#include "bhi3_defs.h"
+#include "bhy2.h"
+
 /**
  * @brief BHI360 event type enumeration.
  *
@@ -317,6 +324,82 @@ enum bhi360_event_type {
 	 * data (sensor ID, accuracy level, error code, etc.).
 	 */
 	bhi360_event_MetaEvent,
+	/** @brief Number of valid event IDs. */
+	bhi360_event_Count,
+};
+
+/** @brief Pedometer subevents carried in v_param for bhi360_event_Pedometer. */
+enum bhi360_pedometer_event_type {
+	bhi360_pedometer_event_StepCounter = BHY2_SENSOR_ID_STC,
+	bhi360_pedometer_event_StepCounterWakeup = BHY2_SENSOR_ID_STC_WU,
+	bhi360_pedometer_event_StepCounterLowPower = BHY2_SENSOR_ID_STC_LP,
+	bhi360_pedometer_event_StepCounterLowPowerWakeup = BHY2_SENSOR_ID_STC_LP_WU,
+	bhi360_pedometer_event_StepDetector = BHY2_SENSOR_ID_STD,
+	bhi360_pedometer_event_StepDetectorWakeup = BHY2_SENSOR_ID_STD_WU,
+	bhi360_pedometer_event_StepDetectorLowPower = BHY2_SENSOR_ID_STD_LP,
+	bhi360_pedometer_event_StepDetectorLowPowerWakeup = BHY2_SENSOR_ID_STD_LP_WU,
+};
+
+/** @brief Gesture subevents carried in bits 15:8 of v_param for bhi360_event_Gesture. */
+enum bhi360_gesture_event_type {
+	bhi360_gesture_event_Wake = BHY2_SENSOR_ID_WAKE_GESTURE,
+	bhi360_gesture_event_Glance = BHY2_SENSOR_ID_GLANCE_GESTURE,
+	bhi360_gesture_event_Pickup = BHY2_SENSOR_ID_PICKUP_GESTURE,
+	bhi360_gesture_event_WristTilt = BHY2_SENSOR_ID_WRIST_TILT_GESTURE,
+	bhi360_gesture_event_TiltDetector = BHY2_SENSOR_ID_TILT_DETECTOR,
+	bhi360_gesture_event_StationaryDetector = BHY2_SENSOR_ID_STATIONARY_DET,
+	bhi360_gesture_event_MotionDetector = BHY2_SENSOR_ID_MOTION_DET,
+	bhi360_gesture_event_SignificantMotion = BHY2_SENSOR_ID_SIG,
+	bhi360_gesture_event_SignificantMotionLowPower = BHY2_SENSOR_ID_SIG_LP,
+	bhi360_gesture_event_SignificantMotionLowPowerWakeup = BHY2_SENSOR_ID_SIG_LP_WU,
+	bhi360_gesture_event_AnyMotionLowPower = BHY2_SENSOR_ID_ANY_MOTION_LP,
+	bhi360_gesture_event_AnyMotionLowPowerWakeup = BHY2_SENSOR_ID_ANY_MOTION_LP_WU,
+	bhi360_gesture_event_NoMotionLowPowerWakeup = BHI3_SENSOR_ID_NO_MOTION_LP_WU,
+	bhi360_gesture_event_WristGestureDetectLowPowerWakeup = BHI3_SENSOR_ID_WRIST_GEST_DETECT_LP_WU,
+	bhi360_gesture_event_WristWearLowPowerWakeup = BHI3_SENSOR_ID_WRIST_WEAR_LP_WU,
+};
+
+/** @brief Activity source subevents carried in bits 23:16 of v_param for bhi360_event_Activity. */
+enum bhi360_activity_event_type {
+	bhi360_activity_event_Recognition = BHY2_SENSOR_ID_AR,
+	bhi360_activity_event_WearRecognitionWakeup = BHI3_SENSOR_ID_AR_WEAR_WU,
+};
+
+/** @brief Activity transition bits carried in bits 15:0 of v_param for bhi360_event_Activity. */
+enum bhi360_activity_transition_type {
+	bhi360_activity_transition_StillEnded = BHY2_STILL_ACTIVITY_ENDED,
+	bhi360_activity_transition_WalkingEnded = BHY2_WALKING_ACTIVITY_ENDED,
+	bhi360_activity_transition_RunningEnded = BHY2_RUNNING_ACTIVITY_ENDED,
+	bhi360_activity_transition_BicycleEnded = BHY2_ON_BICYCLE_ACTIVITY_ENDED,
+	bhi360_activity_transition_VehicleEnded = BHY2_IN_VEHICLE_ACTIVITY_ENDED,
+	bhi360_activity_transition_TiltingEnded = BHY2_TILTING_ACTIVITY_ENDED,
+	bhi360_activity_transition_StillStarted = BHY2_STILL_ACTIVITY_STARTED,
+	bhi360_activity_transition_WalkingStarted = BHY2_WALKING_ACTIVITY_STARTED,
+	bhi360_activity_transition_RunningStarted = BHY2_RUNNING_ACTIVITY_STARTED,
+	bhi360_activity_transition_BicycleStarted = BHY2_ON_BICYCLE_ACTIVITY_STARTED,
+	bhi360_activity_transition_VehicleStarted = BHY2_IN_VEHICLE_ACTIVITY_STARTED,
+	bhi360_activity_transition_TiltingStarted = BHY2_TILTING_ACTIVITY_STARTED,
+};
+
+/** @brief Meta-event subevents carried in bits 23:16 of v_param for bhi360_event_MetaEvent. */
+enum bhi360_meta_event_type {
+	bhi360_meta_event_FlushComplete = BHY2_META_EVENT_FLUSH_COMPLETE,
+	bhi360_meta_event_SampleRateChanged = BHY2_META_EVENT_SAMPLE_RATE_CHANGED,
+	bhi360_meta_event_PowerModeChanged = BHY2_META_EVENT_POWER_MODE_CHANGED,
+	bhi360_meta_event_AlgorithmEvents = BHY2_META_EVENT_ALGORITHM_EVENTS,
+	bhi360_meta_event_SensorStatus = BHY2_META_EVENT_SENSOR_STATUS,
+	bhi360_meta_event_BsxDoStepsMain = BHY2_META_EVENT_BSX_DO_STEPS_MAIN,
+	bhi360_meta_event_BsxDoStepsCalib = BHY2_META_EVENT_BSX_DO_STEPS_CALIB,
+	bhi360_meta_event_BsxGetOutputSignal = BHY2_META_EVENT_BSX_GET_OUTPUT_SIGNAL,
+	bhi360_meta_event_SensorError = BHY2_META_EVENT_SENSOR_ERROR,
+	bhi360_meta_event_FifoOverflow = BHY2_META_EVENT_FIFO_OVERFLOW,
+	bhi360_meta_event_DynamicRangeChanged = BHY2_META_EVENT_DYNAMIC_RANGE_CHANGED,
+	bhi360_meta_event_FifoWatermark = BHY2_META_EVENT_FIFO_WATERMARK,
+	bhi360_meta_event_Initialized = BHY2_META_EVENT_INITIALIZED,
+	bhi360_meta_event_TransferCause = BHY2_META_TRANSFER_CAUSE,
+	bhi360_meta_event_SensorFramework = BHY2_META_EVENT_SENSOR_FRAMEWORK,
+	bhi360_meta_event_Reset = BHY2_META_EVENT_RESET,
+	bhi360_meta_event_Spacer = BHY2_META_EVENT_SPACER,
 };
 
 /**
@@ -381,20 +464,20 @@ struct bhi360_activity_data {
 };
 
 /**
- * @brief Initialize and probe the BHI360.
- * @details Verifies the SPI bus, waits for boot-loader completion, sets up
- *          GPIO interrupt handlers, and prepares the device for configuration.
- * @retval true Initialization completed and boot loader signaled ready.
- * @retval false SPI unavailable or boot loader failed to complete.
+ * @brief Initialize BHI360 board resources.
+ * @details Verifies the shared SPI bus and GPIO resources, sets up GPIO
+ *          interrupt handlers, and prepares the driver for configuration.
+ * @retval true Initialization completed.
+ * @retval false SPI/GPIO resources are unavailable or IRQ setup failed.
  * @pre The SPI bus and GPIO interrupt lines are available.
  */
 bool bhi360_init(void);
 
 /**
  * @brief Configure the BHI360 for sensor operation.
- * @details Uploads the firmware (if not yet loaded), enables desired virtual
- *          sensors (quaternion, linear acceleration, etc.), and configures
- *          output rates and dynamic-range settings.
+ * @details Binds the BHY2 transport hooks, verifies the product ID, uploads
+ *          firmware, enables desired virtual sensors, and configures output
+ *          rates.
  * @retval true Firmware upload and sensor configuration completed.
  * @retval false Upload or configuration failed.
  * @pre bhi360_init() has completed successfully.
@@ -407,31 +490,43 @@ bool bhi360_configure(void);
  *          FIFO packets, decodes sensor data, and posts corresponding events
  *          (Quaternion, Gyro, Pedometer, etc.) to the device-driver event
  *          queue. Meta-events are also posted for firmware notifications.
- * @return Number of events processed, or negative error code on read failure.
+ * @retval 0 FIFO processing completed.
+ * @retval -ENODEV The driver is not initialized and configured.
+ * @retval -EIO Device communication or FIFO parsing failed.
  * @pre bhi360_init() and bhi360_configure() have completed successfully.
  * @pre Called from thread context, not ISR.
  */
 int bhi360_process_irq(void);
 
 /**
- * @brief Retrieve the GPIO specification for INT0.
- * @return Pointer to the INT0 GPIO spec (driver-internal, do not modify).
+ * @brief Retrieve the GPIO specification for auxiliary GPIO0.
+ * @return Pointer to the GPIO0 spec (driver-internal, do not modify).
  * @pre bhi360_init() has completed successfully.
  */
 const struct gpio_dt_spec* bhi360_get_gpio0(void);
 
 /**
- * @brief Retrieve the GPIO specification for INT1.
- * @return Pointer to the INT1 GPIO spec (driver-internal, do not modify).
+ * @brief Retrieve the GPIO specification for auxiliary GPIO1.
+ * @return Pointer to the GPIO1 spec (driver-internal, do not modify).
  * @pre bhi360_init() has completed successfully.
  */
 const struct gpio_dt_spec* bhi360_get_gpio1(void);
 
 /**
- * @brief Disable interrupts and put the BHI360 into standby.
- * @details Disables GPIO interrupts and sends the device into a low-power
- *          standby state. Call during system shutdown or when the sensor is
- *          not needed.
+ * @brief Query the name of a BHI360 event or subevent.
+ *
+ * @param event_id Event ID from @ref bhi360_event_type.
+ * @param v_param Event value parameter. For events with subevents, this is decoded
+ * according to the event-specific v_param packing.
+ * @return Constant event-name string, or "Unknown" for invalid IDs.
+ */
+const char* bhi360_event_name(enum bhi360_event_type event_id, uint32_t v_param);
+
+/**
+ * @brief Stop BHI360 virtual-sensor output.
+ * @details Disables configured virtual sensors, flushes their FIFOs, soft-resets
+ *          the BHY2 device context, and marks the driver unconfigured while
+ *          preserving initialized board resources.
  * @pre bhi360_init() has completed successfully.
  */
 void bhi360_stop(void);

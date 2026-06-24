@@ -5,10 +5,19 @@ if SHIELD_SENSEWEAR_PPG
 config I2C
 	default y
 
+config SENSEWEAR_SYS_I2C
+	default y
+
 config GPIO
 	default y
 
 config SENSOR
+	default y
+
+config SENSEWEAR_TPSM83102_DRIVER
+	default y
+
+config SENSEWEAR_DAUGHTER_IF_DRIVER
 	default y
 
 endif # SHIELD_SENSEWEAR_PPG

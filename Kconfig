@@ -90,7 +90,7 @@ config SENSEWEAR_M95P_DISK_AUTOMOUNT
 
 config SENSEWEAR_BQ25180_DRIVER
 	bool "BQ25180 charger driver"
-	depends on I2C
+	depends on SENSEWEAR_SYS_I2C
 	default y
 	select SENSEWEAR_DEVICE_DRIVER_EVENTS
 	help
@@ -100,7 +100,7 @@ config SENSEWEAR_BQ25180_DRIVER
 
 config SENSEWEAR_BQ27427_DRIVER
 	bool "BQ27427 fuel-gauge driver"
-	depends on I2C
+	depends on SENSEWEAR_SYS_I2C
 	default y
 	select SENSEWEAR_DEVICE_DRIVER_EVENTS
 	help
@@ -116,7 +116,7 @@ config SENSEWEAR_BHI360_DRIVER
 
 config SENSEWEAR_LP5562_DRIVER
 	bool "LP5562 LED controller driver"
-	depends on I2C
+	depends on SENSEWEAR_SYS_I2C
 	default y
 	help
 	  Build the LP5562 LED controller driver.
@@ -130,10 +130,19 @@ config SENSEWEAR_M95P_DRIVER
 
 config SENSEWEAR_TPSM83102_DRIVER
 	bool "TPSM83102 regulator driver"
-	depends on I2C
+	depends on SENSEWEAR_SYS_I2C
 	default y
 	help
 	  Build the TPSM83102 buck regulator driver.
+
+config SENSEWEAR_DAUGHTER_IF_DRIVER
+	bool "Daughter-board connector GPIO arbiter"
+	depends on GPIO
+	default y
+	help
+	  Build the daughter-board interface driver. It aggregates the connector's
+	  shared GPIO lines and arbitrates, at runtime, which consumer driver may
+	  control each line so two drivers cannot fight over the same pin.
 
 config SENSEWEAR_DEVICE_DRIVER_EVENTS
 	bool "SenseWear device driver event manager"
@@ -205,4 +214,3 @@ config SENSEWEAR_TEST_TPSM83102_DRIVER
 endmenu
 
 source "Kconfig.zephyr"
-

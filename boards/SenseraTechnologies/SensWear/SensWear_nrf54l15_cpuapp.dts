@@ -157,25 +157,16 @@
 	};
 };
 
-sys_i2c_peripheral: &i2c21 {
-	status = "okay";
-	compatible = "nordic,nrf-twim";
-	clock-frequency = <I2C_BITRATE_STANDARD>;
-	pinctrl-0 = <&i2c21_default>;
-	pinctrl-1 = <&i2c21_sleep>;
-	pinctrl-names = "default", "sleep";
-
+/ {
 	/*
-	 * Daughter board connector and address-assignment endpoint.
+	 * Daughter-board connector GPIO mapper.
 	 *
-	 * 0x7f is reserved in the 7-bit I2C address space and is used as an
-	 * unassigned placeholder. Runtime code must assign a valid address before
-	 * attempting a transfer through this endpoint. The node also maps the four
-	 * connector GPIO lines.
+	 * This is intentionally not an I2C child node. The daughter boards use
+	 * the system I2C bus through their own shield nodes, while this connector
+	 * node only maps and names the shared SENSOR_GPIO_0..3 lines.
 	 */
-	daughter_board_if: daughter-board@7f {
+	daughter_board_if: daughter-board {
 		compatible = "sensewear,daughter-connector";
-		reg = <0x7f>;
 		#gpio-cells = <2>;
 		gpio-map-mask = <0xffffffff 0xffffffc0>;
 		gpio-map-pass-thru = <0 0x3f>;
@@ -185,8 +176,26 @@ sys_i2c_peripheral: &i2c21 {
 			   <3 0 &gpio1 11 0>;  /* SENSOR_GPIO_3 (P1.11) */
 		gpio-line-names = "SENSOR_GPIO_0", "SENSOR_GPIO_1",
 				  "SENSOR_GPIO_2", "SENSOR_GPIO_3";
+		/*
+		 * The connector's GPIO lines, in line order, aggregated by the
+		 * daughter_if driver which arbitrates their ownership. Resolved
+		 * through this node's own gpio-map to the physical controller.
+		 */
+		sensor-gpios = <&daughter_board_if 0 GPIO_ACTIVE_HIGH>,
+			       <&daughter_board_if 1 GPIO_ACTIVE_HIGH>,
+			       <&daughter_board_if 2 GPIO_ACTIVE_HIGH>,
+			       <&daughter_board_if 3 GPIO_ACTIVE_HIGH>;
 		status = "okay";
 	};
+};
+
+sys_i2c_peripheral: &i2c21 {
+	status = "okay";
+	compatible = "nordic,nrf-twim";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	pinctrl-0 = <&i2c21_default>;
+	pinctrl-1 = <&i2c21_sleep>;
+	pinctrl-names = "default", "sleep";
 
 	/*
 	 * LP5562 RGB LED driver.
