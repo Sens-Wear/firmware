@@ -1,5 +1,8 @@
 #include <errno.h>
 
+#include <zephyr/device.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/haptics.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/util.h>
 
@@ -9,17 +12,32 @@
 #include "bluetooth/services/haptic/haptic_lbs.h"
 #include "drv2605.h"
 
-BUILD_ASSERT(HAPTIC_ACTUATOR_MAX_FRAMES >= HAPTIC_LBS_MAX_FRAMES,
-	     "Actuator frame capacity must cover BLE haptic payloads");
+#define HAPTIC_US_PER_MS 1000U
+
+static const struct device *const haptic_dev = DEVICE_DT_GET(DT_ALIAS(sensewear_haptic));
 
 static bool haptic_bridge_started;
 static bool haptic_board_connected;
-static bool haptic_actuator_initialized;
 static struct k_work haptic_board_status_work;
+
+/*
+ * RTP playback on the DRV2605 driver runs asynchronously on a work queue and
+ * streams directly from the buffers handed to drv2605_haptic_config(), so they
+ * must outlive the call. A single static set is safe because we only refill it
+ * while no stream is active (guarded by drv2605_rtp_is_active() under the mutex),
+ * and the driver clears that flag only after the worker has finished reading.
+ */
+static K_MUTEX_DEFINE(haptic_rtp_mutex);
+static uint32_t haptic_rtp_hold_us[HAPTIC_LBS_MAX_FRAMES];
+static uint8_t haptic_rtp_input[HAPTIC_LBS_MAX_FRAMES];
+static struct drv2605_rtp_data haptic_rtp_data = {
+	.rtp_hold_us = haptic_rtp_hold_us,
+	.rtp_input = haptic_rtp_input,
+};
 
 static int haptic_ble_run_pattern(const struct haptic_lbs_frame *frames, size_t frame_count)
 {
-	struct haptic_actuator_frame actuator_frames[HAPTIC_LBS_MAX_FRAMES];
+	const union drv2605_config_data config_data = {.rtp_data = &haptic_rtp_data};
 	int ret;
 
 	if (frames == NULL || frame_count == 0U || frame_count > HAPTIC_LBS_MAX_FRAMES) {
@@ -30,22 +48,30 @@ static int haptic_ble_run_pattern(const struct haptic_lbs_frame *frames, size_t 
 		return -ENODEV;
 	}
 
-	ret = haptic_actuator_init();
-	if (ret != 0) {
-		haptic_actuator_initialized = false;
-		return ret;
+	if (!device_is_ready(haptic_dev)) {
+		return -ENODEV;
 	}
 
-	if (!haptic_actuator_initialized) {
-		haptic_actuator_initialized = true;
+	k_mutex_lock(&haptic_rtp_mutex, K_FOREVER);
+
+	if (drv2605_rtp_is_active(haptic_dev)) {
+		k_mutex_unlock(&haptic_rtp_mutex);
+		return -EBUSY;
 	}
 
 	for (size_t i = 0; i < frame_count; i++) {
-		actuator_frames[i].duration_ms = frames[i].duration_ms;
-		actuator_frames[i].intensity = frames[i].intensity;
+		haptic_rtp_hold_us[i] = (uint32_t)frames[i].duration_ms * HAPTIC_US_PER_MS;
+		haptic_rtp_input[i] = frames[i].intensity;
+	}
+	haptic_rtp_data.size = frame_count;
+
+	ret = drv2605_haptic_config(haptic_dev, DRV2605_HAPTICS_SOURCE_RTP, &config_data);
+	if (ret == 0) {
+		ret = haptics_start_output(haptic_dev);
 	}
 
-	return haptic_actuator_play_pattern(actuator_frames, frame_count);
+	k_mutex_unlock(&haptic_rtp_mutex);
+	return ret;
 }
 
 static const struct haptic_lbs_ops haptic_ble_ops = {
@@ -56,9 +82,8 @@ static void haptic_board_status_work_fn(struct k_work *work)
 {
 	ARG_UNUSED(work);
 
-	if (!haptic_board_connected) {
-		haptic_actuator_deinit();
-		haptic_actuator_initialized = false;
+	if (!haptic_board_connected && device_is_ready(haptic_dev)) {
+		(void)haptics_stop_output(haptic_dev);
 	}
 }
 

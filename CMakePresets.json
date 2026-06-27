@@ -99,6 +99,18 @@
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
+        },
+        {
+            "name": "test_drv2605",
+            "displayName": "Test: DRV2605 haptics (sensewear_haptic shield)",
+            "inherits": "test_base",
+            "binaryDir": "${sourceDir}/build/tests/drv2605",
+            "cacheVariables": {
+                "SHIELD": "sensewear_haptic",
+                "CONFIG_SENSEWEAR_TEST_DRV2605_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
         }
     ],
     "buildPresets": [
@@ -129,6 +141,10 @@
         {
             "name": "test_tpsm83102",
             "configurePreset": "test_tpsm83102"
+        },
+        {
+            "name": "test_drv2605",
+            "configurePreset": "test_drv2605"
         }
     ]
 }

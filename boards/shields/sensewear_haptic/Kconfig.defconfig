@@ -20,4 +20,6 @@ config SENSEWEAR_DAUGHTER_IF_DRIVER
 config SENSEWEAR_DEVICE_DRIVER_EVENTS
 	default y
 
+rsource "drivers/haptic/drv2605/Kconfig.drv2605"
+
 endif # SHIELD_SENSEWEAR_HAPTIC

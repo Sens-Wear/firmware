@@ -12,7 +12,7 @@
  * DRV2605 integration. Keep local changes documented in PATCHED_FROM_ZEPHYR.md.
  */
 
-#define DT_DRV_COMPAT ti_drv2605
+#define DT_DRV_COMPAT sensewear_drv2605
 
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
@@ -185,6 +185,12 @@ const char* drv2605_event_name(enum drv2605_event_type event_id) {
 	return drv2605_event_names[event_id];
 }
 
+bool drv2605_rtp_is_active(const struct device* dev) {
+	struct drv2605_data* data = dev->data;
+
+	return atomic_get(&data->rtp_active) != 0;
+}
+
 static inline void drv2605_post_event(enum drv2605_event_type event, uint32_t v_param) {
 	(void) device_driver_event_post(DRV2605_DEVICE_DTS_ID,
 									(uint32_t) event,
@@ -264,8 +270,8 @@ static int drv2605_i2c_update_register(const struct device* dev,
 }
 
 /*
- * The * helpers perform register transactions and require the caller to
- * hold SYS_I2C ownership for this device.
+ * The drv2605_haptic_config_* helpers perform register transactions and
+ * require the caller to hold SYS_I2C ownership for this device.
  */
 static inline int drv2605_haptic_config_audio(const struct device* dev) {
 	struct drv2605_data* data = dev->data;

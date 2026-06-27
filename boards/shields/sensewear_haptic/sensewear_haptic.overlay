@@ -11,7 +11,7 @@
 
 &sys_i2c_peripheral {
 	drv2605: drv2605@5a {
-		compatible = "ti,drv2605";
+		compatible = "sensewear,drv2605";
 		reg = <0x5a>;
 		/* Enable uses SENSOR_GPIO_0 / P1.14 claimed through daughter_if. */
 		status = "okay";

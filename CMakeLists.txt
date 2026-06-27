@@ -10,6 +10,15 @@ list(APPEND EXTRA_ZEPHYR_MODULES
 # (boards/.../SensWear/dts/bindings), keeping them co-located with the board
 # and its out-of-tree drivers.
 list(APPEND DTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/boards/SenseraTechnologies/SensWear)
+# The sensewear_haptic shield ships its own DRV2605 driver and binding
+# (sensewear,drv2605); register the shield as a DTS root so its bindings under
+# dts/bindings are discovered. Only do so when the shield is actually selected.
+# DTS_ROOT must be set before find_package(Zephyr), so this keys off the SHIELD
+# input variable (set on the command line / preset / environment) rather than
+# CONFIG_SHIELD_SENSEWEAR_HAPTIC, which is not known until Kconfig has run.
+if("${SHIELD}" MATCHES "sensewear_haptic" OR "$ENV{SHIELD}" MATCHES "sensewear_haptic")
+    list(APPEND DTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/boards/shields/sensewear_haptic)
+endif()
 
 # Emit compile_commands.json for clangd. Set before find_package(Zephyr): the
 # variable initialises each target's EXPORT_COMPILE_COMMANDS property at creation
@@ -61,6 +70,16 @@ foreach(_t BQ25180 BQ27427 BHI360 LP5562 M95P TPSM83102)
     endif()
 endforeach()
 
+# Shield driver bring-up tests (tests/shields). Same Kconfig-driven selection as
+# the board-driver tests above; these exercise drivers shipped by a shield, so
+# the matching shield must also be enabled (e.g. SHIELD=sensewear_haptic).
+set(TEST_SHIELDS OFF)
+foreach(_t DRV2605)
+    if(CONFIG_SENSEWEAR_TEST_${_t}_DRIVER)
+        set(TEST_SHIELDS ON)
+    endif()
+endforeach()
+
 # Vendored third-party libraries (BHY2 sensor API, ...) collected into the
 # `libs` INTERFACE library. Linked always: board_drivers' bhi360.c uses BHY2.
 include(${CMAKE_CURRENT_SOURCE_DIR}/libs/libs.cmake)
@@ -75,11 +94,22 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/boards/shields/shields.cmake)
 
 target_link_libraries(app PRIVATE board_drivers shield_drivers libs)
 
-if(TEST_DRIVERS)
-    # A driver bring-up test replaces the application: the test provides main()
-    # and links only against the board drivers. The application sources
+if(TEST_DRIVERS AND TEST_SHIELDS)
+    message(FATAL_ERROR
+        "A board-driver test and a shield test are both enabled; each defines "
+        "main(). Enable exactly one SENSEWEAR_TEST_<driver>_DRIVER.")
+endif()
+
+if(TEST_DRIVERS OR TEST_SHIELDS)
+    # A bring-up test replaces the application: the test provides main() and links
+    # against the board/shield drivers. The application sources
     # (src/app.cmake -> app_src) are not built at all.
-    include(${CMAKE_CURRENT_SOURCE_DIR}/tests/drivers/tests.cmake)
+    if(TEST_DRIVERS)
+        include(${CMAKE_CURRENT_SOURCE_DIR}/tests/drivers/tests.cmake)
+    endif()
+    if(TEST_SHIELDS)
+        include(${CMAKE_CURRENT_SOURCE_DIR}/tests/shields/tests.cmake)
+    endif()
 else()
     # Normal build: application sources / includes (app_src INTERFACE library).
     include(${CMAKE_CURRENT_SOURCE_DIR}/src/app.cmake)

@@ -4,16 +4,23 @@
 # SenseWear local copy:
 # Copied from Zephyr/NCS v3.3.0
 #   zephyr/dts/bindings/haptics/ti,drv2605.yaml
-# See PATCHED_FROM_ZEPHYR.md before changing this file.
+# See ../../../drivers/haptic/drv2605/PATCHED_FROM_ZEPHYR.md before changing
+# this file.
+#
+# SenseWear local patch: the compatible is namespaced "sensewear,drv2605" so the
+# node binds to the SenseWear-patched DRV2605 driver instead of Zephyr's upstream
+# ti,drv2605 driver. The enable pin is not described with en-gpios; the patched
+# driver claims SENSOR_GPIO_0 through the daughter_if GPIO arbiter.
 
 description: |
   DRV2605 Haptic Driver for ERM and LRA with built-in library and smart-loop
   architecture.
 
-  SenseWear local patch: the enable pin is not described with en-gpios. The
-  patched driver claims SENSOR_GPIO_0 through the daughter_if GPIO arbiter.
+  SenseWear-patched DRV2605 driver. Register access is routed through the
+  SenseWear SYS_I2C ownership wrapper and the enable pin is owned through the
+  daughter_if GPIO arbiter rather than a devicetree en-gpios property.
 
-compatible: "ti,drv2605"
+compatible: "sensewear,drv2605"
 
 include: i2c-device.yaml
 

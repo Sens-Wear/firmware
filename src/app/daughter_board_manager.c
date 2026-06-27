@@ -10,10 +10,6 @@
 
 #include "app/daughter_board_manager.h"
 
-#if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
-#include "drv2605.h"
-#endif
-
 #if IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_PPG)
 #include "max30101.h"
 #endif

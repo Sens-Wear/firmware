@@ -208,7 +208,6 @@ int main(void)
 	// Initialize PPG sensor
 	// ppg_sensor_init();
 
-	// haptic_actuator_init();
 	// led_controller_init();
 	// led_controller_configure();
 

@@ -9,11 +9,97 @@
  * DRV2605 integration. Keep local changes documented in PATCHED_FROM_ZEPHYR.md.
  */
 
- /**
-  * @file
-  * @brief Header file providing the API for the DRV2605 haptic driver
-  * @ingroup drv2605_interface
-  */
+/**
+ * @file
+ * @brief API for the SenseWear-patched DRV2605 haptic driver.
+ * @ingroup drv2605_interface
+ *
+ * @details
+ * This is a vendored copy of Zephyr's DRV2605 haptics driver, patched for the
+ * SenseWear platform so it can be changed without modifying the installed NCS
+ * tree. The companion source is `drv2605.c`; the provenance, baseline, and the
+ * full list of local changes are tracked in `PATCHED_FROM_ZEPHYR.md` next to
+ * this file. Keep that file and this block in sync when patching.
+ *
+ * @par Provenance
+ * - Baseline: NCS `v3.3.0` / Zephyr `4.3.99`
+ *   (`/Users/yusein/Tools/nordic/ncs/v3.3.0/zephyr`).
+ * - Copied from `zephyr/{drivers/haptics/drv2605.c,
+ *   include/zephyr/drivers/haptics/drv2605.h, drivers/haptics/Kconfig.drv2605,
+ *   dts/bindings/haptics/ti,drv2605.yaml}`.
+ * - Zephyr's original copyright and SPDX headers are preserved.
+ *
+ * @par What is patched (vs. the Zephyr baseline)
+ * - @b Compatible: binds to the namespaced `sensewear,drv2605`
+ *   (`DT_DRV_COMPAT sensewear_drv2605`) instead of `ti,drv2605`, so it replaces,
+ *   rather than collides with, Zephyr's upstream driver, binding, and
+ *   `HAPTICS_DRV2605` Kconfig symbol. The driver is built when
+ *   `CONFIG_SENSEWEAR_DRV2605_DRIVER` is set.
+ * - @b Bus: register access is routed through the SenseWear `sys_i2c` ownership
+ *   wrapper (`sys_i2c_write` / `sys_i2c_write_read`, `sys_i2c_lock` /
+ *   `sys_i2c_release`) instead of the direct `i2c_dt_spec` helpers. Every
+ *   dev-level operation acquires bus ownership on entry and fully releases it
+ *   before returning.
+ * - @b Enable @b pin: no devicetree `en-gpios`. The enable line is mandatory and
+ *   claimed at init from the daughter-board GPIO arbiter as `daughter_if_GPIO0`;
+ *   if that line is already owned the driver logs an error and asserts. The pin
+ *   is held for the device's lifetime.
+ * - @b RTP @b lifecycle: per-device atomic state (`rtp_active`,
+ *   `rtp_stop_requested`, `rtp_active_seconds`). A second RTP start is rejected
+ *   with `-EBUSY`; an external stop is observed mid-stream; a duplicate
+ *   `Stopped` event is suppressed when the worker will post it.
+ * - @b Events: playback lifecycle is reported through the SenseWear device-driver
+ *   event queue under `DRV2605_DEVICE_DTS_ID`; see @ref drv2605_event_type.
+ *
+ * @par Features
+ * - Zephyr haptics device API (`haptics_start_output()` /
+ *   `haptics_stop_output()`) for start/stop.
+ * - Five signal sources via drv2605_haptic_config(): ROM library waveforms, RTP
+ *   streaming, audio-to-vibe, PWM, and analog (see @ref drv2605_haptics_source).
+ * - Asynchronous RTP playback on a work queue; the caller's RTP buffers are
+ *   streamed directly and must outlive playback. drv2605_rtp_is_active() lets a
+ *   buffer owner serialise patterns and avoid reusing buffers mid-stream.
+ * - Lifecycle/observability events (`Starting`, `Stopped`, `PlaybackActive`,
+ *   `Error`) with a once-per-second active heartbeat; drv2605_event_name()
+ *   returns printable names.
+ * - Power management hooks (suspend/resume + enable-pin turn off/on).
+ *
+ * @par Typical use case (RTP playback)
+ * @code{.c}
+ * // Device comes from the devicetree node bound to "sensewear,drv2605".
+ * const struct device *dev = DEVICE_DT_GET(DT_ALIAS(sensewear_haptic));
+ *
+ * if (!device_is_ready(dev)) {
+ *         return -ENODEV;
+ * }
+ *
+ * // Buffers must stay valid for the whole async stream; keep them static or
+ * // otherwise owned until playback finishes.
+ * static uint32_t hold_us[]  = { 100000, 50000, 100000 }; // per-frame hold time
+ * static uint8_t  input[]    = {    255,   128,      0  }; // per-frame amplitude
+ * static struct drv2605_rtp_data rtp = {
+ *         .size        = ARRAY_SIZE(input),
+ *         .rtp_hold_us = hold_us,
+ *         .rtp_input   = input,
+ * };
+ * const union drv2605_config_data cfg = { .rtp_data = &rtp };
+ *
+ * if (drv2605_rtp_is_active(dev)) {
+ *         return -EBUSY;            // a previous pattern is still streaming
+ * }
+ *
+ * int ret = drv2605_haptic_config(dev, DRV2605_HAPTICS_SOURCE_RTP, &cfg);
+ * if (ret == 0) {
+ *         ret = haptics_start_output(dev);  // returns immediately; plays async
+ * }
+ * // ... later, to abort early:
+ * // haptics_stop_output(dev);
+ * @endcode
+ *
+ * For ROM library playback, populate a @ref drv2605_rom_data instead and pass it
+ * through @ref union drv2605_config_data::rom_data with
+ * @ref DRV2605_HAPTICS_SOURCE_ROM, then call haptics_start_output().
+ */
 
 #ifndef ZEPHYR_INCLUDE_DRIVERS_HAPTICS_DRV2605_H_
 #define ZEPHYR_INCLUDE_DRIVERS_HAPTICS_DRV2605_H_
@@ -242,6 +328,20 @@ int drv2605_haptic_config(const struct device *dev, enum drv2605_haptics_source 
  * @return Static string for known event ids, otherwise `"Unknown"`.
  */
 const char *drv2605_event_name(enum drv2605_event_type event_id);
+
+/**
+ * @brief Report whether an RTP stream is currently playing.
+ *
+ * @details RTP playback runs asynchronously on a work queue. A caller that owns
+ * the RTP data buffers passed to drv2605_haptic_config() can use this to avoid
+ * reconfiguring or freeing those buffers while the worker is still streaming
+ * from them, and to serialise back-to-back patterns.
+ *
+ * @param dev Pointer to the device structure for haptic device instance.
+ * @retval true RTP playback is active.
+ * @retval false No RTP playback is in progress.
+ */
+bool drv2605_rtp_is_active(const struct device *dev);
 
 
 /** @} */
