@@ -135,7 +135,7 @@ enum bq25180_event_type {
 	bq25180_event_Wake1 = 11,							  /**< WAKE1 event detected. */
 	bq25180_event_Wake2 = 12,							  /**< WAKE2 event detected. */
 	bq25180_event_ButtonPressed = 13,					  /**< Button pressed event detected. */
-	bq25180_event_InterruptDetected = 14,				  /**< INT pin assertion detected. */
+	bq25180_event_Irq = 14,								  /**< INT pin assertion detected. */
 	bq25180_event_Count,								  /**< Number of valid event identifiers. */
 };
 

@@ -95,7 +95,7 @@ static const char* const bq25180_event_names[bq25180_event_Count] = {
 	[bq25180_event_Wake1] = "Wake1",
 	[bq25180_event_Wake2] = "Wake2",
 	[bq25180_event_ButtonPressed] = "ButtonPressed",
-	[bq25180_event_InterruptDetected] = "InterruptDetected",
+	[bq25180_event_Irq] = "InterruptDetected",
 };
 
 const char* bq25180_event_name(uint32_t event_id) {
@@ -272,7 +272,7 @@ static void bq25180_irq_callback(const struct device* dev,
 								 uint32_t pins) {
 	ARG_UNUSED(dev);
 	ARG_UNUSED(cb);
-	bq25180_post_event_isr(bq25180_event_InterruptDetected, pins);
+	bq25180_post_event_isr(bq25180_event_Irq, pins);
 }
 
 /** Configure the active-low charger interrupt. */
