@@ -21,7 +21,7 @@
 #endif
 
 #ifndef MAX30101_LED_PULSEWIDTH
-#define MAX30101_LED_PULSEWIDHT max30101_led_pulsewidth_215
+#define MAX30101_LED_PULSEWIDTH max30101_led_pulsewidth_215
 #endif
 
 #ifndef MAX30101_ADC_RANGE
