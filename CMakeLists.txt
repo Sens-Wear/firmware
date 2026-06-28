@@ -74,7 +74,7 @@ endforeach()
 # the board-driver tests above; these exercise drivers shipped by a shield, so
 # the matching shield must also be enabled (e.g. SHIELD=sensewear_haptic).
 set(TEST_SHIELDS OFF)
-foreach(_t DRV2605)
+foreach(_t DRV2605 MAX30101)
     if(CONFIG_SENSEWEAR_TEST_${_t}_DRIVER)
         set(TEST_SHIELDS ON)
     endif()
@@ -91,6 +91,59 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/boards/SenseraTechnologies/SensWear/drivers/
 # Shield driver subsystem: the shields aggregator checks enabled shields and
 # collects their colocated driver sources into the `shield_drivers` INTERFACE library.
 include(${CMAKE_CURRENT_SOURCE_DIR}/boards/shields/shields.cmake)
+
+# Count the enabled SenseWear shields (one per daughter board). The CONFIG_
+# symbols are readable here as CMake variables because find_package(Zephyr) has
+# already run Kconfig. The total is handed to the application as the
+# SENSEWEAR_NUM_SHIELDS compile definition.
+set(SENSEWEAR_SHIELDS SENSEWEAR_HAPTIC SENSEWEAR_PPG SENSEWEAR_TEMPERATURE SENSEWEAR_TOUCH)
+set(_shield_count 0)
+foreach(_s ${SENSEWEAR_SHIELDS})
+    if(CONFIG_SHIELD_${_s})
+        math(EXPR _shield_count "${_shield_count} + 1")
+    endif()
+endforeach()
+
+# Count, straight from devicetree, how many enabled devices depend on the shared
+# daughter-connector regulator (TPSM83102 / VDD_DAUGHTER). Each daughter device
+# declares `vin-supply = <&tpsm83102>` in its shield overlay. Zephyr's CMake
+# devicetree API cannot enumerate a node's children, so instead of walking the
+# daughter I2C bus we check each known daughter device by its node label and tally
+# the okay ones whose vin-supply resolves to the regulator node. The connector
+# exposes a single regulated rail, so more than one is a hard error. The dt_*
+# helpers read the parsed devicetree, available now that find_package(Zephyr) has
+# run. dt_prop() leaves its output variable empty when the property is absent.
+set(SENSEWEAR_DAUGHTER_DEVICES drv2605 max30101 max30208 mtch6102)
+dt_nodelabel(_reg_path NODELABEL tpsm83102)
+set(_regulator_dep_count 0)
+if(_reg_path)
+    foreach(_label ${SENSEWEAR_DAUGHTER_DEVICES})
+        dt_nodelabel(_dev_path NODELABEL ${_label})
+        if(NOT _dev_path)
+            continue()
+        endif()
+        dt_node_has_status(_ok PATH "${_dev_path}" STATUS okay)
+        if(NOT _ok)
+            continue()
+        endif()
+        dt_prop(_supply PATH "${_dev_path}" PROPERTY "vin-supply")
+        if(_supply STREQUAL "${_reg_path}")
+            math(EXPR _regulator_dep_count "${_regulator_dep_count} + 1")
+        endif()
+    endforeach()
+endif()
+
+if(_regulator_dep_count GREATER 1)
+    message(FATAL_ERROR
+        "${_regulator_dep_count} enabled devices depend on the shared "
+        "daughter-connector regulator (TPSM83102 / VDD_DAUGHTER), but the "
+        "connector provides a single regulated rail. Enable at most one "
+        "regulator-dependent daughter shield.")
+endif()
+
+# At most one regulator-dependent daughter device: publish the active shield
+# count to the application.
+target_compile_definitions(app PRIVATE SENSEWEAR_NUM_SHIELDS=${_shield_count})
 
 target_link_libraries(app PRIVATE board_drivers shield_drivers libs)
 

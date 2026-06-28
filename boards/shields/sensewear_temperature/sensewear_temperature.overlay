@@ -11,9 +11,11 @@
 
 &sys_i2c_peripheral {
 	max30208: max30208@50 {
-		compatible = "i2c-device";
+		compatible = "sensewear,daughter-i2c-device", "i2c-device";
 		status = "okay";
 		reg = <0x50>;
 		label = "MAX30208";
+		/* Powered from the shared daughter-connector rail (VDD_DAUGHTER). */
+		vin-supply = <&tpsm83102>;
 	};
 };

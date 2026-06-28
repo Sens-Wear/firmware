@@ -21,16 +21,20 @@
 
 #include "max30101.h"
 #include "max30101_config.h"
+#include "max30101_registers.h"
 #include "sys_i2c.h"
 #include "daughter_if.h"
 #include "device_driver_events.h"
 #include "device_driver_dts_ids.h"
 
 #include <zephyr/kernel.h>
+#include <zephyr/device.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/regulator.h>
 #include <string.h>
 #include <time.h>
+#include <errno.h>
 
 LOG_MODULE_REGISTER(max30101, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -40,6 +44,9 @@ LOG_MODULE_REGISTER(max30101, CONFIG_LOG_DEFAULT_LEVEL);
  *          shared-I2C specification.
  */
 #define MAX30101_NODE DT_NODELABEL(max30101)
+// check the regulator property is present and valid; the driver uses it to power the rail
+BUILD_ASSERT(DT_NODE_HAS_PROP(MAX30101_NODE, vin_supply),
+			 "Invalid regulator device specified for MAX30101");
 
 /** Connector line carrying the MAX30101 INT signal. */
 #define MAX30101_IRQ_LINE daughter_if_GPIO1
@@ -47,14 +54,27 @@ LOG_MODULE_REGISTER(max30101, CONFIG_LOG_DEFAULT_LEVEL);
 /** Number of bytes the FIFO emits per active LED channel. */
 #define MAX30101_BYTES_PER_CHANNEL (3)
 /** Depth of the device FIFO in samples. */
+#ifndef MAX30101_FIFO_DEPTH
 #define MAX30101_FIFO_DEPTH (32)
+#endif
+BUILD_ASSERT(MAX30101_FIFO_DEPTH <= 32, "MAX30101 FIFO depth must be <= 32");
+BUILD_ASSERT(MAX30101_FIFO_DEPTH > 0, "MAX30101 FIFO depth must be greater than 0");
+#define MAX30101_FIFO_READ_SAMPLES (MAX30101_FIFO_DEPTH * MAX30101_BYTES_PER_CHANNEL)
 /** Largest single register burst this driver writes (address + payload). */
 #define MAX30101_I2C_TX_MAX (4)
 
-/** Capacity of the internal decoded-sample stream, in samples. */
-#define MAX30101_STREAM_DEPTH (256)
-/** Number of FIFO samples the interrupt handler reads per pass. */
-#define MAX30101_FIFO_READ_SAMPLES (MAX30101_FIFO_DEPTH)
+/** Minimum and maximum voltages for each LED channel. @{*/
+#define MAX30101_LED_VOLTAGE_RED_MIN_UV (31000000u)
+#define MAX30101_LED_VOLTAGE_RED_MAX_UV (50000000u)
+#define MAX30101_LED_VOLTAGE_IR_MIN_UV (31000000u)
+#define MAX30101_LED_VOLTAGE_IR_MAX_UV (50000000u)
+#define MAX30101_LED_VOLTAGE_GREEN_MIN_UV (45000000u)
+#define MAX30101_LED_VOLTAGE_GREEN_MAX_UV (55000000u)
+/** @} */
+/** Minimum and maximum voltages for the PPG LEDs as a group. @{*/
+#define MAX30101_PPG_VOLTAGE_MIN_UV (MAX30101_LED_VOLTAGE_RED_MIN_UV)
+#define MAX30101_PPG_VOLTAGE_MAX_UV (MAX30101_LED_VOLTAGE_GREEN_MAX_UV)
+/** @} */
 
 BUILD_ASSERT(DT_NODE_HAS_STATUS(MAX30101_NODE, okay),
 			 "PPG firmware requires the sensewear_ppg shield");
@@ -68,6 +88,7 @@ union max30101_state_t {
 		unsigned int bProbed : 1;			  /**< Device presence probe attempted. */
 		unsigned int bDeviceFound : 1;		  /**< Device presence detected. */
 		unsigned int bConfigured : 1;		  /**< Register configuration applied. */
+		unsigned int bLedsPowered : 1;		  /**< LED supply is enabled. */
 		unsigned int bDetectingProximity : 1; /**< Proximity detection is active. */
 		unsigned int bSampling : 1;			  /**< Acquisition is running. */
 	} bits;
@@ -82,6 +103,8 @@ union max30101_state_t {
 static struct max30101_t {
 	/** Shared-I2C connection and ownership token derived from devicetree. */
 	struct sys_i2c_dt_spec device;
+	/** Optional regulator powering the sensor's supply rail, or NULL. */
+	const struct device* regulator;
 	/** Interrupt GPIO specification obtained from the daughter-board arbiter. */
 	const struct gpio_dt_spec* irq_gpio;
 	/** GPIO callback instance registered for the interrupt line. */
@@ -100,8 +123,12 @@ static struct max30101_t {
 	uint32_t proximity_led_value_sum;
 	/** Count of proximity readings accumulated so far. */
 	int proximity_led_read_count;
+
+	struct max30101_sample_t samples[MAX30101_FIFO_DEPTH];
+	size_t sample_count;
 } max30101 = {
 	.device = SYS_I2C_DT_SPEC_GET(MAX30101_NODE),
+	.regulator = DEVICE_DT_GET(DT_PHANDLE(MAX30101_NODE, vin_supply)),
 	/* All remaining members are zero-initialised by static storage duration. */
 };
 
@@ -182,11 +209,13 @@ static inline int max30101_i2c_read(enum max30101_register_type reg, uint8_t* va
 /* Event publication                                                          */
 /* ------------------------------------------------------------------------- */
 
-static inline void max30101_post_event(enum max30101_event_type event, uint32_t v_param) {
+static inline void max30101_post_event(enum max30101_event_type event,
+									   uint32_t v_param,
+									   uintptr_t p_param) {
 	(void) device_driver_event_post(MAX30101_DEVICE_DTS_ID,
 									(uint32_t) event,
 									v_param,
-									(uintptr_t) NULL,
+									p_param,
 									K_MSEC(MAX30101_I2C_TIMEOUT));
 }
 
@@ -294,10 +323,142 @@ bool max30101_is_ready(void) {
 	return max30101.state.bits.bProbed != 0 && max30101.state.bits.bDeviceFound != 0;
 }
 
-bool max30101_init(void) {
+/**
+ * @brief Power the sensor's supply rail through @p regulatorDev.
+ * @details Sets the rail to @p voltage_uv and enables it, then waits for the rail
+ *          and the MAX30101 power-on reset to settle. A NULL @p regulatorDev is a
+ *          no-op success: the caller is responsible for powering the sensor.
+ */
+static bool max30101_led_power_on(int32_t voltage_uv) {
+	if (max30101.state.bits.bLedsPowered != 0) {
+		__ASSERT(regulator_dev != max30101.regulator,
+				 "MAX30101 regulator device is different than the one currently in use, "
+				 "but the LED supply is already flagged enabled");
+		__ASSERT(regulator_is_enabled(regulator_dev) == false,
+				 "MAX30101 LED supply is already enabled, but the regulator is disabled");
+		if (voltage_uv != max30101.config.ppg_voltage_uv) {
+			LOG_WRN("MAX30101 LED supply voltage already set to %d uV, requested %d uV",
+					max30101.config.ppg_voltage_uv,
+					voltage_uv);
+			regulator_set_voltage(max30101.regulator, voltage_uv, voltage_uv);
+			max30101.config.ppg_voltage_uv = voltage_uv;
+		}
+		return true;
+	}
+	if (max30101.regulator == NULL) {
+		return true;
+	}
+
+	if (!device_is_ready(max30101.regulator)) {
+		LOG_ERR("MAX30101 regulator %s not ready", max30101.regulator->name);
+		return false;
+	}
+	// check whether the regulator is already active, if it is, we must make sure
+	// its output voltage the requested voltage.
+	// -- OTHERWISE-- we risk damaging either MAX30101 or the other device
+	// powered through the regulator.
+	if (regulator_is_enabled(max30101.regulator)) {
+		int32_t current_voltage;
+		int ret = regulator_get_voltage(max30101.regulator, &current_voltage);
+		if (ret < 0) {
+			LOG_ERR("Failed to get MAX30101 regulator %s voltage (%d)",
+					max30101.regulator->name,
+					ret);
+			return false;
+		}
+		// in this case we must stop the application here!
+		// This ia a configuration error, the application must be fixed to avoid
+		// damaging the MAX30101 or the other device powered through the regulator.
+		__ASSERT(current_voltage == voltage_uv,
+				 "MAX30101 regulator %s already enabled at %d uV, requested %d uV",
+				 max30101.regulator->name,
+				 current_voltage,
+				 voltage_uv);
+	}
+	int ret = regulator_set_voltage(max30101.regulator, voltage_uv, voltage_uv);
+	if (ret < 0) {
+		LOG_ERR("Failed to set MAX30101 rail to %d uV (%d)", voltage_uv, ret);
+		return false;
+	}
+
+	ret = regulator_enable(max30101.regulator);
+	if (ret < 0) {
+		LOG_ERR("Failed to enable MAX30101 rail (%d)", ret);
+		return false;
+	}
+
+	k_msleep(MAX30101_PPG_RAMP_DELAY_MS);
+	// Update the cached configuration to reflect the new voltage.
+	max30101.config.ppg_voltage_uv = voltage_uv;
+	max30101.state.bits.bLedsPowered = 1;
+	return true;
+}
+
+static void max30101_led_power_off(void) {
+	__ASSERT(max30101.regulator != NULL, "MAX30101 regulator is NULL.");
+	if (max30101.state.bits.bLedsPowered == 0) {
+		return;
+	}
+	if (max30101.regulator != NULL) {
+		regulator_disable(max30101.regulator);
+	} else {
+		LOG_WRN("MAX30101 regulator is NULL, but the LED supply is flagged enabled");
+	}
+	max30101.state.bits.bLedsPowered = 0;
+}
+
+static bool max30101_validate_led_voltage(int32_t voltage_uv) {
+	uint32_t min_uv = MAX30101_PPG_VOLTAGE_MIN_UV;
+	uint32_t max_uv = MAX30101_PPG_VOLTAGE_MAX_UV;
+	if (voltage_uv < min_uv || voltage_uv > max_uv) {
+		LOG_ERR("MAX30101 PPG supply voltage %d uV is out of range [%d, %d]",
+				voltage_uv,
+				MAX30101_PPG_VOLTAGE_MIN_UV,
+				MAX30101_PPG_VOLTAGE_MAX_UV);
+		return false;
+	}
+	// now check LED configuration vs voltage
+	if (max30101.config.ir_led_pulse_amplitude_config > 0) {
+		if (min_uv > MAX30101_LED_VOLTAGE_IR_MIN_UV) {
+			min_uv = MAX30101_LED_VOLTAGE_IR_MIN_UV;
+		}
+		if (max_uv > MAX30101_LED_VOLTAGE_IR_MAX_UV) {
+			max_uv = MAX30101_LED_VOLTAGE_IR_MAX_UV;
+		}
+	}
+	if (max30101.config.red_led_pulse_amplitude_config > 0) {
+		if (min_uv > MAX30101_LED_VOLTAGE_RED_MIN_UV) {
+			min_uv = MAX30101_LED_VOLTAGE_RED_MIN_UV;
+		}
+		if (max_uv > MAX30101_LED_VOLTAGE_RED_MAX_UV) {
+			max_uv = MAX30101_LED_VOLTAGE_RED_MAX_UV;
+		}
+	}
+	if (max30101.config.green_led_pulse_amplitude_config > 0) {
+		if (min_uv > MAX30101_LED_VOLTAGE_GREEN_MIN_UV) {
+			min_uv = MAX30101_LED_VOLTAGE_GREEN_MIN_UV;
+		}
+		if (max_uv > MAX30101_LED_VOLTAGE_GREEN_MAX_UV) {
+			max_uv = MAX30101_LED_VOLTAGE_GREEN_MAX_UV;
+		}
+	}
+	if (voltage_uv < min_uv || voltage_uv > max_uv) {
+		LOG_ERR("MAX30101 PPG supply voltage %d uV is out of range [%d, %d] for the current LED "
+				"configuration",
+				voltage_uv,
+				min_uv,
+				max_uv);
+		return false;
+	}
+	return true;
+}
+
+int max30101_init(void) {
+	__ASSERT(max30101.regulator != NULL,
+			 "Regulator must be initialized by default, but it is NULL!");
 	if (max30101.state.bits.bInitialized != 0) {
 		LOG_WRN("MAX30101 already initialized!");
-		return true;
+		return 0;
 	}
 
 	if (!sys_i2c_is_ready(&max30101.device)) {
@@ -305,25 +466,56 @@ bool max30101_init(void) {
 		return false;
 	}
 
+	max30101_get_default_config(&max30101.config);
+
+	// at init, we must have LED power off, so we can safely set the voltage to the default value.
+	if (regulator_is_enabled(max30101.regulator)) {
+		uint32_t currentVoltage;
+		int ret = regulator_get_voltage(max30101.regulator, &currentVoltage);
+		if (ret < 0) {
+			LOG_ERR("Failed to get MAX30101 regulator %s voltage (%d)",
+					max30101.regulator->name,
+					ret);
+			return -EIO;
+		}
+		// validate that the current voltage is within the the allowed range.
+		if (currentVoltage < MAX30101_PPG_VOLTAGE_MIN_UV ||
+			currentVoltage > MAX30101_PPG_VOLTAGE_MAX_UV) {
+			LOG_ERR("MAX30101 regulator %s voltage %d uV is out of range [%d, %d]",
+					max30101.regulator->name,
+					currentVoltage,
+					MAX30101_PPG_VOLTAGE_MIN_UV,
+					MAX30101_PPG_VOLTAGE_MAX_UV);
+			return -EIO;
+		}
+	}
+	// here, either voltage is within the allowed range, or the regulator is not
+	// enabled, so we can safely set the voltage to the default value.
+	//--------------------------------------------------------------------------
+
+	// we can now probe the device
 	if (!max30101_bus_lock()) {
-		return false;
+		return -EIO;
 	}
 	max30101_probe();
 	max30101_bus_unlock();
 	if (max30101.state.bits.bDeviceFound == 0) {
 		LOG_ERR("MAX30101 device not found during initialization");
-		return false;
+		return -EIO;
 	}
-
+	// -------------------------------------------------------------------------
+	// now, we can shutdown the device.
+	max30101_shutdown();
+	// -------------------------------------------------------------------------
 	int ret = max30101_irq_init();
 	if (ret != 0) {
 		LOG_ERR("MAX30101 interrupt initialization failed (%d)", ret);
-		return false;
+		return -EIO;
 	}
 
-	max30101_get_default_config(&max30101.config);
+	max30101.state.value = 0;
 	max30101.state.bits.bInitialized = 1;
-	return true;
+	return 0;
 }
 
 void max30101_get_default_config(struct max30101_config_t* config) {
@@ -354,6 +546,9 @@ void max30101_get_default_config(struct max30101_config_t* config) {
 
 	/* Default interrupt enable: FIFO almost full drives streaming. */
 	config->interrupts.bits.a_full = 1;
+
+	/* Supply rail applied when max30101_init() is given a regulator. */
+	config->ppg_voltage_uv = MAX30101_PPG_VOLTAGE_UV;
 }
 
 /** Compute the effective per-channel sampling rate from a configuration. */
@@ -412,16 +607,21 @@ static bool max30101_reset_locked(void) {
 	return false;
 }
 
-bool max30101_config(struct max30101_config_t* config) {
+int max30101_config(struct max30101_config_t* config) {
 	if (max30101.state.bits.bInitialized == 0) {
 		LOG_ERR("MAX30101 not initialized");
-		return false;
+		return -EINVAL;
 	}
 
 	if (config == NULL) {
 		max30101_get_default_config(&max30101.config);
 	} else {
 		memcpy(&max30101.config, config, sizeof(max30101.config));
+	}
+
+	// check the regulator voltage configuration against the LED configuration.
+	if (!max30101_validate_led_voltage(max30101.config.ppg_voltage_uv)) {
+		return -EINVAL;
 	}
 
 	const struct max30101_config_t* cfg = &max30101.config;
@@ -444,7 +644,7 @@ bool max30101_config(struct max30101_config_t* config) {
 	mode.bits.mode = cfg->mode_config.bits.mode;
 
 	if (!max30101_bus_lock()) {
-		return false;
+		return -EIO;
 	}
 
 	bool ret =
@@ -469,7 +669,7 @@ bool max30101_config(struct max30101_config_t* config) {
 
 	ret &= max30101_bus_unlock();
 	if (!ret) {
-		return false;
+		return -EIO;
 	}
 
 	max30101.led_count = max30101_count_leds(cfg);
@@ -477,7 +677,7 @@ bool max30101_config(struct max30101_config_t* config) {
 	max30101.state.bits.bDetectingProximity = 0;
 	max30101.state.bits.bSampling = 0;
 	max30101.state.bits.bConfigured = 1;
-	return true;
+	return 0;
 }
 
 int max30101_get_led_count(void) {
@@ -496,30 +696,25 @@ float max30101_get_sampling_rate(void) {
 	return max30101.sampling_rate;
 }
 
-size_t max30101_read_fifo(void* buffer, size_t buffer_size) {
+int max30101_read_fifo(void* buffer, size_t buffer_size) {
 	if (max30101.state.bits.bConfigured == 0) {
 		LOG_ERR("MAX30101 not configured");
-		return -1;
+		return -EAGAIN;
 	}
 	if (buffer == NULL) {
 		LOG_ERR("Buffer is NULL");
-		return -1;
+		return -EINVAL;
 	}
 	if (buffer_size < (size_t) (MAX30101_FIFO_DEPTH / 8) * MAX30101_BYTES_PER_CHANNEL) {
 		LOG_ERR("Buffer size is too small");
-		return -1;
-	}
-
-	if (!max30101_bus_lock()) {
-		return -1;
+		return -EINVAL;
 	}
 
 	uint8_t pointers[3] = {0};
 	bool ret = max30101_i2c_read(max30101_register_FIFO_WritePointer, pointers, sizeof(pointers)) ==
 			   0;
 	if (!ret) {
-		max30101_bus_unlock();
-		return -1;
+		return -EIO;
 	}
 
 	uint8_t write_ptr = pointers[0] & 0x1F;
@@ -536,7 +731,6 @@ size_t max30101_read_fifo(void* buffer, size_t buffer_size) {
 	}
 
 	if (available_samples == 0) {
-		max30101_bus_unlock();
 		return 0;
 	}
 
@@ -550,9 +744,8 @@ size_t max30101_read_fifo(void* buffer, size_t buffer_size) {
 	}
 
 	ret = max30101_i2c_read(max30101_register_FIFO_DataRegister, buffer, byte_count) == 0;
-	max30101_bus_unlock();
 	if (!ret) {
-		return -1;
+		return -EIO;
 	}
 
 	if (overflow_counter > 0) {
@@ -566,14 +759,6 @@ size_t max30101_read_fifo(void* buffer, size_t buffer_size) {
 /* Internal decoded-sample stream                                             */
 /* ------------------------------------------------------------------------- */
 
-/**
- * @brief Internal stream of decoded samples filled by the interrupt handler.
- * @details The handler appends to the queue while consumers drain it through
- *          max30101_read_stream(). When the queue is full the oldest sample is
- *          dropped so the most recent data is always retained.
- */
-K_MSGQ_DEFINE(max30101_stream, sizeof(struct max30101_sample_t), MAX30101_STREAM_DEPTH, 4);
-
 /** Best-effort wall-clock timestamp in milliseconds, falling back to uptime. */
 static uint64_t max30101_now_ms(void) {
 	time_t now_sec = time(NULL);
@@ -584,37 +769,13 @@ static uint64_t max30101_now_ms(void) {
 	return (uint64_t) k_uptime_get();
 }
 
-/** Append one decoded sample to the stream, evicting the oldest when full. */
-static void max30101_stream_push(const struct max30101_sample_t* sample) {
-	if (k_msgq_put(&max30101_stream, sample, K_NO_WAIT) == 0) {
-		return;
-	}
-
-	/* Queue full: drop the oldest sample and retry so the stream tracks the
-	 * most recent data rather than stalling. */
-	struct max30101_sample_t dropped;
-	(void) k_msgq_get(&max30101_stream, &dropped, K_NO_WAIT);
-	(void) k_msgq_put(&max30101_stream, sample, K_NO_WAIT);
-}
-
-size_t max30101_read_stream(struct max30101_sample_t* samples, size_t max_samples) {
-	if (samples == NULL) {
-		return 0;
-	}
-
-	size_t count = 0;
-	while (count < max_samples && k_msgq_get(&max30101_stream, &samples[count], K_NO_WAIT) == 0) {
-		count++;
-	}
-	return count;
-}
-
 /** Drain the FIFO, decode each record, and append it to the internal stream. */
-static size_t max30101_drain_fifo(void) {
+static int max30101_drain_fifo(void) {
 	uint8_t buffer[MAX30101_FIFO_READ_SAMPLES * 3 * MAX30101_BYTES_PER_CHANNEL] = {0};
-	size_t actual = max30101_read_fifo(buffer, sizeof(buffer));
-	if ((ssize_t) actual <= 0) {
-		return 0;
+
+	int actual = max30101_read_fifo(buffer, sizeof(buffer));
+	if (actual <= 0) {
+		return -EIO;
 	}
 
 	size_t sample_size = (size_t) max30101.led_count * MAX30101_BYTES_PER_CHANNEL;
@@ -637,7 +798,11 @@ static size_t max30101_drain_fifo(void) {
 			sample.green = max30101_unpack_sample(record);
 		}
 
-		max30101_stream_push(&sample);
+		if (max30101.sample_count < MAX30101_FIFO_DEPTH) {
+			max30101.samples[max30101.sample_count++] = sample;
+		} else {
+			LOG_WRN("MAX30101 internal sample buffer overflow, dropping sample");
+		}
 		offset += sample_size;
 		samples++;
 	}
@@ -645,19 +810,39 @@ static size_t max30101_drain_fifo(void) {
 	return samples;
 }
 
-void max30101_irq_handler(void) {
+static int max30101_read_die_temperature(float* temperature_c) {
+	if (temperature_c == NULL) {
+		return -EINVAL;
+	}
+
+	uint8_t temp_data[2] = {0};
+	if (!max30101_bus_lock()) {
+		return -EIO;
+	}
+	bool ret = max30101_i2c_read(max30101_register_DieTempInt, temp_data, sizeof(temp_data)) == 0;
+	if (!ret) {
+		return -EIO;
+	}
+
+	int8_t temp_int = (int8_t) temp_data[0];
+	uint8_t temp_frac = temp_data[1] & 0x0F;						   // 4 bits of fractional part
+	*temperature_c = (float) temp_int + ((float) temp_frac * 0.0625f); // Each LSB is 0.0625°C
+	return 0;
+}
+
+int max30101_irq_handler(void) {
 	if (max30101.state.bits.bConfigured == 0) {
-		return;
+		return -EAGAIN;
 	}
 
 	uint8_t status[2] = {0};
 	if (!max30101_bus_lock()) {
-		return;
+		return -EIO;
 	}
 	bool ret = max30101_i2c_read(max30101_register_InterruptStatus1, status, sizeof(status)) == 0;
-	max30101_bus_unlock();
 	if (!ret) {
-		return;
+		max30101_bus_unlock();
+		return -EIO;
 	}
 
 	union max30101_interrupt_status_t int_status = {
@@ -667,36 +852,51 @@ void max30101_irq_handler(void) {
 	 * reconfigured before it will sample again. */
 	if (int_status.bits.pwr_rdy) {
 		max30101.state.bits.bConfigured = 0;
-		max30101_post_event(max30101_event_PowerReady, (uint32_t) int_status.value);
+		max30101_post_event(max30101_event_PowerReady, (uint32_t) int_status.value, 0);
 	}
 	if (int_status.bits.prox_int) {
-		max30101_post_event(max30101_event_Proximity, (uint32_t) int_status.value);
+		max30101_post_event(max30101_event_Proximity, (uint32_t) int_status.value, 0);
 	}
 	if (int_status.bits.alc_ovf) {
 		LOG_WRN("MAX30101 ambient-light-cancellation overflow");
-		max30101_post_event(max30101_event_AmbientLightCancelOverflow, (uint32_t) int_status.value);
+		max30101_post_event(max30101_event_AmbientLightCancelOverflow,
+							(uint32_t) int_status.value,
+							0);
 	}
 	if (int_status.bits.die_tamp_ready) {
-		max30101_post_event(max30101_event_DieTemperatureReady, (uint32_t) int_status.value);
+		// get the die temperature reading
+		float die_temp_c = 0.0f;
+		if (max30101_read_die_temperature(&die_temp_c) == 0) {
+			LOG_INF("MAX30101 die temperature: %.2f °C", (double) die_temp_c);
+			max30101_post_event(max30101_event_DieTemperatureReady, (uint32_t) die_temp_c, 0);
+		} else {
+			LOG_ERR("Failed to read MAX30101 die temperature");
+		}
 	}
 
 	/* New-data and almost-full both mean there are records to read out. Drain
 	 * the FIFO into the internal stream and report how many samples arrived. */
 	if (int_status.bits.ppg_rdy || int_status.bits.a_full) {
-		size_t samples = max30101_drain_fifo();
-		if (samples > 0) {
-			max30101_post_event(max30101_event_FifoDataReady, (uint32_t) samples);
+		max30101.sample_count = 0; // Reset sample count before draining
+		int ret = max30101_drain_fifo();
+		if (ret > 0) {
+			max30101_post_event(max30101_event_FifoDataReady,
+								max30101.sample_count,
+								(uintptr_t) max30101.samples);
 		}
 	}
+
+	max30101_bus_unlock();
+	return 0;
 }
 
-bool max30101_enable_wrist_hr_sampling(void) {
+int max30101_enable_wrist_hr_sampling(void) {
 	if (max30101.state.bits.bConfigured == 0) {
 		LOG_ERR("MAX30101 not configured");
-		return false;
+		return -EAGAIN;
 	}
-	if (max30101.state.bits.bDetectingProximity != 0) {
-		return false;
+	if (max30101.state.bits.bSampling != 0) {
+		return -EBUSY;
 	}
 
 	struct max30101_config_t cfg = max30101.config;
@@ -708,18 +908,29 @@ bool max30101_enable_wrist_hr_sampling(void) {
 	cfg.interrupts.value = 0;
 	cfg.interrupts.bits.a_full = 1;
 
-	if (!max30101_config(&cfg)) {
-		return false;
+	int ret = max30101_config(&cfg);
+	if (ret != 0) {
+		return ret;
 	}
 
+	// now, we can enable the LED regulator
+	if (!max30101_led_power_on(max30101.config.ppg_voltage_uv)) {
+		LOG_ERR("Failed to power on MAX30101 LED supply");
+		return -EINVAL;
+	}
+	// indicate that we are now sampling
 	max30101.state.bits.bSampling = 1;
-	return true;
+	return 0;
 }
 
-bool max30101_enable_sampling(enum max30101_operation_mode_type mode) {
+int max30101_enable_sampling(enum max30101_operation_mode_type mode) {
 	if (max30101.state.bits.bConfigured == 0) {
 		LOG_ERR("MAX30101 not configured");
-		return false;
+		return -EAGAIN;
+	}
+
+	if (max30101.state.bits.bDetectingProximity != 0 || max30101.state.bits.bSampling != 0) {
+		return -EBUSY;
 	}
 
 	struct max30101_config_t cfg = max30101.config;
@@ -743,24 +954,75 @@ bool max30101_enable_sampling(enum max30101_operation_mode_type mode) {
 		break;
 	default:
 		LOG_ERR("Invalid mode %d", mode);
-		return false;
+		return -EINVAL;
 	}
 
 	cfg.interrupts.value = 0;
 	cfg.interrupts.bits.a_full = 1;
 
 	if (!max30101_config(&cfg)) {
-		return false;
+		return -EIO;
 	}
 
+	// now, we can enable the LED regulator
+	if (!max30101_led_power_on(max30101.config.ppg_voltage_uv)) {
+		LOG_ERR("Failed to power on MAX30101 LED supply");
+		return -EINVAL;
+	}
+	// indicate that we are now sampling
 	max30101.state.bits.bSampling = 1;
-	return true;
+	return 0;
 }
 
-bool max30101_enable_proximity(void) {
+int max30101_disable_sampling(void) {
 	if (max30101.state.bits.bConfigured == 0) {
 		LOG_ERR("MAX30101 not configured");
-		return false;
+		return -EAGAIN;
+	}
+
+	if (max30101.state.bits.bDetectingProximity != 0 && max30101.state.bits.bSampling != 0) {
+		LOG_ERR("MAX30101 is both sampling and detecting proximity, cannot disable sampling");
+		return -EBUSY;
+	}
+
+	if (max30101.state.bits.bSampling == 0) {
+		LOG_WRN("MAX30101 is not sampling, nothing to disable");
+		return 0;
+	}
+	// indicate that we are no longer sampling
+	max30101.state.bits.bSampling = 0;
+	if (max30101.state.bits.bDetectingProximity != 0) {
+		struct max30101_config_t cfg = max30101.config;
+		cfg.mode_config.bits.mode = max30101_mode_MultiLed;
+		cfg.multi_led_config.value = 0;
+		cfg.multi_led_config.bits.slot1 = (int) max30101_led_IR;
+		cfg.interrupts.value = 0;
+		cfg.interrupts.bits.prox_int = 1;
+		cfg.interrupts.bits.ppg_rdy = 1;
+
+		if (!max30101_config(&cfg)) {
+			return -EIO;
+		}
+	} else {
+		max30101_shutdown();
+	}
+	return 0;
+}
+
+int max30101_enable_proximity(void) {
+	if (max30101.state.bits.bConfigured == 0) {
+		LOG_ERR("MAX30101 not configured");
+		return -EAGAIN;
+	}
+
+	if (max30101.state.bits.bDetectingProximity != 0) {
+		LOG_WRN("MAX30101 already detecting proximity");
+		return -EBUSY;
+	}
+
+	if (max30101.state.bits.bSampling != 0) {
+		LOG_ERR("MAX30101 is sampling, cannot enable proximity detection");
+		return -EBUSY;
 	}
 
 	struct max30101_config_t cfg = max30101.config;
@@ -772,14 +1034,20 @@ bool max30101_enable_proximity(void) {
 	cfg.interrupts.bits.ppg_rdy = 1;
 
 	if (!max30101_config(&cfg)) {
-		return false;
+		return -EIO;
 	}
 
 	max30101.proximity_led_value_sum = 0;
 	max30101.proximity_led_read_count = 0;
 	max30101.state.bits.bDetectingProximity = 1;
 	max30101.state.bits.bSampling = 0;
-	return true;
+
+	// now, we can enable the LED regulator
+	if (!max30101_led_power_on(max30101.config.ppg_voltage_uv)) {
+		LOG_ERR("Failed to power on MAX30101 LED supply");
+		return -EIO;
+	}
+	return 0;
 }
 
 void max30101_shutdown(void) {
@@ -800,25 +1068,6 @@ void max30101_shutdown(void) {
 
 	max30101.state.bits.bDetectingProximity = 0;
 	max30101.state.bits.bSampling = 0;
-}
-
-void ppg_sensor_init(void) {
-	(void) max30101_init();
-}
-
-void ppg_set_streaming_enabled(bool enabled) {
-	if (enabled) {
-		if (max30101.state.bits.bSampling) {
-			return;
-		}
-		if (!max30101_config(NULL)) {
-			return;
-		}
-		k_msgq_purge(&max30101_stream);
-		max30101_enable_wrist_hr_sampling();
-	} else {
-		if (max30101.state.bits.bSampling) {
-			max30101_shutdown();
-		}
-	}
+	// now we can shutdown the LED supply, if it is enabled.
+	max30101_led_power_off();
 }

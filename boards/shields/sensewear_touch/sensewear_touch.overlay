@@ -11,9 +11,11 @@
 
 &sys_i2c_peripheral {
 	mtch6102: mtch6102@25 {
-		compatible = "i2c-device";
+		compatible = "sensewear,daughter-i2c-device", "i2c-device";
 		status = "okay";
 		reg = <0x25>;
 		label = "MTCH6102";
+		/* Powered from the shared daughter-connector rail (VDD_DAUGHTER). */
+		vin-supply = <&tpsm83102>;
 	};
 };

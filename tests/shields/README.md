@@ -8,6 +8,7 @@ drivers (which also require the shield to be enabled).
 | File | Driver | What it does |
 |------|--------|--------------|
 | `main_test_drv2605.c` | DRV2605 haptics (sensewear_haptic shield) | check device ready → alternate an RTP amplitude ramp and a ROM library click every 2 s |
+| `main_test_max30101.c` | MAX30101 PPG (sensewear_ppg shield) | power VDD_DAUGHTER (5.0 V) → probe and configure → start wrist-HR sampling → drain interrupt-driven IR/Red/Green samples from the internal stream |
 
 ## Building a test
 

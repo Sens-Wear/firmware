@@ -20,8 +20,11 @@ from dataclasses import dataclass
 
 NODE_START_RE = re.compile(
     r"^\s*([A-Za-z_][A-Za-z0-9_]*):\s*[^{}]+\{\s*(?:/\*.*\*/\s*)?$")
-COMPATIBLE_RE = re.compile(
-    r'^\s*compatible\s*=\s*"([^"]+)";\s*(?:/\*.*\*/\s*)?$')
+# A node's ``compatible`` may list several strings, which the DTS pretty-printer
+# wraps across multiple lines (e.g. `compatible = "a",` / `             "b";`).
+# Only the first value on the `compatible =` line is needed: the IDs are keyed off
+# the node label, so this match exists purely to confirm the node is a device.
+COMPATIBLE_RE = re.compile(r'^\s*compatible\s*=\s*"([^"]+)"')
 STATUS_RE = re.compile(r'^\s*status\s*=\s*"([^"]+)";\s*(?:/\*.*\*/\s*)?$')
 
 

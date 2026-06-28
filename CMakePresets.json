@@ -111,6 +111,18 @@
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
+        },
+        {
+            "name": "test_max30101",
+            "displayName": "Test: MAX30101 PPG (sensewear_ppg shield)",
+            "inherits": "test_base",
+            "binaryDir": "${sourceDir}/build/tests/max30101",
+            "cacheVariables": {
+                "SHIELD": "sensewear_ppg",
+                "CONFIG_SENSEWEAR_TEST_MAX30101_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
         }
     ],
     "buildPresets": [
@@ -145,6 +157,10 @@
         {
             "name": "test_drv2605",
             "configurePreset": "test_drv2605"
+        },
+        {
+            "name": "test_max30101",
+            "configurePreset": "test_max30101"
         }
     ]
 }

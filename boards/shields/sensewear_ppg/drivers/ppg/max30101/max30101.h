@@ -22,7 +22,7 @@
  * @code{.text}
  * application / PPG bridge
  *          |
- *          | max30101_config(), max30101_irq_handler(), max30101_read_stream(), ...
+ *          | max30101_config(), max30101_irq_handler(), max30101_enable_sampling(), ...
  *          v
  * MAX30101 driver
  *          |
@@ -43,16 +43,25 @@
  * @code{.dts}
  * &sys_i2c_peripheral {
  *     max30101: max30101@57 {
- *         compatible = "i2c-device";
+ *         compatible = "sensewear,daughter-i2c-device", "i2c-device";
  *         reg = <0x57>;
  *         label = "MAX30101";
  *         status = "okay";
+ *         vin-supply = <&tpsm83102>;
  *     };
  * };
  * @endcode
  *
- * `reg` supplies the target address used by SYS_I2C_DT_SPEC_GET(). The MAX30101
- * INT line is not a dedicated devicetree GPIO: it is wired to the daughter-board
+ * The node is also wired into the board aliases `sensewear-daughter` and
+ * `sensewear-ppg`, both pointing at this instance.
+ *
+ * `reg` supplies the target address used by SYS_I2C_DT_SPEC_GET(). `vin-supply`
+ * names the shared daughter-connector rail (VDD_DAUGHTER, the `tpsm83102`
+ * regulator) and is mandatory: the driver resolves it from devicetree at build
+ * time (a missing `vin-supply` is a build error) and owns the regulator handle
+ * directly, so none is passed in at run time. The driver validates the rail
+ * voltage and enables the rail itself when acquisition starts. The MAX30101 INT
+ * line is not a dedicated devicetree GPIO: it is wired to the daughter-board
  * connector and obtained at run time from the @ref sensewear_daughter_if arbiter
  * (line ::daughter_if_GPIO1).
  *
@@ -60,45 +69,48 @@
  *
  * The expected lifecycle is:
  *
- * 1. Call max30101_init() to verify the shared bus, probe the part, and claim
- *    and configure the daughter-board interrupt line.
+ * 1. Call max30101_init() to verify the shared bus, resolve and validate the
+ *    devicetree supply rail, probe the part, and claim and configure the
+ *    daughter-board interrupt line. The rail is enabled later, when acquisition
+ *    starts.
  * 2. Call max30101_config() to apply the acquisition configuration (NULL selects
  *    the SenseWear defaults).
  * 3. Start acquisition with max30101_enable_wrist_hr_sampling() or
  *    max30101_enable_sampling().
  * 4. On interrupt, call max30101_irq_handler() from thread context to decode the
- *    interrupt sources, drain the FIFO into the internal sample stream, and
- *    publish events. Read the decoded samples with max30101_read_stream().
+ *    interrupt sources, drain the FIFO into the internal sample buffer, and
+ *    publish events. When samples are drained the handler publishes
+ *    ::max30101_event_FifoDataReady; its `v_param` carries the sample count and
+ *    its `p_param` points at an array of ::max30101_sample_t held in the driver
+ *    context. Consumers read the samples directly from that event payload.
  *
  * Initialization and configuration are deliberately separate. A successful probe
  * does not imply that the acquisition parameters have been applied.
- *
- * The convenience entry points ppg_sensor_init() and ppg_set_streaming_enabled()
- * wrap this lifecycle for application use.
  *
  * @section sensewear_max30101_interrupts Interrupt and event model
  *
  * The driver does not depend on Bluetooth or any consumer subsystem. It only
  * decodes hardware activity into events and accumulates decoded samples in an
- * internal stream that consumers drain at their own pace.
+ * internal buffer that is republished with each ::max30101_event_FifoDataReady.
  *
  * The daughter-board interrupt callback posts ::max30101_Irq from ISR context.
  * A consumer then calls max30101_irq_handler() from thread context, which reads
  * the interrupt status registers, performs the action for each asserted source,
  * and publishes one decoded `max30101_event_*` identifier per source. When FIFO
- * data is drained the decoded samples are pushed to the internal stream and
- * ::max30101_event_FifoDataReady is published. All events are delivered through
- * the shared @ref sensewear_device_driver_events manager.
+ * data is drained the decoded samples are written to the internal buffer and
+ * ::max30101_event_FifoDataReady is published with the sample count in `v_param`
+ * and a pointer to the sample array in `p_param`. All events are delivered
+ * through the shared @ref sensewear_device_driver_events manager.
  *
  * @section sensewear_max30101_example Typical usage
  *
  * @code{.c}
- * if (!max30101_init()) {
+ * if (max30101_init() != 0) {
  *     // Sensor absent, bus unavailable, or interrupt line could not be claimed.
  *     return;
  * }
  *
- * if (!max30101_config(NULL)) {
+ * if (max30101_config(NULL) != 0) {
  *     return;
  * }
  *
@@ -127,9 +139,9 @@
  * @brief Driver-level MAX30101 event identifiers.
  * @details This is a software event namespace rather than a hardware register
  *          encoding. ::max30101_Irq is the raw INT-pin assertion posted from the
- *          interrupt callback; the `max30101_irq_*` values map decoded interrupt
- *          status bits to stable identifiers; ::max30101_FifoDataRead reports
- *          that FIFO samples were drained and are available to consumers.
+ *          interrupt callback; the `max30101_event_*` values map decoded interrupt
+ *          status bits to stable identifiers; ::max30101_event_FifoDataReady
+ *          reports that FIFO samples were drained and are available to consumers.
  */
 enum max30101_event_type {
 	max30101_event_Invalid = -1,			   /**< No valid event. */
@@ -170,14 +182,17 @@ struct max30101_config_t {
 	uint8_t proximity_led_pulse_amplitude_config;
 	/** Proximity interrupt threshold (ProxIntThreshold). */
 	uint8_t proximity_int_threshold;
+	/** Supply-rail voltage in microvolts, validated against the active LEDs. */
+	int32_t ppg_voltage_uv;
 };
 
 /**
  * @brief One decoded multi-channel PPG sample produced by the driver.
  * @details The interrupt handler unpacks each FIFO record into this datatype and
- *          appends it to the internal sample stream. Channels that are not active
- *          in the current mode are reported as zero. Counts are raw 18-bit ADC
- *          values right-justified in the 32-bit fields.
+ *          appends it to the internal sample buffer that is published with
+ *          ::max30101_event_FifoDataReady. Channels that are not active in the
+ *          current mode are reported as zero. Counts are raw 18-bit ADC values
+ *          right-justified in the 32-bit fields.
  */
 struct max30101_sample_t {
 	uint64_t unix_ms; /**< Acquisition timestamp in milliseconds. */
@@ -189,15 +204,21 @@ struct max30101_sample_t {
 /**
  * @brief Initialize and probe the MAX30101.
  *
- * Verifies that the shared bus is ready, reads the PART_ID register to confirm a
- * device responds, and claims and configures the daughter-board interrupt line.
- * This function does not program the acquisition configuration.
+ * Verifies that the shared bus is ready, loads the SenseWear default
+ * configuration, and validates the supply rail resolved from the devicetree
+ * `vin-supply` phandle (if the rail is already enabled its voltage must be in
+ * range). It then reads the PART_ID register to confirm a device responds, puts
+ * the device into shutdown, and claims and configures the daughter-board
+ * interrupt line. The rail is not enabled here; the driver powers it when
+ * acquisition starts. This function does not program the acquisition
+ * configuration.
  *
- * @retval true The shared bus was ready and the sensor responded.
- * @retval false The bus was unavailable, the probe failed, or the interrupt line
- *         could not be claimed.
+ * @retval 0 The shared bus was ready and the sensor responded (or the driver was
+ *         already initialized).
+ * @retval -EIO The bus was unavailable, the rail voltage was out of range, the
+ *         probe failed, or the interrupt line could not be claimed.
  */
-bool max30101_init(void);
+int max30101_init(void);
 
 /**
  * @brief Report whether max30101_init() successfully detected the sensor.
@@ -209,6 +230,11 @@ bool max30101_is_ready(void);
 
 /**
  * @brief Populate the SenseWear default acquisition configuration.
+ * @details Selects multi-LED mode with the IR, Red, and Green channels in FIFO
+ *          slots 1-3, the SenseWear FIFO averaging / roll-over / almost-full
+ *          settings, the default per-LED pulse amplitudes, the FIFO-almost-full
+ *          interrupt, and the default supply-rail voltage. This is the same
+ *          configuration applied when max30101_config() is called with NULL.
  *
  * @param config Destination configuration. Must not be NULL.
  */
@@ -221,10 +247,11 @@ void max30101_get_default_config(struct max30101_config_t* config);
  * Passing NULL selects the SenseWear defaults.
  *
  * @param config Configuration to apply, or NULL for the defaults.
- * @retval true All configuration registers were written and ownership released.
- * @retval false The driver was not initialized, locking failed, or a transfer failed.
+ * @retval 0 All configuration registers were written and ownership released.
+ * @retval -EINVAL The driver was not initialized or the configuration is out of range.
+ * @retval -EIO Locking failed or a register transfer failed.
  */
-bool max30101_config(struct max30101_config_t* config);
+int max30101_config(struct max30101_config_t* config);
 
 /**
  * @brief Return the printable name for a MAX30101 event identifier.
@@ -240,34 +267,17 @@ const char* max30101_event_name(uint32_t event_id);
  * Reads InterruptStatus1/2 under one ownership scope and performs the action for
  * each asserted source: power-ready, proximity, ambient-light-cancel overflow,
  * and die-temperature-ready publish their decoded `max30101_event_*` identifier;
- * a new-data or almost-full condition drains the FIFO, appends the decoded
- * samples to the internal stream, and publishes ::max30101_event_FifoDataReady.
+ * a new-data or almost-full condition drains the FIFO into the internal sample
+ * buffer and publishes ::max30101_event_FifoDataReady (sample count in `v_param`,
+ * sample-array pointer in `p_param`).
  *
  * Call from thread context in response to ::max30101_Irq.
- */
-void max30101_irq_handler(void);
-
-/**
- * @brief Copy decoded samples out of the internal sample stream.
  *
- * Removes up to @p max_samples of the oldest decoded samples from the stream the
- * interrupt handler fills. Non-blocking: returns immediately with whatever is
- * currently available.
- *
- * @param samples Destination array. Must not be NULL.
- * @param max_samples Capacity of @p samples in elements.
- * @return Number of samples copied into @p samples.
+ * @retval 0 The interrupt status was read and all asserted sources handled.
+ * @retval -EAGAIN The sensor is not configured.
+ * @retval -EIO Locking failed or the status read failed.
  */
-size_t max30101_read_stream(struct max30101_sample_t* samples, size_t max_samples);
-
-/**
- * @brief Read available samples from the MAX30101 FIFO.
- *
- * @param buffer Destination buffer for the raw FIFO bytes.
- * @param buffer_size Size of @p buffer in bytes.
- * @return Number of bytes read, or a negative value on error.
- */
-size_t max30101_read_fifo(void* buffer, size_t buffer_size);
+int max30101_irq_handler(void);
 
 /**
  * @brief Return the number of LED channels active in the current mode.
@@ -286,47 +296,67 @@ float max30101_get_sampling_rate(void);
 /**
  * @brief Enable wrist heart-rate acquisition (multi-LED mode, three LEDs).
  *
- * @retval true Multi-LED acquisition was enabled.
- * @retval false The sensor is unconfigured or busy detecting proximity.
+ * @retval 0 Multi-LED acquisition was enabled.
+ * @retval -EAGAIN The sensor is not configured.
+ * @retval -EBUSY Acquisition is already running.
+ * @retval -EINVAL The LED supply could not be powered, or a negative errno
+ *         propagated from max30101_config().
  */
-bool max30101_enable_wrist_hr_sampling(void);
+int max30101_enable_wrist_hr_sampling(void);
 
 /**
  * @brief Enable a sampling operation mode.
  *
  * @param mode Operating mode to enable.
- * @retval true The mode was enabled.
- * @retval false The mode is invalid or could not be enabled.
+ * @retval 0 The mode was enabled.
+ * @retval -EAGAIN The sensor is not configured.
+ * @retval -EBUSY Acquisition or proximity detection is already running.
+ * @retval -EINVAL The mode is invalid or the LED supply could not be powered.
+ * @retval -EIO A configuration transfer failed.
  */
-bool max30101_enable_sampling(enum max30101_operation_mode_type mode);
+int max30101_enable_sampling(enum max30101_operation_mode_type mode);
+
+/**
+ * @brief Stop an active sampling operation.
+ *
+ * Clears the sampling state. If proximity detection was running alongside the
+ * acquisition the sensor is reprogrammed back into proximity-detection mode;
+ * otherwise the device is placed in shutdown and its LED supply is powered off.
+ *
+ * @retval 0 Sampling was stopped, or no sampling was active.
+ * @retval -EAGAIN The sensor is not configured.
+ * @retval -EBUSY The sensor is both sampling and detecting proximity, which is an
+ *         ambiguous state that this call refuses to resolve.
+ * @retval -EIO Reprogramming proximity-detection mode failed.
+ */
+int max30101_disable_sampling(void);
 
 /**
  * @brief Enable proximity detection (single IR channel).
  *
- * @retval true Proximity detection was enabled.
- * @retval false The sensor is unconfigured.
+ * @retval 0 Proximity detection was enabled.
+ * @retval -EAGAIN The sensor is not configured.
+ * @retval -EBUSY Proximity detection or acquisition is already running.
+ * @retval -EIO A configuration transfer failed or the LED supply could not be powered.
  */
-bool max30101_enable_proximity(void);
+int max30101_enable_proximity(void);
+
+/**
+ * @brief Stop proximity detection.
+ *
+ * @retval 0 Proximity detection was stopped, or none was active.
+ * @retval -EAGAIN The sensor is not configured.
+ * @retval -EIO Reprogramming the sensor failed.
+ *
+ * @note Declared for API symmetry with max30101_enable_proximity(); not yet
+ *       implemented in this driver revision.
+ */
+int max30101_disable_proximity(void);
 
 /**
  * @brief Put the MAX30101 into shutdown (low-power) mode.
  */
 void max30101_shutdown(void);
-
-/**
- * @brief Initialize the MAX30101 for acquisition.
- * @details Convenience wrapper around max30101_init().
- */
-void ppg_sensor_init(void);
-
-/**
- * @brief Enable or disable PPG acquisition.
- *
- * @param enabled true to configure the sensor and start sampling; false to place
- *        the sensor in shutdown. While enabled, decoded samples accumulate in the
- *        internal stream and are retrieved with max30101_read_stream().
- */
-void ppg_set_streaming_enabled(bool enabled);
 
 /** @} */
 

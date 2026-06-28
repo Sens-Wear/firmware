@@ -220,6 +220,15 @@ config SENSEWEAR_TEST_DRV2605_DRIVER
 	  (build with SHIELD=sensewear_haptic) so the driver and its devicetree node
 	  are present.
 
+config SENSEWEAR_TEST_MAX30101_DRIVER
+	bool "Build the MAX30101 PPG bring-up test"
+	depends on SHIELD_SENSEWEAR_PPG
+	help
+	  Replace the application with the MAX30101 PPG driver bring-up test
+	  (tests/shields/main_test_max30101.c). Requires the sensewear_ppg shield
+	  (build with SHIELD=sensewear_ppg) so the driver and its devicetree node
+	  are present.
+
 endmenu
 
 source "Kconfig.zephyr"
