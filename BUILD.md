@@ -202,10 +202,12 @@ instead.
    - `CONFIG_SENSEWEAR_TEST_DRV2605_DRIVER` depends on `SENSEWEAR_DRV2605_DRIVER`
      (so the `sensewear_haptic` shield must be present).
    - `CONFIG_SENSEWEAR_TEST_MAX30101_DRIVER` depends on `SHIELD_SENSEWEAR_PPG`.
+   - `CONFIG_SENSEWEAR_TEST_MAX30208_DRIVER` depends on
+     `SHIELD_SENSEWEAR_TEMPERATURE`.
 2. `CMakeLists.txt` reads those resolved symbols and derives two CMake flags:
    - `TEST_DRIVERS` — on if any `BQ25180/BQ27427/BHI360/LP5562/M95P/TPSM83102`
      test symbol is set.
-   - `TEST_SHIELDS` — on if any `DRV2605/MAX30101` test symbol is set.
+   - `TEST_SHIELDS` — on if any `DRV2605/MAX30101/MAX30208` test symbol is set.
 3. If either flag is on, the matching `tests/.../tests.cmake` is included; it
    creates a `test_<driver>` INTERFACE library from
    `main_test_<driver>.c` and links it into `app`. Otherwise `src/app.cmake` is
@@ -222,6 +224,7 @@ into Kconfig, and (under sysbuild) down to this image:
 | a board-driver test | `CONFIG_SENSEWEAR_TEST_<DRIVER>_DRIVER=y` | — |
 | the DRV2605 shield test | `CONFIG_SENSEWEAR_TEST_DRV2605_DRIVER=y` | `SHIELD=sensewear_haptic` |
 | the MAX30101 shield test | `CONFIG_SENSEWEAR_TEST_MAX30101_DRIVER=y` | `SHIELD=sensewear_ppg` |
+| the MAX30208 shield test | `CONFIG_SENSEWEAR_TEST_MAX30208_DRIVER=y` | `SHIELD=sensewear_temperature` |
 
 A shield test needs **both** the test symbol and `SHIELD=` so the driver source,
 its Kconfig symbol, and its devicetree node are all present.

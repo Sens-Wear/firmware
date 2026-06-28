@@ -123,6 +123,18 @@
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
+        },
+        {
+            "name": "test_max30208",
+            "displayName": "Test: MAX30208 temperature (sensewear_temperature shield)",
+            "inherits": "test_base",
+            "binaryDir": "${sourceDir}/build/tests/max30208",
+            "cacheVariables": {
+                "SHIELD": "sensewear_temperature",
+                "CONFIG_SENSEWEAR_TEST_MAX30208_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
         }
     ],
     "buildPresets": [
@@ -161,6 +173,10 @@
         {
             "name": "test_max30101",
             "configurePreset": "test_max30101"
+        },
+        {
+            "name": "test_max30208",
+            "configurePreset": "test_max30208"
         }
     ]
 }

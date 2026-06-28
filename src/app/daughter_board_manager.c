@@ -189,7 +189,7 @@ static bool probe_selected_daughter_board(void)
 #elif IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_PPG)
 	return probe_register_value(max30101_register_PartID, MAX30101_PART_ID);
 #elif IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_TEMPERATURE)
-	return probe_register_value(MAX30208_ID_ADDR, MAX30208_PART_ID_VALUE);
+	return probe_register_value(max30208_register_PartID, MAX30208_PART_ID);
 #elif IS_ENABLED(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
 	return probe_register_access(DRV2605_REG_MODE);
 #else

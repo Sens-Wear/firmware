@@ -74,7 +74,7 @@ endforeach()
 # the board-driver tests above; these exercise drivers shipped by a shield, so
 # the matching shield must also be enabled (e.g. SHIELD=sensewear_haptic).
 set(TEST_SHIELDS OFF)
-foreach(_t DRV2605 MAX30101)
+foreach(_t DRV2605 MAX30101 MAX30208)
     if(CONFIG_SENSEWEAR_TEST_${_t}_DRIVER)
         set(TEST_SHIELDS ON)
     endif()

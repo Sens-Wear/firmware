@@ -27,6 +27,7 @@ endmacro()
 
 senswear_add_shield_test(drv2605 CONFIG_SENSEWEAR_TEST_DRV2605_DRIVER)
 senswear_add_shield_test(max30101 CONFIG_SENSEWEAR_TEST_MAX30101_DRIVER)
+senswear_add_shield_test(max30208 CONFIG_SENSEWEAR_TEST_MAX30208_DRIVER)
 
 list(LENGTH _enabled_shield_tests _enabled_shield_count)
 if(_enabled_shield_count GREATER 1)

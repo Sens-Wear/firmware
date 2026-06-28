@@ -19,12 +19,12 @@ static void temperature_update_streaming_state(void)
 
 	if (enabled && temperature_board_connected) {
 		atomic_set(&temperature_streaming_enabled, 1);
-		temperature_sensor_set_streaming_enabled(true);
-		(void)temperature_sensor_start();
+		max30208_set_streaming_enabled(true);
+		(void)max30208_start();
 	} else {
 		atomic_set(&temperature_streaming_enabled, 0);
-		temperature_sensor_set_streaming_enabled(false);
-		temperature_sensor_stop();
+		max30208_set_streaming_enabled(false);
+		max30208_stop();
 	}
 }
 
@@ -41,12 +41,12 @@ static void temperature_board_status_work_fn(struct k_work *work)
 
 	if (!temperature_board_connected) {
 		atomic_set(&temperature_streaming_enabled, 0);
-		temperature_sensor_set_streaming_enabled(false);
-		temperature_sensor_deinit();
+		max30208_set_streaming_enabled(false);
+		max30208_deinit();
 		return;
 	}
 
-	(void)temperature_sensor_init();
+	(void)max30208_init();
 
 	if (atomic_get(&temperature_notify_enabled)) {
 		temperature_update_streaming_state();
@@ -92,9 +92,9 @@ int temperature_ble_bridge_init(void)
 
 	k_work_init(&temperature_board_status_work, temperature_board_status_work_fn);
 	temperature_lbs_register_notify_cb(temperature_notify_state_cb, NULL);
-	temperature_lbs_register_sampling_rate_cb(temperature_sensor_set_sampling_rate);
-	temperature_lbs_register_transfer_interval_cb(temperature_sensor_set_transfer_interval);
-	temperature_sensor_register_callback(temperature_sample_cb, NULL);
+	temperature_lbs_register_sampling_rate_cb(max30208_set_sampling_rate);
+	temperature_lbs_register_transfer_interval_cb(max30208_set_transfer_interval);
+	max30208_register_callback(temperature_sample_cb, NULL);
 	daughter_board_manager_register_status_cb(temperature_board_status_changed, NULL);
 	if (daughter_board_manager_get_status(&daughter_state) == 0) {
 		temperature_board_connected =
@@ -102,7 +102,7 @@ int temperature_ble_bridge_init(void)
 	}
 	atomic_set(&temperature_notify_enabled, 0);
 	atomic_set(&temperature_streaming_enabled, 0);
-	temperature_sensor_set_streaming_enabled(false);
+	max30208_set_streaming_enabled(false);
 	if (temperature_board_connected) {
 		k_work_submit(&temperature_board_status_work);
 	}

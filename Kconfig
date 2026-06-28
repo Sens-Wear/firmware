@@ -229,6 +229,15 @@ config SENSEWEAR_TEST_MAX30101_DRIVER
 	  (build with SHIELD=sensewear_ppg) so the driver and its devicetree node
 	  are present.
 
+config SENSEWEAR_TEST_MAX30208_DRIVER
+	bool "Build the MAX30208 temperature bring-up test"
+	depends on SHIELD_SENSEWEAR_TEMPERATURE
+	help
+	  Replace the application with the MAX30208 temperature driver bring-up test
+	  (tests/shields/main_test_max30208.c). Requires the sensewear_temperature
+	  shield (build with SHIELD=sensewear_temperature) so the driver and its
+	  devicetree node are present.
+
 endmenu
 
 source "Kconfig.zephyr"

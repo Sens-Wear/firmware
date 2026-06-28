@@ -11,11 +11,15 @@
 
 &sys_i2c_peripheral {
 	max30208: max30208@50 {
-		compatible = "sensewear,daughter-i2c-device", "i2c-device";
+		/*
+		 * Plain i2c-device: the temperature driver neither owns the
+		 * daughter rail (VDD_DAUGHTER, managed centrally by the
+		 * daughter-board manager) nor a connector interrupt line, so it
+		 * carries no vin-supply / gpio dependency in devicetree.
+		 */
+		compatible = "i2c-device";
 		status = "okay";
 		reg = <0x50>;
 		label = "MAX30208";
-		/* Powered from the shared daughter-connector rail (VDD_DAUGHTER). */
-		vin-supply = <&tpsm83102>;
 	};
 };
