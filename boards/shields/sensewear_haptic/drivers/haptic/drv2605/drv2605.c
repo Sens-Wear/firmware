@@ -18,6 +18,7 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/haptics.h>
+#include <zephyr/drivers/regulator.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/pm/device.h>
@@ -144,9 +145,15 @@ LOG_MODULE_REGISTER(DRV2605, CONFIG_HAPTICS_LOG_LEVEL);
 
 #define DRV2605_CALCULATE_VOLTAGE(_volt) ((_volt * 255) / DRV2605_VOLTAGE_SCALE_FACTOR_MV)
 
+/* The DRV2605 input rail must be driven at a fixed 2.2 V. */
+#define DRV2605_SUPPLY_VOLTAGE_UV 2200000
+/* Rail ramp and power-on settle time before the device is accessed. */
+#define DRV2605_SUPPLY_RAMP_DELAY_MS 50
+
 struct drv2605_config {
 	struct sys_i2c_dt_spec i2c;
 	struct gpio_dt_spec in_trig_gpio;
+	const struct device* regulator;
 	uint8_t feedback_brake_factor;
 	uint8_t loop_gain;
 	uint8_t rated_voltage;
@@ -163,6 +170,8 @@ struct drv2605_data {
 	const struct drv2605_rtp_data* rtp_data;
 	enum drv2605_mode mode;
 	const struct gpio_dt_spec* en_gpio;
+	const struct device* regulator;
+	bool supply_enabled;
 	atomic_t rtp_active;
 	atomic_t rtp_active_seconds;
 	atomic_t rtp_stop_requested;
@@ -267,6 +276,105 @@ static int drv2605_i2c_update_register(const struct device* dev,
 
 	current = (current & ~mask) | (value & mask);
 	return drv2605_i2c_write_register(dev, reg, current);
+}
+
+/*
+ * Validate the dedicated DRV2605 supply rail and cache its regulator handle in
+ * the driver object. Mirrors the MAX30101 power-up checks: a NULL regulator
+ * means the caller powers the device; an already-live shared rail must already
+ * sit at the fixed voltage the DRV2605 requires, otherwise driving it later
+ * risks damaging the part.
+ */
+static int drv2605_supply_init(const struct device* dev) {
+	const struct drv2605_config* config = dev->config;
+	struct drv2605_data* data = dev->data;
+	int32_t current_uv;
+	int ret;
+
+	__ASSERT(config->regulator != NULL, "DRV2605 regulator not specified");
+	data->regulator = config->regulator;
+	if (data->regulator == NULL) {
+		return 0;
+	}
+
+	if (!device_is_ready(data->regulator)) {
+		LOG_ERR("DRV2605 regulator %s not ready", data->regulator->name);
+		return -ENODEV;
+	}
+
+	if (!regulator_is_enabled(data->regulator)) {
+		return 0;
+	}
+
+	ret = regulator_get_voltage(data->regulator, &current_uv);
+	if (ret < 0) {
+		LOG_ERR("Failed to read DRV2605 regulator %s voltage: %d", data->regulator->name, ret);
+		return ret;
+	}
+
+	if (current_uv != DRV2605_SUPPLY_VOLTAGE_UV) {
+		LOG_ERR("DRV2605 regulator %s already enabled at %d uV, requires fixed %d uV",
+				data->regulator->name,
+				current_uv,
+				DRV2605_SUPPLY_VOLTAGE_UV);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+/*
+ * Bring the dedicated supply rail to the fixed DRV2605 voltage and enable it.
+ * Idempotent: a rail this driver already enabled is left untouched. The shared
+ * bus must not be held here, the regulator transport locks it itself.
+ */
+static int drv2605_supply_on(const struct device* dev) {
+	struct drv2605_data* data = dev->data;
+	int ret;
+	__ASSERT(data->regulator != NULL, "DRV2605 regulator not specified");
+	if (data->regulator == NULL || data->supply_enabled) {
+		return 0;
+	}
+	if (regulator_is_enabled(data->regulator)) {
+		LOG_ERR("DRV2605 regulator %s already enabled, but this driver did not enable it",
+				data->regulator->name);
+		return -EINVAL;
+	}
+	ret = regulator_set_voltage(data->regulator,
+								DRV2605_SUPPLY_VOLTAGE_UV,
+								DRV2605_SUPPLY_VOLTAGE_UV);
+	if (ret < 0) {
+		LOG_ERR("Failed to set DRV2605 rail to %d uV: %d", DRV2605_SUPPLY_VOLTAGE_UV, ret);
+		return ret;
+	}
+
+	ret = regulator_enable(data->regulator);
+	if (ret < 0) {
+		LOG_ERR("Failed to enable DRV2605 rail: %d", ret);
+		return ret;
+	}
+
+	k_msleep(DRV2605_SUPPLY_RAMP_DELAY_MS);
+	data->supply_enabled = true;
+	return 0;
+}
+
+/* Disable the dedicated supply rail if this driver enabled it. */
+static void drv2605_supply_off(const struct device* dev) {
+	struct drv2605_data* data = dev->data;
+	int ret;
+
+	if (data->regulator == NULL || !data->supply_enabled) {
+		return;
+	}
+
+	ret = regulator_disable(data->regulator);
+	if (ret < 0) {
+		LOG_ERR("Failed to disable DRV2605 rail: %d", ret);
+		return;
+	}
+
+	data->supply_enabled = false;
 }
 
 /*
@@ -602,6 +710,8 @@ static int drv2605_stop_output(const struct device* dev) {
 		drv2605_post_event(drv2605_event_Stopped, (uint32_t) stopped_mode);
 	}
 
+	drv2605_supply_off(dev);
+
 	return release_ret;
 }
 
@@ -611,6 +721,13 @@ static int drv2605_start_output(const struct device* dev) {
 	enum drv2605_mode started_mode = data->mode;
 	int ret;
 	int release_ret;
+
+	/* Bring the dedicated rail up before any bus traffic; the regulator
+	 * transport locks the shared bus itself, so it cannot run under our lock. */
+	ret = drv2605_supply_on(dev);
+	if (ret < 0) {
+		return ret;
+	}
 
 	ret = drv2605_bus_lock(dev);
 	if (ret < 0) {
@@ -707,6 +824,13 @@ static int drv2605_pm_action(const struct device* dev, enum pm_device_action act
 	}
 
 	release_ret = drv2605_bus_release(dev);
+
+	/* The regulator transport locks the shared bus itself, so cut the rail only
+	 * after the device bus lock is released. */
+	if (ret == 0 && action == PM_DEVICE_ACTION_TURN_OFF) {
+		drv2605_supply_off(dev);
+	}
+
 	if (ret < 0) {
 		return ret;
 	}
@@ -873,6 +997,11 @@ static int drv2605_init(const struct device* dev) {
 		return -ENODEV;
 	}
 
+	ret = drv2605_supply_init(dev);
+	if (ret < 0) {
+		return ret;
+	}
+
 	k_work_init(&data->rtp_work, drv2605_rtp_work_handler);
 	k_timer_init(&data->rtp_active_timer, drv2605_rtp_active_timer_handler, NULL);
 
@@ -930,6 +1059,9 @@ static DEVICE_API(haptics, drv2605_driver_api) = {
 	static const struct drv2605_config drv2605_config_##inst = {                      \
 		.i2c = SYS_I2C_DT_SPEC_GET(DT_DRV_INST(inst)),                                \
 		.in_trig_gpio = GPIO_DT_SPEC_INST_GET_OR(inst, in_trig_gpios, {}),            \
+		.regulator = COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, vin_supply),             \
+								 (DEVICE_DT_GET(DT_INST_PHANDLE(inst, vin_supply))),  \
+								 (NULL)),                                             \
 		.feedback_brake_factor = DT_INST_ENUM_IDX(inst, feedback_brake_factor),       \
 		.loop_gain = DT_INST_ENUM_IDX(inst, loop_gain),                               \
 		.actuator_mode = DT_INST_ENUM_IDX(inst, actuator_mode),                       \

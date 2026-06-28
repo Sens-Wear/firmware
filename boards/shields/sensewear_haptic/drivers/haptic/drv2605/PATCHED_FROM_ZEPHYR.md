@@ -40,8 +40,8 @@ Build wiring:
   `CMakeLists.txt` so that binding is discovered.
 - `Kconfig.drv2605` defines `SENSEWEAR_DRV2605_DRIVER` (depends on
   `DT_HAS_SENSEWEAR_DRV2605_ENABLED`, selects `HAPTICS`, `I2C`, `GPIO`,
-  `SENSEWEAR_SYS_I2C`, `SENSEWEAR_DEVICE_DRIVER_EVENTS`). It is `rsource`d from
-  the shield `Kconfig.defconfig`.
+  `REGULATOR`, `SENSEWEAR_SYS_I2C`, `SENSEWEAR_DEVICE_DRIVER_EVENTS`). It is
+  `rsource`d from the shield `Kconfig.defconfig`.
 - The patched driver posts events with `DRV2605_DEVICE_DTS_ID`. That macro is
   produced at configure time by
   `boards/SenseraTechnologies/SensWear/drivers/common/generate_device_driver_dts_ids.py`
@@ -85,6 +85,17 @@ Local changes from the copied Zephyr baseline:
   through the ISR-safe post path and carries elapsed RTP seconds; `Error`
   carries the positive errno; the lifecycle events carry the active
   `drv2605_mode`.
+- The driver owns its supply rail. The `vin-supply` regulator is resolved from
+  devicetree into `struct drv2605_config::regulator` and cached on the driver
+  object (`struct drv2605_data::regulator`). The rail is fixed at 2.2 V
+  (`DRV2605_SUPPLY_VOLTAGE_UV`). `drv2605_supply_init` runs MAX30101-style
+  power-up checks at init (regulator readiness, and that an already-enabled
+  shared rail already sits at the fixed voltage). `drv2605_start_output` sets the
+  voltage and enables the rail (`drv2605_supply_on`, idempotent via
+  `supply_enabled`) before any bus traffic, and `PM_DEVICE_ACTION_TURN_OFF`
+  disables it (`drv2605_supply_off`). The regulator transport locks the shared
+  bus itself, so these run outside the device's SYS_I2C ownership scope. This
+  selects `REGULATOR` in `Kconfig.drv2605`.
 
 `drv2605.h`
 
@@ -100,6 +111,8 @@ Local changes from the copied Zephyr baseline:
 - The `compatible` is `sensewear,drv2605` instead of `ti,drv2605`.
 - Removed the `en-gpios` property: the enable pin is owned by the driver via the
   daughter_if GPIO arbiter and is not described in devicetree.
+- The `vin-supply` regulator phandle is consumed by the driver to own the rail
+  (fixed 2.2 V); see the `drv2605.c` supply notes above.
 
 `Kconfig.drv2605`
 

@@ -13,6 +13,7 @@ config SENSEWEAR_DRV2605_DRIVER
 	select HAPTICS
 	select I2C
 	select GPIO
+	select REGULATOR
 	select SENSEWEAR_SYS_I2C
 	select SENSEWEAR_DEVICE_DRIVER_EVENTS
 	help

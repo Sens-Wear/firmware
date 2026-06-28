@@ -73,3 +73,9 @@ properties:
   in-trig-gpios:
     type: phandle-array
     description: GPIO to trigger ROM waveforms or drive an input signal.
+  vin-supply:
+    type: phandle
+    description: |
+      Regulator supplying the device's input rail. On SenseWear this is the
+      shared daughter-connector rail (VDD_DAUGHTER) from the TPSM83102, so the
+      build can detect how many daughter devices depend on that single regulator.

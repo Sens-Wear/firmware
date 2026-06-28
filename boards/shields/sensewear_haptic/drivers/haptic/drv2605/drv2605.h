@@ -50,6 +50,10 @@
  *   `Stopped` event is suppressed when the worker will post it.
  * - @b Events: playback lifecycle is reported through the SenseWear device-driver
  *   event queue under `DRV2605_DEVICE_DTS_ID`; see @ref drv2605_event_type.
+ * - @b Supply: the `vin-supply` regulator is owned by the driver and cached on
+ *   the device object. The rail is driven at the fixed 2.2 V the DRV2605
+ *   requires; it is validated at init, set and enabled when output starts, and
+ *   disabled on power-manager turn-off. See @ref drv2605_supply "Supply rail".
  *
  * @par Features
  * - Zephyr haptics device API (`haptics_start_output()` /
@@ -62,7 +66,35 @@
  * - Lifecycle/observability events (`Starting`, `Stopped`, `PlaybackActive`,
  *   `Error`) with a once-per-second active heartbeat; drv2605_event_name()
  *   returns printable names.
- * - Power management hooks (suspend/resume + enable-pin turn off/on).
+ * - Driver-owned supply rail at a fixed 2.2 V (see @ref drv2605_supply).
+ * - Power management hooks: suspend/resume toggle the standby bit, turn-on
+ *   raises the enable pin, and turn-off lowers the enable pin and disables the
+ *   supply rail.
+ *
+ * @anchor drv2605_supply
+ * @par Supply rail
+ * The DRV2605 input rail (`VDD`) is driven from the regulator named by the
+ * devicetree `vin-supply` phandle (on SenseWear the shared daughter-connector
+ * rail, `VDD_DAUGHTER` from the TPSM83102). The driver takes ownership of that
+ * regulator rather than relying on an external power policy:
+ * - @b Configured @b voltage: a fixed 2.2 V (`DRV2605_SUPPLY_VOLTAGE_UV`,
+ *   2200000 µV). The part is always driven at this single voltage; there is no
+ *   per-instance or per-effect voltage selection.
+ * - @b Init: the regulator handle is resolved from devicetree and cached on the
+ *   device object. If the rail is already enabled (for example by a shared
+ *   power manager), init requires it to already sit at 2.2 V and fails with
+ *   `-EINVAL` otherwise, so the driver never drives the part off-spec.
+ * - @b Start: the first `haptics_start_output()` sets the regulator to 2.2 V,
+ *   enables it, and waits a fixed ramp/settle delay before any bus traffic.
+ *   The enable is idempotent: a rail this driver already brought up is left
+ *   untouched on subsequent starts.
+ * - @b Turn-off: `PM_DEVICE_ACTION_TURN_OFF` disables the rail, but only if this
+ *   driver was the one that enabled it.
+ * - @b No @b regulator: if `vin-supply` is absent the driver treats the rail as
+ *   externally managed and performs no regulator operations.
+ *
+ * @note The regulator transport itself locks the shared SYS_I2C bus, so all
+ * supply operations run outside the device's own bus-ownership scope.
  *
  * @par Typical use case (RTP playback)
  * @code{.c}
