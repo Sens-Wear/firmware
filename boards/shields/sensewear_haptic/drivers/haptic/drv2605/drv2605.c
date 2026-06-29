@@ -33,7 +33,7 @@
 #include "drv2605.h"
 #include "sys_i2c.h"
 
-LOG_MODULE_REGISTER(DRV2605, CONFIG_HAPTICS_LOG_LEVEL);
+LOG_MODULE_REGISTER(DRV2605, CONFIG_LOG_DEFAULT_LEVEL);
 
 #define DRV2605_REG_STATUS 0x0
 #define DRV2605_DEVICE_ID GENMASK(7, 5)
@@ -145,8 +145,8 @@ LOG_MODULE_REGISTER(DRV2605, CONFIG_HAPTICS_LOG_LEVEL);
 
 #define DRV2605_CALCULATE_VOLTAGE(_volt) ((_volt * 255) / DRV2605_VOLTAGE_SCALE_FACTOR_MV)
 
-/* The DRV2605 input rail must be driven at a fixed 2.2 V. */
-#define DRV2605_SUPPLY_VOLTAGE_UV 2200000
+/* The DRV2605 input rail must be driven at a fixed 3.3 V. */
+#define DRV2605_SUPPLY_VOLTAGE_UV (3600000)
 /* Rail ramp and power-on settle time before the device is accessed. */
 #define DRV2605_SUPPLY_RAMP_DELAY_MS 50
 
@@ -710,7 +710,7 @@ static int drv2605_stop_output(const struct device* dev) {
 		drv2605_post_event(drv2605_event_Stopped, (uint32_t) stopped_mode);
 	}
 
-	drv2605_supply_off(dev);
+	// drv2605_supply_off(dev);
 
 	return release_ret;
 }
@@ -867,14 +867,18 @@ static int drv2605_hw_config(const struct device* dev) {
 		return ret;
 	}
 
-	if (config->actuator_mode == DRV2605_ACTUATOR_MODE_LRA) {
-		ret = drv2605_i2c_update_register(dev,
-										  DRV2605_REG_CONTROL3,
-										  DRV2605_LRA_OPEN_LOOP,
-										  DRV2605_LRA_OPEN_LOOP);
-		if (ret < 0) {
-			return ret;
-		}
+	mask = DRV2605_ERM_OPEN_LOOP | DRV2605_LRA_DRIVE_MODE | DRV2605_LRA_OPEN_LOOP;
+	if (config->actuator_mode == DRV2605_ACTUATOR_MODE_ERM) {
+		value = DRV2605_ERM_OPEN_LOOP;
+	} else {
+		value = DRV2605_LRA_DRIVE_MODE | DRV2605_LRA_OPEN_LOOP;
+	}
+
+	ret = drv2605_i2c_update_register(dev, DRV2605_REG_CONTROL3, mask, value);
+	LOG_DBG("DRV2605 control3 register configured with value: 0x%02X", value);
+	if (ret < 0) {
+		LOG_ERR("Failed to configure DRV2605 control3 register: %d", ret);
+		return ret;
 	}
 
 	return 0;
@@ -992,13 +996,22 @@ static int drv2605_init(const struct device* dev) {
 	int release_ret;
 
 	data->dev = dev;
+	LOG_INF("Initializing DRV2605 device %s", dev->name);
 
 	if (!sys_i2c_is_ready(&config->i2c)) {
+		LOG_ERR("DRV2605 I2C bus %s not ready", config->i2c.bus->name);
 		return -ENODEV;
 	}
 
 	ret = drv2605_supply_init(dev);
 	if (ret < 0) {
+		LOG_ERR("Failed to initialize DRV2605 supply: %d", ret);
+		return ret;
+	}
+
+	ret = drv2605_supply_on(dev);
+	if (ret < 0) {
+		LOG_ERR("Failed to enable DRV2605 supply: %d", ret);
 		return ret;
 	}
 
@@ -1007,30 +1020,32 @@ static int drv2605_init(const struct device* dev) {
 
 	ret = drv2605_gpio_config(dev);
 	if (ret < 0) {
-		LOG_DBG("Failed to allocate GPIOs: %d", ret);
+		LOG_ERR("Failed to allocate GPIOs: %d", ret);
 		return ret;
 	}
 
 	ret = drv2605_bus_lock(dev);
 	if (ret < 0) {
+		LOG_ERR("Failed to lock DRV2605 SYS_I2C ownership: %d", ret);
 		drv2605_gpio_release(dev);
 		return ret;
 	}
 
 	ret = drv2605_check_devid(dev);
 	if (ret < 0) {
+		LOG_ERR("Failed to check DRV2605 device ID: %d", ret);
 		goto release_bus;
 	}
 
 	ret = drv2605_reset(dev);
 	if (ret < 0) {
-		LOG_DBG("Failed to reset device: %d", ret);
+		LOG_ERR("Failed to reset device: %d", ret);
 		goto release_bus;
 	}
 
 	ret = drv2605_hw_config(dev);
 	if (ret < 0) {
-		LOG_DBG("Failed to configure device: %d", ret);
+		LOG_ERR("Failed to configure device: %d", ret);
 		goto release_bus;
 	}
 
@@ -1046,6 +1061,7 @@ release_bus:
 		return release_ret;
 	}
 
+	LOG_INF("DRV2605 device %s initialized successfully", dev->name);
 	return 0;
 }
 
