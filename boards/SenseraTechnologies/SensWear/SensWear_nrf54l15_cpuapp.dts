@@ -39,6 +39,17 @@
 		status = "okay";
 	};
 
+	/*
+	 * Software real-time clock. The nRF54L15 has no battery-backed calendar
+	 * RTC, so this node owns no hardware; it gives the rtc driver a devicetree
+	 * identity and a generated device id for the device-event manager. Wall-
+	 * clock timekeeping runs on the GRTC-backed system clock.
+	 */
+	rtc0: rtc {
+		compatible = "sensewear,rtc";
+		status = "okay";
+	};
+
 };
 
 /*

@@ -135,6 +135,37 @@ config SENSEWEAR_TPSM83102_DRIVER
 	help
 	  Build the TPSM83102 buck regulator driver.
 
+config SENSEWEAR_RTC_DRIVER
+	bool "Software real-time clock"
+	default y
+	select SENSEWEAR_DEVICE_DRIVER_EVENTS
+	help
+	  Build the SenseWear software RTC. The nRF54L15 has no battery-backed
+	  calendar RTC, so this driver maintains wall-clock time on the GRTC-backed
+	  system clock (the SYS_CLOCK_REALTIME / POSIX time() base), persists it to
+	  Settings/NVS, and exposes minute/hour/day and one-shot alarms through the
+	  device-event manager.
+
+if SENSEWEAR_RTC_DRIVER
+
+config SENSEWEAR_RTC_AUTO_INIT
+	bool "Seed the wall clock at system startup"
+	default y
+	help
+	  Run rtc_init() from a SYS_INIT hook at APPLICATION priority so the wall
+	  clock (and POSIX time()) is restored from Settings before application
+	  code runs. Disable to call rtc_init() manually.
+
+config SENSEWEAR_RTC_INIT_PRIORITY
+	int "rtc auto-init priority"
+	depends on SENSEWEAR_RTC_AUTO_INIT
+	default 90
+	help
+	  APPLICATION-phase SYS_INIT priority for the RTC. Must run after the flash
+	  and Settings backends are initialised.
+
+endif # SENSEWEAR_RTC_DRIVER
+
 config SENSEWEAR_DAUGHTER_IF_DRIVER
 	bool "Daughter-board connector GPIO arbiter"
 	depends on GPIO
@@ -205,6 +236,15 @@ config SENSEWEAR_TEST_M95P_DRIVER
 	bool "Build the M95P EEPROM bring-up test"
 	help
 	  Replace the application with the M95P EEPROM driver bring-up test.
+
+config SENSEWEAR_TEST_RTC_DRIVER
+	bool "Build the software RTC bring-up test"
+	depends on SENSEWEAR_RTC_DRIVER
+	help
+	  Replace the application with the software RTC driver bring-up test
+	  (tests/drivers/main_test_rtc.c). Sets a known time, reads it back through
+	  both the rtc API and POSIX time(), and exercises the minute and one-shot
+	  alarms.
 
 config SENSEWEAR_TEST_TPSM83102_DRIVER
 	bool "Build the TPSM83102 regulator bring-up test"

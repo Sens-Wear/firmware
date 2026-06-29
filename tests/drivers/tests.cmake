@@ -28,6 +28,7 @@ senswear_add_driver_test(bhi360    CONFIG_SENSEWEAR_TEST_BHI360_DRIVER)
 senswear_add_driver_test(lp5562    CONFIG_SENSEWEAR_TEST_LP5562_DRIVER)
 senswear_add_driver_test(m95p      CONFIG_SENSEWEAR_TEST_M95P_DRIVER)
 senswear_add_driver_test(tpsm83102 CONFIG_SENSEWEAR_TEST_TPSM83102_DRIVER)
+senswear_add_driver_test(rtc       CONFIG_SENSEWEAR_TEST_RTC_DRIVER)
 
 list(LENGTH _enabled_tests _enabled_count)
 if(_enabled_count EQUAL 0)

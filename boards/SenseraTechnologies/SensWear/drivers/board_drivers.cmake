@@ -17,6 +17,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/imu/imu_drivers.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/led_controller/led_controller_drivers.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/memory/memory_drivers.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/regulator/regulator_drivers.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/rtc/rtc_drivers.cmake)
 
 add_library(board_drivers INTERFACE)
 
