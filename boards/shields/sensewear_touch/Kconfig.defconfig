@@ -14,10 +14,16 @@ config GPIO
 config SENSOR
 	default y
 
+config REGULATOR
+	default y
+
 config SENSEWEAR_TPSM83102_DRIVER
 	default y
 
 config SENSEWEAR_DAUGHTER_IF_DRIVER
+	default y
+
+config SENSEWEAR_DEVICE_DRIVER_EVENTS
 	default y
 
 endif # SHIELD_SENSEWEAR_TOUCH

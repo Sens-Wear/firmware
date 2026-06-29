@@ -147,7 +147,7 @@ service sources.
 | `sensewear_haptic` | DRV2605 haptics (I²C `0x5a`) | `I2C`, `SYS_I2C`, `GPIO`, `TPSM83102_DRIVER`, `DAUGHTER_IF_DRIVER`, `DEVICE_DRIVER_EVENTS`, + `drv2605` Kconfig | `haptic/drv2605/drv2605.c` |
 | `sensewear_ppg` | MAX30101 PPG (I²C `0x57`) | `I2C`, `SYS_I2C`, `GPIO`, `SENSOR`, `REGULATOR`, `TPSM83102_DRIVER`, `DAUGHTER_IF_DRIVER`, `DEVICE_DRIVER_EVENTS` | `ppg/max30101/max30101.c` |
 | `sensewear_temperature` | MAX30208 temperature (I²C `0x50`) | `I2C`, `SYS_I2C`, `GPIO`, `SENSOR`, `TPSM83102_DRIVER` | `temperature/max30208/max30208.c` |
-| `sensewear_touch` | MTCH6102 touch (I²C `0x25`) | `I2C`, `SYS_I2C`, `GPIO`, `SENSOR`, `TPSM83102_DRIVER`, `DAUGHTER_IF_DRIVER` | `touch/mtch6102/mtch6102.c` |
+| `sensewear_touch` | MTCH6102 touch (I²C `0x25`) | `I2C`, `SYS_I2C`, `GPIO`, `SENSOR`, `REGULATOR`, `TPSM83102_DRIVER`, `DAUGHTER_IF_DRIVER`, `DEVICE_DRIVER_EVENTS` | `touch/mtch6102/mtch6102.c` |
 
 ## What the build validates
 

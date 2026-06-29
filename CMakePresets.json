@@ -146,6 +146,18 @@
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
+        },
+        {
+            "name": "test_mtch6102",
+            "displayName": "Test: MTCH6102 touch (sensewear_touch shield)",
+            "inherits": "test_base",
+            "binaryDir": "${sourceDir}/build/tests/mtch6102",
+            "cacheVariables": {
+                "SHIELD": "sensewear_touch",
+                "CONFIG_SENSEWEAR_TEST_MTCH6102_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
         }
     ],
     "buildPresets": [
@@ -192,6 +204,10 @@
         {
             "name": "test_max30208",
             "configurePreset": "test_max30208"
+        },
+        {
+            "name": "test_mtch6102",
+            "configurePreset": "test_mtch6102"
         }
     ]
 }

@@ -278,6 +278,15 @@ config SENSEWEAR_TEST_MAX30208_DRIVER
 	  shield (build with SHIELD=sensewear_temperature) so the driver and its
 	  devicetree node are present.
 
+config SENSEWEAR_TEST_MTCH6102_DRIVER
+	bool "Build the MTCH6102 touch bring-up test"
+	depends on SHIELD_SENSEWEAR_TOUCH
+	help
+	  Replace the application with the MTCH6102 touch driver bring-up test
+	  (tests/shields/main_test_mtch6102.c). Requires the sensewear_touch shield
+	  (build with SHIELD=sensewear_touch) so the driver and its devicetree node
+	  are present.
+
 endmenu
 
 source "Kconfig.zephyr"

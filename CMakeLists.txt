@@ -64,7 +64,7 @@ set(BOARD_FLASH_RUNNER pyocd)
 # application main (src/main.c). The CONFIG_ symbols are available as CMake
 # variables because find_package(Zephyr) above has already run Kconfig.
 set(TEST_DRIVERS OFF)
-foreach(_t BQ25180 BQ27427 BHI360 LP5562 M95P TPSM83102)
+foreach(_t BQ25180 BQ27427 BHI360 LP5562 M95P TPSM83102 RTC)
     if(CONFIG_SENSEWEAR_TEST_${_t}_DRIVER)
         set(TEST_DRIVERS ON)
     endif()
@@ -74,7 +74,7 @@ endforeach()
 # the board-driver tests above; these exercise drivers shipped by a shield, so
 # the matching shield must also be enabled (e.g. SHIELD=sensewear_haptic).
 set(TEST_SHIELDS OFF)
-foreach(_t DRV2605 MAX30101 MAX30208)
+foreach(_t DRV2605 MAX30101 MAX30208 MTCH6102)
     if(CONFIG_SENSEWEAR_TEST_${_t}_DRIVER)
         set(TEST_SHIELDS ON)
     endif()
@@ -165,6 +165,6 @@ if(TEST_DRIVERS OR TEST_SHIELDS)
     endif()
 else()
     # Normal build: application sources / includes (app_src INTERFACE library).
-    include(${CMAKE_CURRENT_SOURCE_DIR}/src/app.cmake)
-    target_link_libraries(app PRIVATE app_src)
+    # include(${CMAKE_CURRENT_SOURCE_DIR}/src/app.cmake)
+    # target_link_libraries(app PRIVATE app_src)
 endif()
