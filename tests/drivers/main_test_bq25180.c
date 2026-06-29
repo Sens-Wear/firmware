@@ -54,7 +54,7 @@ static void bq25180_event_consumer_thread(void* a, void* b, void* c) {
 			   event.v_param,
 			   event.p_param);
 
-		if (event.event_id == bq25180_event_InterruptDetected) {
+		if (event.event_id == bq25180_event_Irq) {
 			union bq25180_charger_state_t state;
 
 			if (bq25180_update_state(&state)) {
