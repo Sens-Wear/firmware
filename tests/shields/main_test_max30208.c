@@ -11,9 +11,10 @@
  * driver therefore substitutes a periodic software timer for the missing
  * interrupt line. The test brings the sensor up through the driver lifecycle:
  *
- *   max30208_init()  - verify the shared bus, probe PART_ID, program the FIFO
- *   max30208_start() - flush the buffer, start the sampling timer, and publish
- *                      max30208_event_SamplingStarted
+ *   max30208_init()   - verify the shared bus, probe PART_ID, load defaults
+ *   max30208_config() - apply the acquisition configuration (NULL = defaults)
+ *   max30208_start()  - flush the buffer, start the sampling timer, and publish
+ *                       max30208_event_SamplingStarted
  *
  * Acquisition is timer driven. The MAX30208 sampling timer posts
  * ::max30208_TimerIrq from timer context; a dedicated consumer thread drains the
@@ -144,6 +145,13 @@ int main(void) {
 		printk("MAX30208 not ready\n");
 		return 0;
 	}
+
+	if (max30208_config(NULL) != 0) {
+		printk("max30208_config() failed\n");
+		return 0;
+	}
+
+	printk("MAX30208 configured\n");
 
 	if (!start_max30208_event_consumer()) {
 		printk("failed to start MAX30208 event consumer\n");

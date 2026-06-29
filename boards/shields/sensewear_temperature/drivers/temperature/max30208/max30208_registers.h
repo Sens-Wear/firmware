@@ -152,9 +152,6 @@ enum max30208_register_type {
 #define MAX30208_UNIQUE_ID_START_REGISTER max30208_register_PartId1
 #define MAX30208_UNIQUE_ID_NUM_BYTES 6U
 
-/** @brief FIFO configuration 1 value: almost-full threshold of 0x0F. */
-#define MAX30208_FIFO_CONFIG1_VALUE (0x0F)
-
 /** @brief Temperature LSB weight in milli-degrees Celsius (0.005 degC). */
 #define MAX30208_TEMP_LSB_MDEG_C (5)
 

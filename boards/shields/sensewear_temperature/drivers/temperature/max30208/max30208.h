@@ -10,7 +10,8 @@
  * @{
  *
  * The MAX30208 is the digital temperature sensor on the SenseWear temperature
- * daughter board. This driver probes the part, configures its FIFO, paces
+ * daughter board. This driver probes the part, programs its acquisition
+ * configuration (FIFO, interrupts, alarm thresholds, and GPIO modes), paces
  * single-shot conversions, and publishes decoded samples as driver-level events
  * on the shared device-event queue.
  *
@@ -21,7 +22,7 @@
  * @code{.text}
  * application / temperature bridge
  *          |
- *          | max30208_start(), max30208_get_samples(), ...
+ *          | max30208_config(), max30208_start(), max30208_get_samples(), ...
  *          v
  * MAX30208 driver
  *          |
@@ -42,17 +43,38 @@
  *
  * @section sensewear_max30208_lifecycle Driver lifecycle
  *
- * 1. Call max30208_init() to verify the shared bus, probe the part, and program
- *    the FIFO configuration.
- * 2. Call max30208_start() to flush the internal buffer and begin pacing
+ * 1. Call max30208_init() to verify the shared bus, probe the part, and load the
+ *    SenseWear default configuration into the driver context. A successful probe
+ *    does not imply that the acquisition parameters have been written to the part.
+ * 2. Call max30208_config() to apply the acquisition configuration (NULL selects
+ *    the SenseWear defaults). The defaults can be inspected or tailored through
+ *    max30208_get_default_config(). This step is optional: max30208_start()
+ *    applies the defaults automatically if the part has not been configured yet.
+ * 3. Call max30208_start() to flush the internal buffer and begin pacing
  *    conversions; this publishes ::max30208_event_SamplingStarted.
- * 3. The driver's sampling timer fires at the configured rate and publishes
+ * 4. The driver's sampling timer fires at the configured rate and publishes
  *    ::max30208_TimerIrq from timer context.
- * 4. On ::max30208_TimerIrq the consumer calls max30208_get_samples(), which
+ * 5. On ::max30208_TimerIrq the consumer calls max30208_get_samples(), which
  *    performs the conversion, appends it to the internal buffer, and publishes
  *    ::max30208_event_SampleReady (sample count in `v_param`, a pointer to the
  *    ::temperature_sample array in `p_param`).
- * 5. Call max30208_stop() / max30208_deinit() to halt.
+ * 6. Call max30208_stop() / max30208_deinit() to halt.
+ *
+ * Initialization and configuration are deliberately separate: programming the
+ * acquisition registers is driven by max30208_config() rather than the probe in
+ * max30208_init().
+ *
+ * @section sensewear_max30208_config Acquisition configuration
+ *
+ * struct max30208_config_t gathers the register bit-field overlays the driver
+ * programs during max30208_config(): the INTERRUPT_ENABLE selection, the
+ * FIFO_CONFIG1 almost-full threshold, the FIFO_CONFIG2 roll-over / almost-full /
+ * status-clear options, the GPIO_SETUP pin modes, and the high/low temperature
+ * alarm thresholds. It is a software datatype, not a raw register image; each
+ * member is written to its corresponding register under one shared-bus ownership
+ * scope. max30208_get_default_config() fills the structure with the SenseWear
+ * defaults (overridable through max30208_config.h), which is the same
+ * configuration applied when max30208_config() is called with NULL.
  *
  * @section sensewear_max30208_events Event model
  *
@@ -109,10 +131,34 @@ struct temperature_sample {
 };
 
 /**
+ * @brief High-level MAX30208 acquisition configuration.
+ * @details This software datatype gathers the register bit-field overlays the
+ *          driver programs during max30208_config() into a single structure. It
+ *          is not a raw register image: max30208_config() writes each member to
+ *          its corresponding register under one shared-bus ownership scope.
+ */
+struct max30208_config_t {
+	/** Interrupt-enable selection programmed into INTERRUPT_ENABLE (0x01). */
+	union max30208_interrupt_enable_register_t interrupts;
+	/** FIFO almost-full threshold programmed into FIFO_CONFIG1 (0x09). */
+	union max30208_fifo_config1_register_t fifo_config1;
+	/** FIFO roll-over / almost-full / status-clear options in FIFO_CONFIG2 (0x0A). */
+	union max30208_fifo_config2_register_t fifo_config2;
+	/** GPIO pin mode configuration programmed into GPIO_SETUP (0x20). */
+	union max30208_gpio_setup_register_t gpio_setup;
+	/** High temperature alarm threshold in raw sensor counts (ALARM_HIGH). */
+	int16_t alarm_high_counts;
+	/** Low temperature alarm threshold in raw sensor counts (ALARM_LOW). */
+	int16_t alarm_low_counts;
+};
+
+/**
  * @brief Initialize and probe the MAX30208.
  *
  * Verifies that the shared bus is ready, reads PART_ID to confirm a device
- * responds, and programs the FIFO configuration.
+ * responds, and loads the SenseWear default configuration into the driver
+ * context. It does not write the acquisition parameters to the part; call
+ * max30208_config() (or max30208_start(), which configures on demand) for that.
  *
  * @retval 0 The shared bus was ready and the sensor responded (or the driver was
  *         already initialized).
@@ -120,6 +166,30 @@ struct temperature_sample {
  * @retval -EIO A configuration transfer failed.
  */
 int max30208_init(void);
+
+/**
+ * @brief Populate the SenseWear default acquisition configuration.
+ * @details Selects the SenseWear FIFO almost-full threshold, roll-over and
+ *          status-clear behaviour, interrupt-enable defaults, GPIO pin modes, and
+ *          the default temperature alarm thresholds. This is the same
+ *          configuration applied when max30208_config() is called with NULL.
+ *
+ * @param config Destination configuration. Must not be NULL.
+ */
+void max30208_get_default_config(struct max30208_config_t* config);
+
+/**
+ * @brief Program the MAX30208 acquisition parameters.
+ *
+ * The complete register sequence is protected by one shared-I2C ownership scope.
+ * Passing NULL selects the SenseWear defaults.
+ *
+ * @param config Configuration to apply, or NULL for the defaults.
+ * @retval 0 All configuration registers were written and ownership released.
+ * @retval -EINVAL The driver was not initialized.
+ * @retval -EIO Locking failed or a register transfer failed.
+ */
+int max30208_config(struct max30208_config_t* config);
 
 /**
  * @brief Report whether max30208_init() successfully detected the sensor.
@@ -132,12 +202,13 @@ bool max30208_is_ready(void);
 /**
  * @brief Start periodic temperature acquisition.
  *
- * Initializes the sensor on demand if necessary, flushes the internal sample
- * buffer, starts the sampling timer at the configured rate, and publishes
+ * Initializes the sensor on demand if necessary, applies the default acquisition
+ * configuration if the part has not been configured yet, flushes the internal
+ * sample buffer, starts the sampling timer at the configured rate, and publishes
  * ::max30208_event_SamplingStarted.
  *
  * @retval 0 Acquisition was started.
- * @return A negative errno propagated from max30208_init().
+ * @return A negative errno propagated from max30208_init() or max30208_config().
  */
 int max30208_start(void);
 

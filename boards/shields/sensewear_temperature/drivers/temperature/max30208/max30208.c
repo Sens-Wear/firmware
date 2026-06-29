@@ -61,6 +61,7 @@ union max30208_state_t {
 		unsigned int bInitialized : 1; /**< Probe and FIFO setup completed. */
 		unsigned int bProbed : 1;	   /**< Device presence probe attempted. */
 		unsigned int bDeviceFound : 1; /**< Device presence detected. */
+		unsigned int bConfigured : 1;  /**< Register configuration applied. */
 		unsigned int bSampling : 1;	   /**< Sampling timer is running. */
 	} bits;
 };
@@ -81,6 +82,8 @@ static struct max30208_t {
 	struct k_timer sample_timer;
 	/** Per-sensor sampling rate in hertz. */
 	uint16_t sampling_rate_hz;
+	/** Most recently applied acquisition configuration. */
+	struct max30208_config_t config;
 	/** Internal decoded-sample buffer, republished as event payload. */
 	struct temperature_sample samples[MAX30208_SAMPLE_BUFFER_DEPTH];
 	/** Number of valid entries in @ref samples. */
@@ -228,11 +231,91 @@ static bool max30208_probe(void) {
 	return max30208.state.bits.bDeviceFound != 0;
 }
 
-/** Program the FIFO almost-full threshold. The caller must own the bus. */
-static int max30208_configure_fifo(void) {
-	union max30208_fifo_config1_register_t fifo_config1 = {.value = MAX30208_FIFO_CONFIG1_VALUE};
+void max30208_get_default_config(struct max30208_config_t* config) {
+	memset(config, 0, sizeof(*config));
 
-	return max30208_i2c_write_byte(max30208_register_FifoConfig1, fifo_config1.value);
+	config->fifo_config1.bits.a_full = MAX30208_FIFO_A_FULL_THRESHOLD;
+
+	config->fifo_config2.bits.fifo_ro = MAX30208_FIFO_ROLLOVER;
+	config->fifo_config2.bits.a_full_type = MAX30208_FIFO_A_FULL_TYPE;
+	config->fifo_config2.bits.fifo_stat_clr = MAX30208_FIFO_STATUS_CLEAR;
+
+	config->interrupts.bits.temp_ready_en = MAX30208_INT_TEMP_READY_ENABLE;
+	config->interrupts.bits.a_full_en = MAX30208_INT_A_FULL_ENABLE;
+
+	config->gpio_setup.value = MAX30208_GPIO_SETUP_DEFAULT;
+
+	config->alarm_high_counts = (int16_t) MAX30208_ALARM_HIGH_DEFAULT;
+	config->alarm_low_counts = (int16_t) MAX30208_ALARM_LOW_DEFAULT;
+}
+
+/** Issue a software reset and wait for it to clear. The caller must own the bus. */
+static bool max30208_reset_locked(void) {
+	union max30208_system_control_register_t sysctl = {.value = 0};
+	sysctl.bits.reset = 1;
+
+	if (max30208_i2c_write_byte(max30208_register_SystemControl, sysctl.value) != 0) {
+		return false;
+	}
+
+	/* Poll until the device clears the self-clearing reset bit. */
+	for (int attempts = 0; attempts < 16; ++attempts) {
+		uint8_t value = 0;
+		if (max30208_i2c_read(max30208_register_SystemControl, &value, sizeof(value)) != 0) {
+			return false;
+		}
+		sysctl.value = value;
+		if (sysctl.bits.reset == 0) {
+			return true;
+		}
+	}
+	LOG_ERR("MAX30208 reset did not clear");
+	return false;
+}
+
+int max30208_config(struct max30208_config_t* config) {
+	if (max30208.state.bits.bInitialized == 0) {
+		LOG_ERR("MAX30208 not initialized");
+		return -EINVAL;
+	}
+
+	if (config == NULL) {
+		max30208_get_default_config(&max30208.config);
+	} else {
+		memcpy(&max30208.config, config, sizeof(max30208.config));
+	}
+
+	const struct max30208_config_t* cfg = &max30208.config;
+
+	uint8_t alarm_high[2] = {
+		(uint8_t) ((uint16_t) cfg->alarm_high_counts >> 8),
+		(uint8_t) ((uint16_t) cfg->alarm_high_counts & 0xFF),
+	};
+	uint8_t alarm_low[2] = {
+		(uint8_t) ((uint16_t) cfg->alarm_low_counts >> 8),
+		(uint8_t) ((uint16_t) cfg->alarm_low_counts & 0xFF),
+	};
+
+	if (!max30208_bus_lock()) {
+		return -EIO;
+	}
+
+	bool ret =
+		max30208_reset_locked() &&
+		(max30208_i2c_write_byte(max30208_register_FifoConfig1, cfg->fifo_config1.value) == 0) &&
+		(max30208_i2c_write_byte(max30208_register_FifoConfig2, cfg->fifo_config2.value) == 0) &&
+		(max30208_i2c_write_byte(max30208_register_InterruptEnable, cfg->interrupts.value) == 0) &&
+		(max30208_i2c_write(max30208_register_AlarmHighMsb, alarm_high, sizeof(alarm_high)) == 0) &&
+		(max30208_i2c_write(max30208_register_AlarmLowMsb, alarm_low, sizeof(alarm_low)) == 0) &&
+		(max30208_i2c_write_byte(max30208_register_GpioSetup, cfg->gpio_setup.value) == 0);
+
+	ret &= max30208_bus_unlock();
+	if (!ret) {
+		return -EIO;
+	}
+
+	max30208.state.bits.bConfigured = 1;
+	return 0;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -351,19 +434,17 @@ int max30208_init(void) {
 		return -ENODEV;
 	}
 
+	max30208_get_default_config(&max30208.config);
+
 	if (!max30208_bus_lock()) {
 		return -EIO;
 	}
 	bool found = max30208_probe();
-	int ret = found ? max30208_configure_fifo() : 0;
 	max30208_bus_unlock();
 
 	if (!found) {
 		LOG_ERR("MAX30208 not connected");
 		return -ENODEV;
-	}
-	if (ret != 0) {
-		return -EIO;
 	}
 
 	k_timer_init(&max30208.sample_timer, max30208_sample_timer_expiry, NULL);
@@ -378,6 +459,15 @@ bool max30208_is_ready(void) {
 int max30208_start(void) {
 	if (max30208.state.bits.bInitialized == 0) {
 		int ret = max30208_init();
+
+		if (ret != 0) {
+			return ret;
+		}
+	}
+
+	/* Apply the acquisition configuration if it has not been programmed yet. */
+	if (max30208.state.bits.bConfigured == 0) {
+		int ret = max30208_config(NULL);
 
 		if (ret != 0) {
 			return ret;
@@ -408,6 +498,7 @@ void max30208_stop(void) {
 void max30208_deinit(void) {
 	max30208_stop();
 	max30208.state.bits.bInitialized = 0;
+	max30208.state.bits.bConfigured = 0;
 }
 
 void max30208_set_sampling_rate(uint16_t new_sampling_rate) {
