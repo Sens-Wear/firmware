@@ -64,12 +64,12 @@ BUILD_ASSERT(MAX30101_FIFO_DEPTH > 0, "MAX30101 FIFO depth must be greater than 
 #define MAX30101_I2C_TX_MAX (4)
 
 /** Minimum and maximum voltages for each LED channel. @{*/
-#define MAX30101_LED_VOLTAGE_RED_MIN_UV (31000000u)
-#define MAX30101_LED_VOLTAGE_RED_MAX_UV (50000000u)
-#define MAX30101_LED_VOLTAGE_IR_MIN_UV (31000000u)
-#define MAX30101_LED_VOLTAGE_IR_MAX_UV (50000000u)
-#define MAX30101_LED_VOLTAGE_GREEN_MIN_UV (45000000u)
-#define MAX30101_LED_VOLTAGE_GREEN_MAX_UV (55000000u)
+#define MAX30101_LED_VOLTAGE_RED_MIN_UV (3100000u)
+#define MAX30101_LED_VOLTAGE_RED_MAX_UV (5000000u)
+#define MAX30101_LED_VOLTAGE_IR_MIN_UV (3100000u)
+#define MAX30101_LED_VOLTAGE_IR_MAX_UV (5000000u)
+#define MAX30101_LED_VOLTAGE_GREEN_MIN_UV (4500000u)
+#define MAX30101_LED_VOLTAGE_GREEN_MAX_UV (5500000u)
 /** @} */
 /** Minimum and maximum voltages for the PPG LEDs as a group. @{*/
 #define MAX30101_PPG_VOLTAGE_MIN_UV (MAX30101_LED_VOLTAGE_RED_MIN_UV)
@@ -513,7 +513,6 @@ int max30101_init(void) {
 		return -EIO;
 	}
 
-	max30101.state.value = 0;
 	max30101.state.bits.bInitialized = 1;
 	return 0;
 }
@@ -545,7 +544,7 @@ void max30101_get_default_config(struct max30101_config_t* config) {
 	config->proximity_int_threshold = MAX30101_PROXIMITY_THRESHOLD;
 
 	/* Default interrupt enable: FIFO almost full drives streaming. */
-	config->interrupts.bits.a_full = 1;
+	config->interrupts.value = 0;
 
 	/* Supply rail applied when max30101_init() is given a regulator. */
 	config->ppg_voltage_uv = MAX30101_PPG_VOLTAGE_UV;
@@ -553,13 +552,16 @@ void max30101_get_default_config(struct max30101_config_t* config) {
 
 /** Compute the effective per-channel sampling rate from a configuration. */
 static float max30101_compute_sampling_rate(const struct max30101_config_t* config) {
-	float rate;
+	/* SPO2_SR is a non-linear enum index, not a value in hertz: the steps are
+	 * 50, 100, 200, 400, 800, 1000, 1600, 3200 Hz. */
+	static const float sample_rate_hz[] = {
+		[max30101_sample_rate_50Hz] = 50.0f,	   [max30101_sample_rate_100Hz] = 100.0f,
+		[max30101_sample_rate_200Hz] = 200.0f,	   [max30101_sample_rate_400Hz] = 400.0f,
+		[max30101_sample_rate_800Hz] = 800.0f,	   [max30101_sample_rate_1000Hz] = 1000.0f,
+		[max30101_sample_rate_1600Hz] = 1600.0f, [max30101_sample_rate_3200Hz] = 3200.0f,
+	};
+	float rate = sample_rate_hz[config->spo2_config.bits.spo2_sr];
 
-	if (config->spo2_config.bits.spo2_sr == max30101_sample_rate_50Hz) {
-		rate = 50.0f;
-	} else {
-		rate = 100.0f * (float) config->spo2_config.bits.spo2_sr;
-	}
 	return rate / (float) (1 << config->fifo_config.bits.sample_average);
 }
 
@@ -612,6 +614,17 @@ int max30101_config(struct max30101_config_t* config) {
 		LOG_ERR("MAX30101 not initialized");
 		return -EINVAL;
 	}
+	if (max30101.state.bits.bDeviceFound == 0) {
+		LOG_ERR("MAX30101 not found");
+		return -ENODEV;
+	}
+
+	if (max30101.state.bits.bSampling != 0) {
+		LOG_ERR("MAX30101 is sampling, stop sampling before reconfiguring");
+		return -EBUSY;
+	}
+	// power off the LED supply before reconfiguring, to avoid damaging the device.
+	max30101_led_power_off();
 
 	if (config == NULL) {
 		max30101_get_default_config(&max30101.config);
@@ -759,14 +772,29 @@ int max30101_read_fifo(void* buffer, size_t buffer_size) {
 /* Internal decoded-sample stream                                             */
 /* ------------------------------------------------------------------------- */
 
-/** Best-effort wall-clock timestamp in milliseconds, falling back to uptime. */
+/**
+ * @brief Best-effort wall-clock timestamp in milliseconds, falling back to uptime.
+ * @details time() resolves only to whole seconds, so the millisecond remainder is
+ *          taken from the monotonic uptime clock. The two are anchored together
+ *          once, the first time a real wall-clock is available, and every later
+ *          timestamp is that anchor plus the elapsed uptime. This keeps the
+ *          stream monotonic with a coherent sub-second part, instead of summing a
+ *          per-second wall clock with an unrelated `uptime % 1000` that jumps
+ *          backwards at each second boundary.
+ */
 static uint64_t max30101_now_ms(void) {
+	static uint64_t unix_anchor_ms; /* Wall-clock ms at uptime 0; 0 until anchored. */
+	int64_t uptime_ms = k_uptime_get();
 	time_t now_sec = time(NULL);
 
-	if ((int64_t) now_sec > 1700000000LL) {
-		return ((uint64_t) now_sec * 1000ULL) + ((uint64_t) k_uptime_get() % 1000ULL);
+	if (unix_anchor_ms == 0 && (int64_t) now_sec > 1700000000LL) {
+		unix_anchor_ms = (uint64_t) now_sec * 1000ULL - (uint64_t) uptime_ms;
 	}
-	return (uint64_t) k_uptime_get();
+
+	if (unix_anchor_ms != 0) {
+		return unix_anchor_ms + (uint64_t) uptime_ms;
+	}
+	return (uint64_t) uptime_ms;
 }
 
 /** Drain the FIFO, decode each record, and append it to the internal stream. */
@@ -890,7 +918,7 @@ int max30101_irq_handler(void) {
 	return 0;
 }
 
-int max30101_enable_wrist_hr_sampling(void) {
+int max30101_enable_wrist_hr_sampling(bool per_sample_irq) {
 	if (max30101.state.bits.bConfigured == 0) {
 		LOG_ERR("MAX30101 not configured");
 		return -EAGAIN;
@@ -905,8 +933,13 @@ int max30101_enable_wrist_hr_sampling(void) {
 	cfg.multi_led_config.bits.slot1 = (int) max30101_led_IR;
 	cfg.multi_led_config.bits.slot2 = (int) max30101_led_Red;
 	cfg.multi_led_config.bits.slot3 = (int) max30101_led_Green;
+
+	/* per_sample_irq selects the FIFO notification cadence: PPG_RDY fires one
+	 * interrupt per new sample, A_FULL fires once per FIFO almost-full batch. */
 	cfg.interrupts.value = 0;
-	cfg.interrupts.bits.a_full = 1;
+	cfg.interrupts.bits.alc_ovf = 1;
+	cfg.interrupts.bits.ppg_rdy = per_sample_irq ? 1 : 0;
+	cfg.interrupts.bits.a_full = per_sample_irq ? 0 : 1;
 
 	int ret = max30101_config(&cfg);
 	if (ret != 0) {
@@ -923,7 +956,7 @@ int max30101_enable_wrist_hr_sampling(void) {
 	return 0;
 }
 
-int max30101_enable_sampling(enum max30101_operation_mode_type mode) {
+int max30101_enable_sampling(enum max30101_operation_mode_type mode, bool per_sample_irq) {
 	if (max30101.state.bits.bConfigured == 0) {
 		LOG_ERR("MAX30101 not configured");
 		return -EAGAIN;
@@ -957,11 +990,15 @@ int max30101_enable_sampling(enum max30101_operation_mode_type mode) {
 		return -EINVAL;
 	}
 
+	/* per_sample_irq selects the FIFO notification cadence: PPG_RDY fires one
+	 * interrupt per new sample, A_FULL fires once per FIFO almost-full batch. */
 	cfg.interrupts.value = 0;
-	cfg.interrupts.bits.a_full = 1;
+	cfg.interrupts.bits.ppg_rdy = per_sample_irq ? 1 : 0;
+	cfg.interrupts.bits.a_full = per_sample_irq ? 0 : 1;
 
-	if (!max30101_config(&cfg)) {
-		return -EIO;
+	int ret = max30101_config(&cfg);
+	if (ret != 0) {
+		return ret;
 	}
 
 	// now, we can enable the LED regulator
@@ -1051,10 +1088,6 @@ int max30101_enable_proximity(void) {
 }
 
 void max30101_shutdown(void) {
-	if (max30101.state.bits.bConfigured == 0) {
-		LOG_ERR("MAX30101 not configured");
-		return;
-	}
 
 	union max30101_mode_configuration_t mode = {.value = 0};
 	mode.bits.mode = max30101_mode_MultiLed;

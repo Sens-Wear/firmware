@@ -12,7 +12,9 @@
  *
  *   max30101_init()    - power the rail, probe PART_ID, claim the daughter_if IRQ
  *   max30101_config()  - apply the default acquisition configuration
- *   max30101_enable_wrist_hr_sampling() - start multi-LED (IR/Red/Green) sampling
+ *   max30101_enable_wrist_hr_sampling(per_sample_irq) - start multi-LED
+ *       (IR/Red/Green) sampling; the argument picks the FIFO IRQ cadence
+ *       (see TEST_PER_SAMPLE_IRQ): false = per almost-full batch, true = per sample
  *
  * Acquisition is interrupt driven. The MAX30101 INT line posts ::max30101_Irq
  * from ISR context; a dedicated consumer thread drains the shared device-event
@@ -39,10 +41,15 @@
 #include "max30101.h"
 #include "device_driver_events.h"
 #include "device_driver_dts_ids.h"
+#include "zephyr/drivers/regulator.h"
 
 #define TEST_EVENT_WAIT_MS 1000
 #define TEST_EVENT_THREAD_PRIO 7
 #define TEST_EVENT_STACK_SIZE 2048
+
+/* FIFO notification cadence under test: false = one IRQ per FIFO almost-full
+ * batch (FifoDataReady carries several samples), true = one IRQ per sample. */
+#define TEST_PER_SAMPLE_IRQ true
 
 K_THREAD_STACK_DEFINE(test_event_stack, TEST_EVENT_STACK_SIZE);
 static struct k_thread test_event_thread;
@@ -73,6 +80,7 @@ static void max30101_event_consumer_thread(void* a, void* b, void* c) {
 	ARG_UNUSED(c);
 
 	struct device_driver_event_t event;
+	bool sampling_started = false;
 
 	while (1) {
 		if (device_driver_event_wait(K_MSEC(TEST_EVENT_WAIT_MS), &event)) {
@@ -114,7 +122,14 @@ static void max30101_event_consumer_thread(void* a, void* b, void* c) {
 			/* No interrupt arrived; poll the handler so the test still makes
 			 * progress on rigs where INT is not wired. The handler republishes
 			 * max30101_event_FifoDataReady, which the next wait will deliver. */
-			max30101_irq_handler();
+			if (!sampling_started) {
+				printk("Starting sampling (per_sample_irq=%d)...\n", TEST_PER_SAMPLE_IRQ);
+				max30101_enable_wrist_hr_sampling(TEST_PER_SAMPLE_IRQ);
+				sampling_started = true;
+			} else {
+				printk("Polling max30101_irq_handler()...\n");
+				max30101_irq_handler();
+			}
 		}
 	}
 }
@@ -150,6 +165,9 @@ static bool start_max30101_event_consumer(void) {
 int main(void) {
 	printk("\n=== MAX30101 PPG test (sensewear_ppg shield) ===\n");
 
+	const struct device* const regulator = DEVICE_DT_GET(DT_NODELABEL(tpsm83102));
+	regulator_disable(regulator);
+
 	if (max30101_init() != 0) {
 		printk("max30101_init() failed\n");
 		return 0;
@@ -174,12 +192,8 @@ int main(void) {
 		return 0;
 	}
 
-	if (max30101_enable_wrist_hr_sampling() != 0) {
-		printk("Failed to start wrist HR sampling\n");
-		return 0;
-	}
-
-	printk("Sampling started; consuming and printing IR/Red/Green samples from consumer thread...\n");
+	printk(
+		"Sampling started; consuming and printing IR/Red/Green samples from consumer thread...\n");
 
 	return 0;
 }

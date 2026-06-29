@@ -114,7 +114,8 @@
  *     return;
  * }
  *
- * max30101_enable_wrist_hr_sampling();
+ * // false: interrupt once per FIFO almost-full batch; true: per sample.
+ * max30101_enable_wrist_hr_sampling(false);
  * @endcode
  */
 
@@ -296,25 +297,31 @@ float max30101_get_sampling_rate(void);
 /**
  * @brief Enable wrist heart-rate acquisition (multi-LED mode, three LEDs).
  *
+ * @param per_sample_irq Selects the FIFO notification cadence: true arms PPG_RDY
+ *        so the device interrupts on every new sample, false arms A_FULL so it
+ *        interrupts once per FIFO almost-full batch.
  * @retval 0 Multi-LED acquisition was enabled.
  * @retval -EAGAIN The sensor is not configured.
  * @retval -EBUSY Acquisition is already running.
  * @retval -EINVAL The LED supply could not be powered, or a negative errno
  *         propagated from max30101_config().
  */
-int max30101_enable_wrist_hr_sampling(void);
+int max30101_enable_wrist_hr_sampling(bool per_sample_irq);
 
 /**
  * @brief Enable a sampling operation mode.
  *
  * @param mode Operating mode to enable.
+ * @param per_sample_irq Selects the FIFO notification cadence: true arms PPG_RDY
+ *        so the device interrupts on every new sample, false arms A_FULL so it
+ *        interrupts once per FIFO almost-full batch.
  * @retval 0 The mode was enabled.
  * @retval -EAGAIN The sensor is not configured.
  * @retval -EBUSY Acquisition or proximity detection is already running.
  * @retval -EINVAL The mode is invalid or the LED supply could not be powered.
  * @retval -EIO A configuration transfer failed.
  */
-int max30101_enable_sampling(enum max30101_operation_mode_type mode);
+int max30101_enable_sampling(enum max30101_operation_mode_type mode, bool per_sample_irq);
 
 /**
  * @brief Stop an active sampling operation.
