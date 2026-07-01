@@ -81,6 +81,7 @@
 #include "bhy2_parse.h"
 #include "device_driver_dts_ids.h"
 #include "device_driver_events.h"
+#include "rtc.h"
 #include "sys_spi.h"
 
 #define BHY2_RD_WR_LEN 256
@@ -209,30 +210,33 @@ static struct bhi360_t {
 	struct k_mutex lock;
 	/** @brief Quaternion samples decoded in the current FIFO drain, published as one batch event.
 	 */
-	struct bhi360_quat_data quat_data[BHI360_MAX_SAMPLES_PER_IRQ];
+	struct bhi360_quat_data_t quat_data[BHI360_MAX_SAMPLES_PER_IRQ];
 	/** @brief Number of valid entries in quat_data for the current FIFO drain. */
 	size_t quat_count;
 	size_t quat_skipped_count; /**< @brief Number of quaternion samples skipped due to array
 								  overflow. */
 	/** @brief Linear-acceleration samples decoded in the current FIFO drain, published as one batch
 	 * event. */
-	struct bhi360_lacc_data lacc_data[BHI360_MAX_SAMPLES_PER_IRQ];
+	struct bhi360_lacc_data_t lacc_data[BHI360_MAX_SAMPLES_PER_IRQ];
 	/** @brief Number of valid entries in lacc_data for the current FIFO drain. */
 	size_t lacc_count;
 	size_t lacc_skipped_count; /**< @brief Number of linear-acceleration samples skipped due to
 								  array overflow. */
 	/** @brief Gyroscope samples decoded in the current FIFO drain, published as one batch event. */
-	struct bhi360_gyro_data gyro_data[BHI360_MAX_SAMPLES_PER_IRQ];
+	struct bhi360_gyro_data_t gyro_data[BHI360_MAX_SAMPLES_PER_IRQ];
 	/** @brief Number of valid entries in gyro_data for the current FIFO drain. */
 	size_t gyro_count;
 	size_t gyro_skipped_count; /**< @brief Number of gyroscope samples skipped due to array
 								  overflow. */
 	/** @brief Cached pedometer sample published through bhi360_event_Pedometer p_param. */
-	struct bhi360_pedometer_data pedometer_data;
+	struct bhi360_pedometer_data_t pedometer_data;
 	/** @brief Cached gesture sample published through bhi360_event_Gesture p_param. */
-	struct bhi360_gesture_data gesture_data;
+	struct bhi360_gesture_data_t gesture_data;
 	/** @brief Cached activity sample published through bhi360_event_Activity p_param. */
-	struct bhi360_activity_data activity_data;
+	struct bhi360_activity_data_t activity_data;
+
+	time_t last_irq_timestamp; /**< @brief Timestamp of the most recent IRQ (milliseconds since the
+								  Unix epoch). */
 } bhi360 = {
 	.spi = SYS_SPI_DT_SPEC_GET(BHI360_NODE, SPI_WORD_SET(8) | SPI_TRANSFER_MSB),
 	.cs_gpio = GPIO_DT_SPEC_GET(BHI360_NODE, cs_gpios),
@@ -241,6 +245,7 @@ static struct bhi360_t {
 	.gpio0 = GPIO_DT_SPEC_GET(BHI360_NODE, gpio0_gpios),
 	.gpio1 = GPIO_DT_SPEC_GET(BHI360_NODE, gpio1_gpios),
 	.name = "BHI360",
+	.last_irq_timestamp = -1,
 };
 
 static const char* const bhi360_event_names[bhi360_event_Count] = {
@@ -723,7 +728,7 @@ static int8_t upload_firmware(struct bhy2_dev* dev) {
 static void bhi360_irq_callback(const struct device* dev, struct gpio_callback* cb, uint32_t pins) {
 	ARG_UNUSED(dev);
 	ARG_UNUSED(cb);
-
+	bhi360.last_irq_timestamp = rtc_get_timestamp_us();
 	bhi360_post_event_isr(bhi360_event_Irq, pins);
 }
 
@@ -1364,7 +1369,7 @@ static int bhi360_copy_stream(const void* array,
 	return (int) count;
 }
 
-int bhi360_copy_quaternion(struct bhi360_quat_data* out, size_t max_samples) {
+int bhi360_copy_quaternion(struct bhi360_quat_data_t* out, size_t max_samples) {
 	return bhi360_copy_stream(bhi360.quat_data,
 							  &bhi360.quat_count,
 							  sizeof(bhi360.quat_data[0]),
@@ -1372,7 +1377,7 @@ int bhi360_copy_quaternion(struct bhi360_quat_data* out, size_t max_samples) {
 							  max_samples);
 }
 
-int bhi360_copy_linear_acceleration(struct bhi360_lacc_data* out, size_t max_samples) {
+int bhi360_copy_linear_acceleration(struct bhi360_lacc_data_t* out, size_t max_samples) {
 	return bhi360_copy_stream(bhi360.lacc_data,
 							  &bhi360.lacc_count,
 							  sizeof(bhi360.lacc_data[0]),
@@ -1380,7 +1385,7 @@ int bhi360_copy_linear_acceleration(struct bhi360_lacc_data* out, size_t max_sam
 							  max_samples);
 }
 
-int bhi360_copy_gyro(struct bhi360_gyro_data* out, size_t max_samples) {
+int bhi360_copy_gyro(struct bhi360_gyro_data_t* out, size_t max_samples) {
 	return bhi360_copy_stream(bhi360.gyro_data,
 							  &bhi360.gyro_count,
 							  sizeof(bhi360.gyro_data[0]),
@@ -1444,6 +1449,14 @@ void bhi360_stop(void) {
 	bhi360.state.bits.configured = 0U;
 }
 
+static inline time_t bhy2_timestamp_to_elapsed_us(uint64_t bhy2_timestamp) {
+	/* BHY2 FIFO timestamps are raw 15.625 us ticks since sensor boot.
+	 * Convert them to elapsed microseconds since the BHI360 firmware boot.
+	 * These are not Unix-epoch timestamps.
+	 */
+	return (time_t) ((bhy2_timestamp * UINT64_C(15625)) / UINT64_C(1000));
+}
+
 /**
  * @brief Parse a rotation-vector FIFO packet into the per-drain quaternion array.
  * @details Samples are only collected here; no event is posted per sample.
@@ -1467,12 +1480,13 @@ static void parse_quaternion(const struct bhy2_fifo_parse_data_info* callback_in
 
 	bhy2_parse_quaternion(callback_info->data_ptr, &data);
 
-	struct bhi360_quat_data* slot = &dev->quat_data[dev->quat_count++];
+	struct bhi360_quat_data_t* slot = &dev->quat_data[dev->quat_count++];
 	slot->x = data.x;
 	slot->y = data.y;
 	slot->z = data.z;
 	slot->w = data.w;
 	slot->accuracy = data.accuracy;
+	slot->timestamp = bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp));
 }
 
 /**
@@ -1493,10 +1507,11 @@ static void parse_linear_acceleration(const struct bhy2_fifo_parse_data_info* ca
 
 	bhy2_parse_xyz(callback_info->data_ptr, &data);
 
-	struct bhi360_lacc_data* slot = &dev->lacc_data[dev->lacc_count++];
+	struct bhi360_lacc_data_t* slot = &dev->lacc_data[dev->lacc_count++];
 	slot->x = data.x;
 	slot->y = data.y;
 	slot->z = data.z;
+	slot->timestamp = bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp));
 }
 
 /**
@@ -1516,10 +1531,11 @@ static void parse_gyro(const struct bhy2_fifo_parse_data_info* callback_info, vo
 
 	bhy2_parse_xyz(callback_info->data_ptr, &data);
 
-	struct bhi360_gyro_data* slot = &dev->gyro_data[dev->gyro_count++];
+	struct bhi360_gyro_data_t* slot = &dev->gyro_data[dev->gyro_count++];
 	slot->x = data.x;
 	slot->y = data.y;
 	slot->z = data.z;
+	slot->timestamp = bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp));
 }
 
 /**
@@ -1538,12 +1554,14 @@ static void parse_scalar_event(const struct bhy2_fifo_parse_data_info* callback_
 		(callback_info->sensor_id == BHY2_SENSOR_ID_STD_LP_WU)) {
 		dev->pedometer_data.sensor_id = callback_info->sensor_id;
 		dev->pedometer_data.step_detected = true;
+		dev->pedometer_data.timestamp = bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp));
 		bhi360_post_event(bhi360_event_Pedometer, callback_info->sensor_id, &dev->pedometer_data);
 		return;
 	}
 
 	dev->gesture_data.sensor_id = callback_info->sensor_id;
 	dev->gesture_data.value = value;
+	dev->gesture_data.timestamp = bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp));
 	bhi360_post_event(bhi360_event_Gesture, event_value, &dev->gesture_data);
 	LOG_INF("Gesture/event sensor id %u value 0x%02x", callback_info->sensor_id, value);
 }
@@ -1570,6 +1588,7 @@ static void parse_step_counter(const struct bhy2_fifo_parse_data_info* callback_
 	dev->pedometer_data.sensor_id = callback_info->sensor_id;
 	dev->pedometer_data.step_count = count;
 	dev->pedometer_data.step_detected = false;
+	dev->pedometer_data.timestamp = bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp));
 	bhi360_post_event(bhi360_event_Pedometer, callback_info->sensor_id, &dev->pedometer_data);
 	LOG_INF("Step counter sensor id %u count %u", callback_info->sensor_id, count);
 }
@@ -1594,10 +1613,10 @@ static void parse_activity(const struct bhy2_fifo_parse_data_info* callback_info
 	uint16_t activity = BHY2_LE2U16(callback_info->data_ptr);
 	dev->activity_data.sensor_id = callback_info->sensor_id;
 	dev->activity_data.activity = activity;
+	dev->activity_data.timestamp = bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp));
 	bhi360_post_event(bhi360_event_Activity,
 					  ((uint32_t) callback_info->sensor_id << 16) | activity,
 					  &dev->activity_data);
-
 	if (activity & BHY2_STILL_ACTIVITY_ENDED) {
 		LOG_INF("Activity: still ended");
 	}

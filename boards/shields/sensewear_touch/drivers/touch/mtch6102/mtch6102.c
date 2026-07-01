@@ -29,6 +29,7 @@
  */
 
 #include "mtch6102.h"
+#include "rtc.h"
 #include "sys_i2c.h"
 #include "daughter_if.h"
 #include "device_driver_events.h"
@@ -65,18 +66,24 @@ BUILD_ASSERT(DT_NODE_HAS_PROP(MTCH6102_NODE, vin_supply),
 /** Maximum time to wait for shared-bus ownership, in milliseconds. */
 #define MTCH6102_I2C_TIMEOUT 100
 
-/** Internal driver lifecycle flags. */
+/**
+ * @brief Internal driver lifecycle flags.
+ * @details Packs the driver's progress through init, configuration, and
+ *          acquisition into a single word. The union lets the whole flag set be
+ *          read or cleared as one word, while the bit-field view is used to test
+ *          and update individual milestones.
+ */
 union mtch6102_state_t {
-	unsigned int value;
+	unsigned int value; /**< All lifecycle flags as one word; used to clear them together. */
 	struct mtch6102_state_bits {
-		unsigned int bInitialized : 1;
-		unsigned int bProbed : 1;
-		unsigned int bDeviceFound : 1;
-		unsigned int bConfigured : 1;
-		unsigned int bSampling : 1;
-		unsigned int bIrqConfigured : 1;
-		unsigned int bSyncConfigured : 1;
-		unsigned int bSupplyEnabled : 1;
+		unsigned int bInitialized : 1;	  /**< mtch6102_init() completed successfully. */
+		unsigned int bProbed : 1;		  /**< A firmware-ID probe has been attempted. */
+		unsigned int bDeviceFound : 1;	  /**< The probe matched a supported MTCH6102. */
+		unsigned int bConfigured : 1;	  /**< The register configuration has been applied. */
+		unsigned int bSampling : 1;		  /**< Interrupt-driven acquisition is active. */
+		unsigned int bIrqConfigured : 1;  /**< The INT line is claimed and its callback armed. */
+		unsigned int bSyncConfigured : 1; /**< The SYNC line is claimed and configured as input. */
+		unsigned int bSupplyEnabled : 1;  /**< This driver enabled the supply rail. */
 	} bits;
 };
 
@@ -87,20 +94,26 @@ union mtch6102_state_t {
  *          event.
  */
 static struct mtch6102_t {
-	struct sys_i2c_dt_spec device;
-	const struct device* regulator;
-	const struct gpio_dt_spec* irq_gpio;
-	const struct gpio_dt_spec* sync_gpio;
-	struct gpio_callback irq_cb;
-	union mtch6102_state_t state;
-	struct mtch6102_config_t config;
-	struct touch_sensor_sample last_sample;
+	struct sys_i2c_dt_spec device;		 /**< Shared-bus target spec from devicetree. */
+	const struct device* regulator;		 /**< Dedicated supply-rail regulator handle. */
+	const struct gpio_dt_spec* irq_gpio; /**< INT line, claimed from the daughter-board arbiter. */
+	const struct gpio_dt_spec*
+		sync_gpio;					 /**< SYNC line, claimed from the daughter-board arbiter. */
+	struct gpio_callback irq_cb;	 /**< GPIO callback registered on the INT line. */
+	union mtch6102_state_t state;	 /**< Lifecycle flags. */
+	struct mtch6102_config_t config; /**< Cached register configuration to apply. */
+	struct touch_sensor_sample_t
+		last_sample; /**< Most recently decoded sample, published per event. */
+	time_t
+		irq_timestamp; /**< Timestamp of the last interrupt in microseconds since the Unix epoch. */
 } mtch6102 = {
 	.device = SYS_I2C_DT_SPEC_GET(MTCH6102_NODE),
 	.regulator = DEVICE_DT_GET(DT_PHANDLE(MTCH6102_NODE, vin_supply)),
+	.irq_timestamp = -1, /**< No interrupt has been received yet. */
 	/* All remaining members are zero-initialized by static storage duration. */
 };
 
+/** Printable name for each event identifier, indexed by ::mtch6102_event_type. */
 static const char* const mtch6102_event_names[mtch6102_event_Count] = {
 	[mtch6102_Irq] = "Irq",
 	[mtch6102_event_TouchDetected] = "TouchDetected",
@@ -127,38 +140,49 @@ const char* mtch6102_event_name(enum mtch6102_event_type event_id) {
 	return mtch6102_event_names[event_id];
 }
 
+/**
+ * @brief Map a raw GESTURE_STATE byte to a driver event identifier.
+ * @details The switch maps the ::mtch6102_gesture_type codes onto the driver's
+ *          software event namespace. ::mtch6102_gesture_None (touch only, no
+ *          gesture) is reported as ::mtch6102_event_TouchDetected; every other
+ *          recognized code maps to its click or swipe event.
+ *
+ * @param gesture_state Raw GESTURE_STATE register value.
+ * @return The matching ::mtch6102_event_type, or ::mtch6102_event_Invalid for an
+ *         unrecognized code.
+ */
 static enum mtch6102_event_type mtch6102_decode_gesture(uint8_t gesture_state) {
 	switch (gesture_state) {
-	case 0x00U:
+	case mtch6102_gesture_None:
 		return mtch6102_event_TouchDetected;
-	case 0x10U:
+	case mtch6102_gesture_SingleClick:
 		return mtch6102_event_SingleClick;
-	case 0x11U:
+	case mtch6102_gesture_ClickAndHold:
 		return mtch6102_event_ClickAndHold;
-	case 0x20U:
+	case mtch6102_gesture_DoubleClick:
 		return mtch6102_event_DoubleClick;
-	case 0x31U:
+	case mtch6102_gesture_DownSwipe:
 		return mtch6102_event_DownSwipe;
-	case 0x32U:
+	case mtch6102_gesture_DownSwipeAndHold:
 		return mtch6102_event_DownSwipeAndHold;
-	case 0x41U:
+	case mtch6102_gesture_RightSwipe:
 		return mtch6102_event_RightSwipe;
-	case 0x42U:
+	case mtch6102_gesture_RightSwipeAndHold:
 		return mtch6102_event_RightSwipeAndHold;
-	case 0x51U:
+	case mtch6102_gesture_UpSwipe:
 		return mtch6102_event_UpSwipe;
-	case 0x52U:
+	case mtch6102_gesture_UpSwipeAndHold:
 		return mtch6102_event_UpSwipeAndHold;
-	case 0x61U:
+	case mtch6102_gesture_LeftSwipe:
 		return mtch6102_event_LeftSwipe;
-	case 0x62U:
+	case mtch6102_gesture_LeftSwipeAndHold:
 		return mtch6102_event_LeftSwipeAndHold;
 	default:
 		return mtch6102_event_Invalid;
 	}
 }
 
-enum mtch6102_event_type mtch6102_sample_event(const struct touch_sensor_sample* sample) {
+enum mtch6102_event_type mtch6102_sample_event(const struct touch_sensor_sample_t* sample) {
 	enum mtch6102_event_type event;
 
 	if (sample == NULL) {
@@ -177,6 +201,17 @@ enum mtch6102_event_type mtch6102_sample_event(const struct touch_sensor_sample*
 	return mtch6102_event_TouchReleased;
 }
 
+/**
+ * @brief Decode a raw touch-register burst into a ::mtch6102_position.
+ * @details Expects the four bytes read starting at ::mtch6102_touch_TOUCHSTATE:
+ *          rx[0] TOUCHSTATE, rx[1] TOUCHX MSB, rx[2] TOUCHY MSB, and rx[3] the
+ *          packed X/Y low-nibble byte. The 12-bit coordinates are reassembled as
+ *          `(MSB << 4) | low nibble`; when no touch is present the coordinates
+ *          are forced to zero.
+ *
+ * @param pos Destination position structure.
+ * @param rx  Four-byte touch-register burst starting at TOUCHSTATE.
+ */
 static void mtch6102_decode_position(struct mtch6102_position* pos, const uint8_t rx[4]) {
 	union mtch6102_touchstate_register_t touch_state = {.value = rx[0]};
 
@@ -224,7 +259,17 @@ static inline int mtch6102_write_register(uint8_t reg, uint8_t value) {
 	return sys_i2c_write(&mtch6102.device, tx, sizeof(tx));
 }
 
-/** Probe for the firmware identifier. The caller must own the shared bus. */
+/**
+ * @brief Probe for the MTCH6102 firmware identifier.
+ * @details Reads the four core ID bytes (FWMajor, FWMinor, APPIDH, APPIDL) and
+ *          accepts the observed firmware family and application ID; the minor
+ *          revision is allowed to vary between parts. Updates the `bProbed` and
+ *          `bDeviceFound` state flags as a side effect. The caller must already
+ *          own the shared bus.
+ *
+ * @retval true  A supported MTCH6102 responded with a matching ID.
+ * @retval false The read failed or the ID did not match.
+ */
 static bool mtch6102_probe(void) {
 	uint8_t core[4] = {0U};
 	uint8_t start_reg = mtch6102_core_FWMajor;
@@ -260,15 +305,26 @@ static bool mtch6102_probe(void) {
 	return mtch6102.state.bits.bDeviceFound != 0U;
 }
 
-static int mtch6102_set_irq_config(bool enabled) {
-	if (mtch6102.irq_gpio == NULL) {
-		return -ENODEV;
-	}
+/* Defined in the interrupt section below; registered by mtch6102_gpio_init(). */
+static void mtch6102_irq_callback(const struct device* dev,
+								  struct gpio_callback* cb,
+								  uint32_t pins);
 
-	return gpio_pin_interrupt_configure_dt(mtch6102.irq_gpio,
-										   enabled ? GPIO_INT_EDGE_FALLING : GPIO_INT_DISABLE);
-}
-
+/**
+ * @brief Claim, configure, and arm the daughter-board SYNC and INT lines.
+ * @details Claims both connector lines from the @ref sensewear_daughter_if
+ *          arbiter (SYNC first, then INT), configures each as an input, registers
+ *          the INT-pin GPIO callback, and arms the falling-edge interrupt (the
+ *          MTCH6102 INT pin is open-collector and active-low, so the callback is
+ *          in place before the interrupt is enabled). On any failure every line
+ *          claimed within the call is released and the cached handles are
+ *          cleared, so the driver is left with no partially owned GPIOs.
+ *
+ * @retval 0 Both lines were claimed and configured and the INT interrupt armed.
+ * @retval -ENODEV A connector line could not be claimed.
+ * @return A negative errno from the GPIO driver if pin configuration, callback
+ *         registration, or interrupt arming failed.
+ */
 static int mtch6102_gpio_init(void) {
 	int ret;
 
@@ -313,6 +369,31 @@ static int mtch6102_gpio_init(void) {
 		return ret;
 	}
 
+	gpio_init_callback(&mtch6102.irq_cb, mtch6102_irq_callback, BIT(mtch6102.irq_gpio->pin));
+	ret = gpio_add_callback(mtch6102.irq_gpio->port, &mtch6102.irq_cb);
+	if (ret != 0) {
+		LOG_ERR("MTCH6102 interrupt callback add failed (%d)", ret);
+		(void) daughter_if_gpio_release(MTCH6102_IRQ_LINE);
+		(void) daughter_if_gpio_release(MTCH6102_SYNC_LINE);
+		mtch6102.irq_gpio = NULL;
+		mtch6102.sync_gpio = NULL;
+		mtch6102.state.bits.bSyncConfigured = 0U;
+		return ret;
+	}
+
+	ret = gpio_pin_interrupt_configure_dt(mtch6102.irq_gpio, GPIO_INT_EDGE_FALLING);
+	if (ret != 0) {
+		LOG_ERR("MTCH6102 interrupt arm failed (%d)", ret);
+		gpio_remove_callback(mtch6102.irq_gpio->port, &mtch6102.irq_cb);
+		(void) daughter_if_gpio_release(MTCH6102_IRQ_LINE);
+		(void) daughter_if_gpio_release(MTCH6102_SYNC_LINE);
+		mtch6102.irq_gpio = NULL;
+		mtch6102.sync_gpio = NULL;
+		mtch6102.state.bits.bSyncConfigured = 0U;
+		return ret;
+	}
+
+	mtch6102.state.bits.bIrqConfigured = 1U;
 	return 0;
 }
 
@@ -320,11 +401,19 @@ static int mtch6102_gpio_init(void) {
 /* Supply-rail ownership                                                      */
 /* ------------------------------------------------------------------------- */
 
-/*
- * Validate the dedicated MTCH6102 supply rail and cache its regulator handle.
- * Mirrors the DRV2605 / MAX30101 power-up checks: an already-live shared rail
- * must already sit at the fixed voltage the MTCH6102 requires, otherwise driving
- * it later risks damaging the part or another device on the rail.
+/**
+ * @brief Validate the dedicated MTCH6102 supply rail and cache its regulator.
+ * @details Mirrors the DRV2605 / MAX30101 power-up checks: an already-live shared
+ *          rail must already sit at the fixed ::MTCH6102_SUPPLY_VOLTAGE_UV the
+ *          MTCH6102 requires, otherwise driving it later risks damaging the part
+ *          or another device on the rail. When the rail is not yet enabled the
+ *          output voltage is programmed once here so a later enable brings it up
+ *          at the correct level.
+ *
+ * @retval 0 The rail is ready (or no regulator is configured).
+ * @retval -ENODEV The regulator device is not ready.
+ * @retval -EINVAL The rail is already live at the wrong voltage.
+ * @return A negative errno from the regulator API on read/set failure.
  */
 static int mtch6102_supply_init(void) {
 	int32_t current_uv;
@@ -370,9 +459,17 @@ static int mtch6102_supply_init(void) {
 	return 0;
 }
 
-/*
- * Bring the dedicated supply rail to the fixed MTCH6102 voltage and enable it.
- * Idempotent: a rail this driver already enabled is left untouched.
+/**
+ * @brief Enable the dedicated supply rail and wait for it to settle.
+ * @details Idempotent: a rail this driver already enabled is left untouched. If
+ *          the rail is found already enabled by some other owner the call fails,
+ *          since the driver cannot guarantee the correct voltage. After enabling
+ *          it waits ::MTCH6102_SUPPLY_RAMP_DELAY_MS for the rail to ramp and the
+ *          device to power up before returning.
+ *
+ * @retval 0 The rail is enabled and settled (or no regulator is configured).
+ * @retval -EINVAL The rail was already enabled by another owner.
+ * @return A negative errno from the regulator API on enable failure.
  */
 static int mtch6102_supply_on(void) {
 	int ret;
@@ -398,7 +495,11 @@ static int mtch6102_supply_on(void) {
 	return 0;
 }
 
-/* Disable the dedicated supply rail if this driver enabled it. */
+/**
+ * @brief Disable the dedicated supply rail if this driver enabled it.
+ * @details A no-op when no regulator is configured or the rail was not enabled by
+ *          this driver, so it never disturbs a rail owned elsewhere.
+ */
 static void mtch6102_supply_off(void) {
 	if (mtch6102.regulator == NULL || !mtch6102.state.bits.bSupplyEnabled) {
 		return;
@@ -445,6 +546,15 @@ int mtch6102_start(void) {
 /* Event publication                                                          */
 /* ------------------------------------------------------------------------- */
 
+/**
+ * @brief Publish a decoded event through the shared device-event manager.
+ * @details Thread-context variant. Posts with K_NO_WAIT and drops the return
+ *          value: event delivery is best-effort and never blocks the caller.
+ *
+ * @param event   Decoded ::mtch6102_event_type to publish.
+ * @param v_param Scalar payload (the raw TOUCH_STATE byte).
+ * @param p_param Pointer payload (the decoded ::touch_sensor_sample).
+ */
 static inline void mtch6102_post_event(enum mtch6102_event_type event,
 									   uint32_t v_param,
 									   uintptr_t p_param) {
@@ -455,6 +565,14 @@ static inline void mtch6102_post_event(enum mtch6102_event_type event,
 									K_NO_WAIT);
 }
 
+/**
+ * @brief Publish an event from ISR context.
+ * @details ISR-safe variant used by the GPIO callback to post ::mtch6102_Irq.
+ *          Carries no pointer payload and drops the return value.
+ *
+ * @param event   Event identifier to publish, ::mtch6102_Irq at INT time.
+ * @param v_param Scalar payload (the interrupting pin mask).
+ */
 static inline void mtch6102_post_event_isr(enum mtch6102_event_type event, uint32_t v_param) {
 	(void) device_driver_event_post_isr(MTCH6102_DEVICE_DTS_ID,
 										(uint32_t) event,
@@ -469,10 +587,25 @@ static void mtch6102_irq_callback(const struct device* dev,
 	ARG_UNUSED(dev);
 	ARG_UNUSED(cb);
 
+	mtch6102.irq_timestamp = rtc_get_timestamp_us();
 	mtch6102_post_event_isr(mtch6102_Irq, pins);
 }
 
-static int mtch6102_read_sample(struct touch_sensor_sample* sample) {
+/**
+ * @brief Read and decode a full touch/gesture sample.
+ * @details Acquires the shared bus, reads the six-byte burst from
+ *          ::mtch6102_touch_TOUCHSTATE (position plus GESTURE_STATE), decodes the
+ *          position into @p sample, stores the raw gesture byte, and releases the
+ *          bus. Unlike the register helpers, this routine owns the bus for its
+ *          own transfer.
+ *
+ * @param sample Destination sample structure.
+ * @retval 0 The sample was read and decoded.
+ * @retval -EINVAL @p sample was NULL.
+ * @retval -EIO The shared bus could not be acquired.
+ * @return A negative errno if the I2C transfer failed.
+ */
+static int mtch6102_read_sample(struct touch_sensor_sample_t* sample) {
 	uint8_t gesture_state;
 	uint8_t start_reg = mtch6102_touch_TOUCHSTATE;
 	uint8_t rx[6] = {0U};
@@ -496,6 +629,8 @@ static int mtch6102_read_sample(struct touch_sensor_sample* sample) {
 	mtch6102_decode_position(&sample->position, rx);
 	gesture_state = rx[4];
 	sample->gesture_state = gesture_state;
+	sample->timestamp = (mtch6102.irq_timestamp == -1) ? rtc_get_timestamp_us()
+													   : mtch6102.irq_timestamp;
 
 	mtch6102_bus_unlock();
 	return 0;
@@ -585,6 +720,21 @@ void mtch6102_get_default_config(struct mtch6102_config_t* config) {
 	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_I2CAddr)] = 0x25U;
 }
 
+/**
+ * @brief Write a configuration object to the device registers.
+ * @details Writes the configuration register block (NumberOfXChannels through
+ *          VerticalGestureAngle, in register order), then the MODE and MODECON
+ *          decode-control registers, and finally the CMD register with the `cfg`
+ *          bit set to latch the block into the running configuration. The I2CAddr
+ *          register is skipped so the device keeps its devicetree-fixed address,
+ *          and the read-only firmware-ID and status registers are never touched.
+ *          The caller must already own the shared bus.
+ *
+ * @param config Configuration to apply.
+ * @retval 0 Every register was written.
+ * @retval -EINVAL @p config was NULL.
+ * @return A negative errno if a register transfer failed.
+ */
 static int mtch6102_apply_config(const struct mtch6102_config_t* config) {
 	union mtch6102_cmd_register_t cmd;
 	union mtch6102_mode_register_t mode;
@@ -724,26 +874,6 @@ void mtch6102_stop(void) {
 	mtch6102_supply_off();
 }
 
-void mtch6102_deinit(void) {
-	mtch6102_stop();
-
-	if (mtch6102.irq_gpio != NULL) {
-		(void) mtch6102_set_irq_config(false);
-		gpio_remove_callback(mtch6102.irq_gpio->port, &mtch6102.irq_cb);
-		(void) daughter_if_gpio_release(MTCH6102_IRQ_LINE);
-		mtch6102.irq_gpio = NULL;
-		mtch6102.state.bits.bIrqConfigured = 0U;
-	}
-
-	if (mtch6102.sync_gpio != NULL) {
-		(void) daughter_if_gpio_release(MTCH6102_SYNC_LINE);
-		mtch6102.sync_gpio = NULL;
-		mtch6102.state.bits.bSyncConfigured = 0U;
-	}
-
-	mtch6102.state.value = 0U;
-}
-
 int mtch6102_init(void) {
 	int ret;
 
@@ -784,36 +914,8 @@ int mtch6102_init(void) {
 		return ret;
 	}
 
-	gpio_init_callback(&mtch6102.irq_cb, mtch6102_irq_callback, BIT(mtch6102.irq_gpio->pin));
-	ret = gpio_add_callback(mtch6102.irq_gpio->port, &mtch6102.irq_cb);
-	if (ret != 0) {
-		LOG_ERR("MTCH6102 interrupt callback add failed (%d)", ret);
-		(void) daughter_if_gpio_release(MTCH6102_IRQ_LINE);
-		(void) daughter_if_gpio_release(MTCH6102_SYNC_LINE);
-		mtch6102.irq_gpio = NULL;
-		mtch6102.sync_gpio = NULL;
-		mtch6102.state.bits.bIrqConfigured = 0U;
-		mtch6102.state.bits.bSyncConfigured = 0U;
-		return ret;
-	}
-
-	ret = mtch6102_set_irq_config(true);
-	if (ret != 0) {
-		LOG_ERR("MTCH6102 interrupt arm failed (%d)", ret);
-		gpio_remove_callback(mtch6102.irq_gpio->port, &mtch6102.irq_cb);
-		(void) daughter_if_gpio_release(MTCH6102_IRQ_LINE);
-		(void) daughter_if_gpio_release(MTCH6102_SYNC_LINE);
-		mtch6102.irq_gpio = NULL;
-		mtch6102.sync_gpio = NULL;
-		mtch6102.state.bits.bIrqConfigured = 0U;
-		mtch6102.state.bits.bSyncConfigured = 0U;
-		return ret;
-	}
-
 	mtch6102_get_default_config(&mtch6102.config);
 	mtch6102.state.bits.bInitialized = 1U;
 	mtch6102.state.bits.bConfigured = 0U;
-	mtch6102.state.bits.bIrqConfigured = 1U;
-	mtch6102.state.bits.bSyncConfigured = 1U;
 	return 0;
 }

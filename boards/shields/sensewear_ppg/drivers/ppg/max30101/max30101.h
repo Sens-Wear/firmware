@@ -15,6 +15,14 @@
  * configuration, drains the FIFO, and turns hardware interrupt conditions into
  * stable software events for higher-level policy code.
  *
+ * @section sensewear_max30101_timestamp_semantics Timestamp semantics
+ *
+ * The MAX30101 FIFO records do not carry a Unix epoch timestamp. The driver
+ * captures the interrupt arrival time with rtc_get_timestamp_us() and uses that
+ * as the batch anchor when draining the FIFO. Each decoded PPG sample is then
+ * assigned an interpolated timestamp in microseconds since the Unix epoch based
+ * on the configured sampling rate.
+ *
  * Like the other SenseWear board drivers, the MAX30101 routes every transfer
  * through the board's @ref sensewear_sys_i2c ownership wrapper rather than
  * calling Zephyr's I2C API directly:
@@ -126,6 +134,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <time.h>
 
 /**
  * @brief Maximum time allowed for acquiring the shared I2C bus.
@@ -195,11 +204,11 @@ struct max30101_config_t {
  *          current mode are reported as zero. Counts are raw 18-bit ADC values
  *          right-justified in the 32-bit fields.
  */
-struct max30101_sample_t {
-	uint64_t unix_ms; /**< Acquisition timestamp in milliseconds. */
-	uint32_t ir;	  /**< IR channel counts (slot 1), or 0 if inactive. */
-	uint32_t red;	  /**< Red channel counts (slot 2), or 0 if inactive. */
-	uint32_t green;	  /**< Green channel counts (slot 3), or 0 if inactive. */
+struct max30101_ppg_sample_t {
+	uint64_t timestamp; /**< Acquisition timestamp in microseconds since the Unix epoch. */
+	uint32_t ir;		/**< IR channel counts (slot 1), or 0 if inactive. */
+	uint32_t red;		/**< Red channel counts (slot 2), or 0 if inactive. */
+	uint32_t green;		/**< Green channel counts (slot 3), or 0 if inactive. */
 };
 
 /**
@@ -270,7 +279,9 @@ const char* max30101_event_name(uint32_t event_id);
  * and die-temperature-ready publish their decoded `max30101_event_*` identifier;
  * a new-data or almost-full condition drains the FIFO into the internal sample
  * buffer and publishes ::max30101_event_FifoDataReady (sample count in `v_param`,
- * sample-array pointer in `p_param`).
+ * sample-array pointer in `p_param`). The sample timestamps are back-filled from
+ * the interrupt anchor returned by max30101_last_irq_timestamp() and the current
+ * sampling rate.
  *
  * Call from thread context in response to ::max30101_Irq.
  *
@@ -280,6 +291,13 @@ const char* max30101_event_name(uint32_t event_id);
  */
 int max30101_irq_handler(void);
 
+/**
+ * @brief Return the most recent MAX30101 IRQ time.
+ * @details The timestamp is captured from rtc_get_timestamp_us() in the GPIO
+ *          interrupt callback and is expressed in microseconds since the Unix
+ *          epoch. FIFO sample timestamps are interpolated from this anchor.
+ */
+time_t max30101_last_irq_timestamp(void);
 /**
  * @brief Return the number of LED channels active in the current mode.
  *

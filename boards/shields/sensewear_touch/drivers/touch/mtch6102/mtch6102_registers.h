@@ -113,6 +113,30 @@ enum mtch6102_touch_register_type {
 typedef enum mtch6102_touch_register_type MTCH6102_Touch_Ram_Memory;
 
 /**
+ * @brief MTCH6102 GESTURE_STATE register codes.
+ * @details Hardware-defined values reported in the ::mtch6102_touch_GESTURESTATE
+ *          register, as listed in the MTCH6102 user guide. This is the raw
+ *          hardware namespace; the driver maps these codes onto the separate
+ *          software ::mtch6102_event_type identifiers. A value of
+ *          ::mtch6102_gesture_None means a touch is present with no gesture
+ *          decoded.
+ */
+enum mtch6102_gesture_type {
+	mtch6102_gesture_None = 0x00,			/**< Touch present, no gesture decoded. */
+	mtch6102_gesture_SingleClick = 0x10,	/**< Single click. */
+	mtch6102_gesture_ClickAndHold = 0x11,	/**< Click and hold. */
+	mtch6102_gesture_DoubleClick = 0x20,	/**< Double click. */
+	mtch6102_gesture_DownSwipe = 0x31,		/**< Down swipe. */
+	mtch6102_gesture_DownSwipeAndHold = 0x32, /**< Down swipe and hold. */
+	mtch6102_gesture_RightSwipe = 0x41,		/**< Right swipe. */
+	mtch6102_gesture_RightSwipeAndHold = 0x42, /**< Right swipe and hold. */
+	mtch6102_gesture_UpSwipe = 0x51,		/**< Up swipe. */
+	mtch6102_gesture_UpSwipeAndHold = 0x52, /**< Up swipe and hold. */
+	mtch6102_gesture_LeftSwipe = 0x61,		/**< Left swipe. */
+	mtch6102_gesture_LeftSwipeAndHold = 0x62, /**< Left swipe and hold. */
+};
+
+/**
  * @brief MTCH6102 compensation RAM register map.
  */
 enum mtch6102_compensation_register_type {

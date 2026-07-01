@@ -35,12 +35,12 @@ LOG_MODULE_REGISTER(rtc, CONFIG_LOG_DEFAULT_LEVEL);
 
 /** Settings subtree and key used to persist the wall clock. */
 #define RTC_SETTINGS_SUBTREE "rtc"
-#define RTC_SETTINGS_KEY	 RTC_SETTINGS_SUBTREE "/time"
+#define RTC_SETTINGS_KEY RTC_SETTINGS_SUBTREE "/time"
 
 /** Seconds in each recurring-alarm period. */
 #define RTC_MINUTE_SEC (60u)
-#define RTC_HOUR_SEC   (3600u)
-#define RTC_DAY_SEC	   (86400u)
+#define RTC_HOUR_SEC (3600u)
+#define RTC_DAY_SEC (86400u)
 
 /**
  * @brief Internal singleton driver context.
@@ -123,6 +123,26 @@ time_t rtc_get_unix(void) {
 	return (time_t) ts.tv_sec;
 }
 
+time_t rtc_get_timestamp_ms(void) {
+	struct timespec ts;
+
+	if (sys_clock_gettime(SYS_CLOCK_REALTIME, &ts) != 0) {
+		return (time_t) -1;
+	}
+
+	return (time_t) (((int64_t) ts.tv_sec * 1000LL) + ((int64_t) ts.tv_nsec / 1000000LL));
+}
+
+time_t rtc_get_timestamp_us(void) {
+	struct timespec ts;
+
+	if (sys_clock_gettime(SYS_CLOCK_REALTIME, &ts) != 0) {
+		return (time_t) -1;
+	}
+
+	return (time_t) (((int64_t) ts.tv_sec * 1000000LL) + ((int64_t) ts.tv_nsec / 1000LL));
+}
+
 bool rtc_get_time(struct tm* tm_utc) {
 	if (tm_utc == NULL) {
 		return false;
@@ -166,10 +186,7 @@ static void rtc_persist_work_handler(struct k_work* work) {
 }
 
 /** Settings handler: capture the persisted Unix time during settings_load(). */
-static int rtc_settings_set(const char* name,
-							size_t len,
-							settings_read_cb read_cb,
-							void* cb_arg) {
+static int rtc_settings_set(const char* name, size_t len, settings_read_cb read_cb, void* cb_arg) {
 	const char* next;
 
 	if (!settings_name_steq(name, "time", &next) || next != NULL) {

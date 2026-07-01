@@ -1,4 +1,18 @@
+/**
+ * bq27427.c
+ *
+ * @file bq27427.c
+ * @brief SenseWear BQ27427 fuel-gauge driver implementation.
+ * @details The driver is a board-level singleton that talks to the gauge
+ *          through the board's shared I2C wrapper. Battery state is polled on
+ *          demand, and each successful refresh updates the cached state with a
+ *          timestamp sampled from `SYS_CLOCK_REALTIME` through
+ *          `rtc_get_timestamp_us()`. That timestamp is Unix epoch time in
+ *          microseconds since `1970-01-01 00:00:00 UTC` and truncates the
+ *          sub-microsecond portion of the clock.
+ */
 #include "bq27427.h"
+#include "rtc.h"
 #include "sys_i2c.h"
 #include "device_driver_events.h"
 #include "device_driver_dts_ids.h"
@@ -914,11 +928,13 @@ bool bq27427_update_state(struct bq27427_battery_state_t* state) {
 
 	bq27427.battery_state.nominal_available_capacity =
 		bq27427_i2c_read_w_command(bq27427_command_NominalAvailableCapacity);
+	// Save the refresh time from SYS_CLOCK_REALTIME as Unix epoch microseconds via
+	// rtc_get_timestamp_us(); the sub-microsecond portion is truncated.
+	bq27427.battery_state.last_update_time = rtc_get_timestamp_us();
 	bq27427_bus_unlock();
 	if (state != NULL) {
 		memcpy(state, &(bq27427.battery_state), sizeof(struct bq27427_battery_state_t));
 	}
-
 	// notify consumers that a fresh battery state is available.
 	device_driver_event_post(BQ27427_DEVICE_DTS_ID,
 							 bq27427_event_StateUpdated,
@@ -929,7 +945,7 @@ bool bq27427_update_state(struct bq27427_battery_state_t* state) {
 }
 
 /*
- * \brief Prints the latest battery state
+ * \brief Prints the latest battery state and its refresh timestamp.
  */
 void bq27427_print_state(void) {
 	if (bq27427.state.bits.bConfigured == 0) {
@@ -947,6 +963,8 @@ void bq27427_print_state(void) {
 	flags.value = bq27427_i2c_read_w_command(bq27427_command_Flags);
 	bq27427_bus_unlock();
 	LOG_INF("%d", flags.value);
+	LOG_INF("Battery state refresh time: %lld us since Unix epoch",
+			(long long) bq27427.battery_state.last_update_time);
 	LOG_INF("Battery state: T=%d V=%d A=%d P=%d SOC=%d AvailCap=%d "
 			"FullCap=%d RemainingCap=%d FLAGS: 0x%04x CS: 0x%04x\r\n",
 			bq27427.battery_state.temperature,

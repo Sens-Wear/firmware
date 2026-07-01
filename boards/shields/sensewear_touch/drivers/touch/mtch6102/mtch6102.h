@@ -90,10 +90,10 @@
  *    reads the touch position and gesture state, classifies the sample with
  *    mtch6102_sample_event(), and publishes the decoded `mtch6102_event_*`
  *    identifier through the shared device-event manager.
- * 5. Call mtch6102_stop() and mtch6102_deinit() when finished.
+ * 5. Call mtch6102_stop() to power down the rail when finished.
  *
- * The INT line is armed once in mtch6102_init() and stays armed until
- * mtch6102_deinit(); acquisition is gated by the supply rail, which
+ * The INT line is armed once in mtch6102_init() and stays armed for the life of
+ * the driver; acquisition is gated by the supply rail, which
  * mtch6102_start() powers and mtch6102_stop() removes. Keep the rail enabled
  * while the controller is connected to the bus; if the part is powered down it
  * may continue to hold the I2C lines until the rail is brought back up.
@@ -174,6 +174,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <time.h>
 
 #include <zephyr/drivers/i2c.h>
 
@@ -219,7 +220,8 @@ enum mtch6102_event_type {
  *          inspect the raw fields directly if it needs the unmodified sensor
  *          state.
  */
-struct touch_sensor_sample {
+struct touch_sensor_sample_t {
+	time_t timestamp; /**< Timestamp of the sample in microseconds since the Unix epoch. */
 	struct mtch6102_position position; /**< Decoded touch position and raw touch-state byte. */
 	uint8_t gesture_state;			   /**< Raw GESTURE_STATE register value. */
 };
@@ -271,7 +273,7 @@ const char* mtch6102_event_name(enum mtch6102_event_type event_id);
  * @param sample Decoded touch sample, or NULL.
  * @return A value from enum mtch6102_event_type.
  */
-enum mtch6102_event_type mtch6102_sample_event(const struct touch_sensor_sample* sample);
+enum mtch6102_event_type mtch6102_sample_event(const struct touch_sensor_sample_t* sample);
 
 /**
  * @brief Report whether mtch6102_init() has successfully probed the part.
@@ -355,9 +357,6 @@ int mtch6102_start(void);
 /** @brief Stop acquisition and power down the rail. */
 void mtch6102_stop(void);
 
-/** @brief Stop acquisition and mark the driver uninitialized. */
-void mtch6102_deinit(void);
-
 /**
  * @brief Handle an MTCH6102 interrupt.
  *
@@ -389,10 +388,6 @@ static inline int touch_sensor_start(void) {
 
 static inline void touch_sensor_stop(void) {
 	mtch6102_stop();
-}
-
-static inline void touch_sensor_deinit(void) {
-	mtch6102_deinit();
 }
 
 /** @} */

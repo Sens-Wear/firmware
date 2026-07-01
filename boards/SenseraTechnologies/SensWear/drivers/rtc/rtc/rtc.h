@@ -63,8 +63,10 @@
  *
  * @section sensewear_rtc_time_repr Time representation
  *
- * Broken-down time uses the standard `struct tm` in UTC. Helpers convert to and
- * from a `time_t` Unix timestamp using Zephyr's timeutil and the C library.
+ * Broken-down time uses the standard `struct tm` in UTC. Unix time is exposed
+ * in seconds through `rtc_get_unix()`. For data streams that need sub-second
+ * epoch tags, `rtc_get_timestamp_ms()` and `rtc_get_timestamp_us()` return Unix
+ * timestamps in milliseconds and microseconds.
  *
  * @section sensewear_rtc_example Typical usage
  *
@@ -199,6 +201,22 @@ bool rtc_get_time(struct tm* tm_utc);
  *         read.
  */
 time_t rtc_get_unix(void);
+
+/**
+ * @brief Read the current wall-clock time as a Unix timestamp in milliseconds.
+ *
+ * @return Milliseconds since the Unix epoch, or (time_t)-1 if the clock could
+ *         not be read.
+ */
+time_t rtc_get_timestamp_ms(void);
+
+/**
+ * @brief Read the current wall-clock time as a Unix timestamp in microseconds.
+ *
+ * @return Microseconds since the Unix epoch, or (time_t)-1 if the clock could
+ *         not be read.
+ */
+time_t rtc_get_timestamp_us(void);
 
 /**
  * @brief Enable or disable the recurring minute alarm.

@@ -22,6 +22,7 @@
 #include "max30101.h"
 #include "max30101_config.h"
 #include "max30101_registers.h"
+#include "rtc.h"
 #include "sys_i2c.h"
 #include "daughter_if.h"
 #include "device_driver_events.h"
@@ -84,11 +85,12 @@ union max30101_state_t {
 	unsigned int value; /**< Complete packed lifecycle state. */
 	/** Individual internal lifecycle flags. */
 	struct max30101_state_bits {
-		unsigned int bInitialized : 1;		  /**< Probe and IRQ setup completed. */
-		unsigned int bProbed : 1;			  /**< Device presence probe attempted. */
-		unsigned int bDeviceFound : 1;		  /**< Device presence detected. */
-		unsigned int bConfigured : 1;		  /**< Register configuration applied. */
-		unsigned int bLedsPowered : 1;		  /**< LED supply is enabled. */
+		unsigned int bInitialized : 1;	 /**< Probe and IRQ setup completed. */
+		unsigned int bProbed : 1;		 /**< Device presence probe attempted. */
+		unsigned int bDeviceFound : 1;	 /**< Device presence detected. */
+		unsigned int bIrqConfigured : 1; /**< The INT line is claimed and its callback armed. */
+		unsigned int bConfigured : 1;	 /**< Register configuration applied. */
+		unsigned int bLedsPowered : 1;	 /**< LED supply is enabled. */
 		unsigned int bDetectingProximity : 1; /**< Proximity detection is active. */
 		unsigned int bSampling : 1;			  /**< Acquisition is running. */
 	} bits;
@@ -109,8 +111,6 @@ static struct max30101_t {
 	const struct gpio_dt_spec* irq_gpio;
 	/** GPIO callback instance registered for the interrupt line. */
 	struct gpio_callback irq_cb;
-	/** Whether the interrupt GPIO callback has been configured. */
-	bool irq_ready;
 	/** Driver lifecycle state. */
 	union max30101_state_t state;
 	/** Most recently applied acquisition configuration. */
@@ -124,11 +124,15 @@ static struct max30101_t {
 	/** Count of proximity readings accumulated so far. */
 	int proximity_led_read_count;
 
-	struct max30101_sample_t samples[MAX30101_FIFO_DEPTH];
+	struct max30101_ppg_sample_t samples[MAX30101_FIFO_DEPTH];
 	size_t sample_count;
+
+	/** Timestamp of the last interrupt in microseconds since the Unix epoch. */
+	time_t irq_timestamp;
 } max30101 = {
 	.device = SYS_I2C_DT_SPEC_GET(MAX30101_NODE),
 	.regulator = DEVICE_DT_GET(DT_PHANDLE(MAX30101_NODE, vin_supply)),
+	.irq_timestamp = -1, /**< No interrupt has been received yet. */
 	/* All remaining members are zero-initialised by static storage duration. */
 };
 
@@ -260,18 +264,23 @@ static bool max30101_probe(void) {
 	return max30101.state.bits.bDeviceFound != 0;
 }
 
-/** GPIO ISR that posts the raw interrupt notification event. */
+/**
+ * @brief GPIO ISR that posts the raw interrupt notification event.
+ * @details Captures the IRQ arrival time with rtc_get_timestamp_us() so FIFO
+ *          sample timestamps can later be interpolated from this anchor.
+ */
 static void max30101_irq_callback(const struct device* dev,
 								  struct gpio_callback* cb,
 								  uint32_t pins) {
 	ARG_UNUSED(dev);
 	ARG_UNUSED(cb);
+	max30101.irq_timestamp = rtc_get_timestamp_us();
 	max30101_post_event_isr(max30101_Irq, pins);
 }
 
 /** Claim and configure the daughter-board interrupt line (active low). */
 static int max30101_irq_init(void) {
-	if (max30101.irq_ready) {
+	if (max30101.state.bits.bIrqConfigured != 0) {
 		return 0;
 	}
 
@@ -304,7 +313,7 @@ static int max30101_irq_init(void) {
 		return ret;
 	}
 
-	max30101.irq_ready = true;
+	max30101.state.bits.bIrqConfigured = 1;
 	return 0;
 }
 
@@ -555,10 +564,14 @@ static float max30101_compute_sampling_rate(const struct max30101_config_t* conf
 	/* SPO2_SR is a non-linear enum index, not a value in hertz: the steps are
 	 * 50, 100, 200, 400, 800, 1000, 1600, 3200 Hz. */
 	static const float sample_rate_hz[] = {
-		[max30101_sample_rate_50Hz] = 50.0f,	   [max30101_sample_rate_100Hz] = 100.0f,
-		[max30101_sample_rate_200Hz] = 200.0f,	   [max30101_sample_rate_400Hz] = 400.0f,
-		[max30101_sample_rate_800Hz] = 800.0f,	   [max30101_sample_rate_1000Hz] = 1000.0f,
-		[max30101_sample_rate_1600Hz] = 1600.0f, [max30101_sample_rate_3200Hz] = 3200.0f,
+		[max30101_sample_rate_50Hz] = 50.0f,
+		[max30101_sample_rate_100Hz] = 100.0f,
+		[max30101_sample_rate_200Hz] = 200.0f,
+		[max30101_sample_rate_400Hz] = 400.0f,
+		[max30101_sample_rate_800Hz] = 800.0f,
+		[max30101_sample_rate_1000Hz] = 1000.0f,
+		[max30101_sample_rate_1600Hz] = 1600.0f,
+		[max30101_sample_rate_3200Hz] = 3200.0f,
 	};
 	float rate = sample_rate_hz[config->spo2_config.bits.spo2_sr];
 
@@ -773,31 +786,11 @@ int max30101_read_fifo(void* buffer, size_t buffer_size) {
 /* ------------------------------------------------------------------------- */
 
 /**
- * @brief Best-effort wall-clock timestamp in milliseconds, falling back to uptime.
- * @details time() resolves only to whole seconds, so the millisecond remainder is
- *          taken from the monotonic uptime clock. The two are anchored together
- *          once, the first time a real wall-clock is available, and every later
- *          timestamp is that anchor plus the elapsed uptime. This keeps the
- *          stream monotonic with a coherent sub-second part, instead of summing a
- *          per-second wall clock with an unrelated `uptime % 1000` that jumps
- *          backwards at each second boundary.
+ * @brief Drain the FIFO, decode each record, and append it to the internal stream.
+ * @details Each decoded sample is stamped relative to the most recent IRQ time
+ *          and the configured sampling rate, then stored in the internal buffer
+ *          that is republished with ::max30101_event_FifoDataReady.
  */
-static uint64_t max30101_now_ms(void) {
-	static uint64_t unix_anchor_ms; /* Wall-clock ms at uptime 0; 0 until anchored. */
-	int64_t uptime_ms = k_uptime_get();
-	time_t now_sec = time(NULL);
-
-	if (unix_anchor_ms == 0 && (int64_t) now_sec > 1700000000LL) {
-		unix_anchor_ms = (uint64_t) now_sec * 1000ULL - (uint64_t) uptime_ms;
-	}
-
-	if (unix_anchor_ms != 0) {
-		return unix_anchor_ms + (uint64_t) uptime_ms;
-	}
-	return (uint64_t) uptime_ms;
-}
-
-/** Drain the FIFO, decode each record, and append it to the internal stream. */
 static int max30101_drain_fifo(void) {
 	uint8_t buffer[MAX30101_FIFO_READ_SAMPLES * 3 * MAX30101_BYTES_PER_CHANNEL] = {0};
 
@@ -810,9 +803,9 @@ static int max30101_drain_fifo(void) {
 	size_t offset = 0;
 	size_t samples = 0;
 
-	while (sample_size > 0 && offset + sample_size <= actual) {
+	while ((sample_size > 0) && (offset + sample_size <= actual)) {
 		const uint8_t* record = &buffer[offset];
-		struct max30101_sample_t sample = {.unix_ms = max30101_now_ms()};
+		struct max30101_ppg_sample_t sample = {.timestamp = max30101.irq_timestamp};
 
 		if (max30101.led_count >= 1) {
 			sample.ir = max30101_unpack_sample(record);
@@ -833,6 +826,16 @@ static int max30101_drain_fifo(void) {
 		}
 		offset += sample_size;
 		samples++;
+	}
+
+	// lets update the sample time stamps in microseconds, based on the sampling rate and the number
+	// of samples read.
+	time_t delta = (time_t) ((float) 1.0e6f / max30101.sampling_rate);
+	time_t t0 = (max30101.irq_timestamp < 0) ? rtc_get_timestamp_us() : max30101.irq_timestamp;
+	time_t t = t0 - samples * delta;
+	for (size_t i = 0; i < samples; i++) {
+		max30101.samples[i].timestamp = t;
+		t += delta;
 	}
 
 	return samples;
@@ -856,6 +859,13 @@ static int max30101_read_die_temperature(float* temperature_c) {
 	uint8_t temp_frac = temp_data[1] & 0x0F;						   // 4 bits of fractional part
 	*temperature_c = (float) temp_int + ((float) temp_frac * 0.0625f); // Each LSB is 0.0625°C
 	return 0;
+}
+
+time_t max30101_last_irq_timestamp(void) {
+	__ASSERT(max30101.state.bits.bInitialized != 0, "MAX30101 not initialized");
+	__ASSERT(max30101.state.bits.bDeviceFound != 0, "MAX30101 not found");
+	__ASSERT(max30101.state.bits.bConfigured != 0, "MAX30101 not configured");
+	return max30101.irq_timestamp;
 }
 
 int max30101_irq_handler(void) {

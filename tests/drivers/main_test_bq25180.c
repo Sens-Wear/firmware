@@ -5,7 +5,9 @@
  * Minimal bring-up test for the BQ25180 charger driver.
  *
  * Initialises the charger, applies the default Li-Po / USB charger
- * configuration, then polls and prints the charger state every 2 seconds.
+ * configuration, then consumes driver events and refreshes the decoded charger
+ * state when an interrupt is reported. The cached update and IRQ timestamps are
+ * printed in Unix-epoch microseconds.
  *
  * Swap this file in for src/main.c (see tests/drivers/README.md) and flash to
  * exercise the driver on hardware.
@@ -17,7 +19,7 @@
 #include "device_driver_events.h"
 #include "device_driver_dts_ids.h"
 
-#define TEST_POLL_INTERVAL K_SECONDS(2)
+#define TEST_IDLE_INTERVAL K_SECONDS(2)
 #define TEST_EVENT_THREAD_PRIO 7
 /* Immediate-mode logging (CONFIG_LOG_MODE_IMMEDIATE) formats and outputs on the
  * calling thread's stack, so the consumer needs room for bq25180_print_state()'s
@@ -55,10 +57,14 @@ static void bq25180_event_consumer_thread(void* a, void* b, void* c) {
 			   event.p_param);
 
 		if (event.event_id == bq25180_event_Irq) {
-			union bq25180_charger_state_t state;
+			struct bq25180_charger_state_t state;
 
-			if (bq25180_update_state(&state)) {
-				bq25180_print_state(&state);
+			if (bq25180_update_state(&state) == 0) {
+				bq25180_print_state(&state.state);
+				printk("state refreshed at %lld us, irq at %lld us\n",
+					   (long long) state.last_update_time,
+					   (long long) bq25180_get_last_irq_timestamp_ms());
+				printk("============================================\n");
 			} else {
 				printk("bq25180_update_state() failed\n");
 			}
@@ -131,18 +137,10 @@ int main(void) {
 		return 0;
 	}
 
-	printk("configured; polling state every 2 s and consuming driver events...\n");
+	printk("configured; consuming driver events and refreshing state on IRQs...\n");
 
 	while (1) {
-		// union bq25180_charger_state_t state;
-
-		// if (bq25180_update_state(&state)) {
-		// 	bq25180_print_state(&state);
-		// } else {
-		// 	printk("bq25180_update_state() failed\n");
-		// }
-
-		k_sleep(TEST_POLL_INTERVAL);
+		k_sleep(TEST_IDLE_INTERVAL);
 	}
 
 	return 0;

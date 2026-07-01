@@ -6,6 +6,8 @@
  *
  * Starts the sensor and consumes BHI360 device events. Sample events carry
  * driver-owned payload pointers in p_param; packed metadata rides in v_param.
+ * Sample payloads also include timestamps in microseconds since BHI360 firmware
+ * boot.
  *
  * Swap this file in for src/main.c (see tests/drivers/README.md) and flash to
  * exercise the driver on hardware.
@@ -59,12 +61,13 @@ static void bhi360_event_consumer_thread(void* a, void* b, void* c) {
 			 * first of that many. Print the count and the most recent sample only,
 			 * so the consumer stays fast and the FIFO does not back up. */
 			uint32_t count = event.v_param;
-			const struct bhi360_quat_data* quat =
-				(const struct bhi360_quat_data*) (uintptr_t) event.p_param;
-			const struct bhi360_quat_data* last = &quat[count - 1U];
-			printk("  %s n=%u last: x=%6d y=%6d z=%6d w=%6d acc=%u\n",
+			const struct bhi360_quat_data_t* quat =
+				(const struct bhi360_quat_data_t*) (uintptr_t) event.p_param;
+			const struct bhi360_quat_data_t* last = &quat[count - 1U];
+			printk("  %s n=%u last: t=%lld us x=%6d y=%6d z=%6d w=%6d acc=%u\n",
 				   event_name,
 				   count,
+				   (long long) last->timestamp,
 				   last->x,
 				   last->y,
 				   last->z,
@@ -73,46 +76,53 @@ static void bhi360_event_consumer_thread(void* a, void* b, void* c) {
 		} else if ((event.event_id == bhi360_event_LinearAccelerationBatch) &&
 				   (event.p_param != 0U)) {
 			uint32_t count = event.v_param;
-			const struct bhi360_lacc_data* lacc =
-				(const struct bhi360_lacc_data*) (uintptr_t) event.p_param;
-			const struct bhi360_lacc_data* last = &lacc[count - 1U];
-			printk("  %s n=%u last: x=%6d y=%6d z=%6d\n",
+			const struct bhi360_lacc_data_t* lacc =
+				(const struct bhi360_lacc_data_t*) (uintptr_t) event.p_param;
+			const struct bhi360_lacc_data_t* last = &lacc[count - 1U];
+			printk("  %s n=%u last: t=%lld us x=%6d y=%6d z=%6d\n",
 				   event_name,
 				   count,
+				   (long long) last->timestamp,
 				   last->x,
 				   last->y,
 				   last->z);
 		} else if ((event.event_id == bhi360_event_GyroBatch) && (event.p_param != 0U)) {
 			uint32_t count = event.v_param;
-			const struct bhi360_gyro_data* gyro =
-				(const struct bhi360_gyro_data*) (uintptr_t) event.p_param;
-			const struct bhi360_gyro_data* last = &gyro[count - 1U];
-			printk("  %s n=%u last: x=%6d y=%6d z=%6d\n",
+			const struct bhi360_gyro_data_t* gyro =
+				(const struct bhi360_gyro_data_t*) (uintptr_t) event.p_param;
+			const struct bhi360_gyro_data_t* last = &gyro[count - 1U];
+			printk("  %s n=%u last: t=%lld us x=%6d y=%6d z=%6d\n",
 				   event_name,
 				   count,
+				   (long long) last->timestamp,
 				   last->x,
 				   last->y,
 				   last->z);
 		} else if ((event.event_id == bhi360_event_Pedometer) && (event.p_param != 0U)) {
-			const struct bhi360_pedometer_data* pedometer =
-				(const struct bhi360_pedometer_data*) (uintptr_t) event.p_param;
-			printk("  %s sensor=%u: ", event_name, event.v_param);
-			printk("count=%u detected=%u\n",
+			const struct bhi360_pedometer_data_t* pedometer =
+				(const struct bhi360_pedometer_data_t*) (uintptr_t) event.p_param;
+			printk("  %s sensor=%u t=%lld us count=%u detected=%u\n",
+				   event_name,
+				   event.v_param,
+				   (long long) pedometer->timestamp,
 				   pedometer->step_count,
 				   pedometer->step_detected ? 1 : 0);
 		} else if ((event.event_id == bhi360_event_Gesture) && (event.p_param != 0U)) {
-			const struct bhi360_gesture_data* gesture =
-				(const struct bhi360_gesture_data*) (uintptr_t) event.p_param;
-			printk("  %s sensor=%u value=0x%02x: ", event_name, gesture->sensor_id, gesture->value);
-			printk("value=0x%02x\n", gesture->value);
+			const struct bhi360_gesture_data_t* gesture =
+				(const struct bhi360_gesture_data_t*) (uintptr_t) event.p_param;
+			printk("  %s sensor=%u t=%lld us value=0x%02x\n",
+				   event_name,
+				   gesture->sensor_id,
+				   (long long) gesture->timestamp,
+				   gesture->value);
 		} else if ((event.event_id == bhi360_event_Activity) && (event.p_param != 0U)) {
-			const struct bhi360_activity_data* activity =
-				(const struct bhi360_activity_data*) (uintptr_t) event.p_param;
-			printk("  %s sensor=%u activity=0x%04x: ",
+			const struct bhi360_activity_data_t* activity =
+				(const struct bhi360_activity_data_t*) (uintptr_t) event.p_param;
+			printk("  %s sensor=%u t=%lld us activity=0x%04x\n",
 				   event_name,
 				   activity->sensor_id,
+				   (long long) activity->timestamp,
 				   activity->activity);
-			printk("activity=0x%04x\n", activity->activity);
 		} else if (event.event_id == bhi360_event_MetaEvent) {
 			printk("  %s type=0x%02x byte1=0x%02x byte2=0x%02x\n",
 				   event_name,
@@ -198,6 +208,7 @@ int main(void) {
 			if (ret == 0) {
 				LOG_INF("Stopped physical sensor streams after 30 seconds");
 				streamsStopped = true;
+				ret = bhi360_start_periodic_timer(1000);
 			} else {
 				LOG_ERR("Failed to stop physical sensor streams: %d", ret);
 			}

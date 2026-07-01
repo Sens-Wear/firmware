@@ -15,6 +15,11 @@
  * (capacity, energy, chemistry, current thresholds) into data flash and then
  * reads the decoded battery state on demand.
  *
+ * Timestamp values in this driver are sampled from `SYS_CLOCK_REALTIME` through
+ * `rtc_get_timestamp_us()`, are expressed as Unix epoch time in microseconds
+ * since `1970-01-01 00:00:00 UTC`, and truncate the sub-microsecond portion of
+ * the clock.
+ *
  * Unlike the @ref sensewear_bq25180 charger, this driver talks to the device
  * directly through Zephyr's I2C API using an I2C_DT_SPEC_GET() specification:
  *
@@ -95,6 +100,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <time.h>
 #include <zephyr/drivers/i2c.h>
 #include "bq27427_registers.h"
 
@@ -149,13 +155,17 @@ struct bq27427_config_t {
  * @brief Decoded battery state exposed to callers.
  * @details Populated by bq27427_update_state() from the gauge's standard
  *          commands. Values use the gauge's native units as listed per field.
+ *          `last_update_time` records the refresh time as Unix epoch
+ *          microseconds sampled from `SYS_CLOCK_REALTIME` through
+ *          `rtc_get_timestamp_us()`.
  */
 struct bq27427_battery_state_t {
-	int temperature;				/**< Battery temperature in tenths of a degree Celsius. */
-	int voltage;					/**< Cell voltage in millivolts. */
-	int average_current;			/**< Average current in milliamperes (signed). */
-	int average_power;				/**< Average power in milliwatts (signed). */
-	int state_of_charge;			/**< State of charge in tenths of a percent. */
+	time_t last_update_time; /**< Timestamp of the state reading in microseconds since epoch. */
+	int temperature;		 /**< Battery temperature in tenths of a degree Celsius. */
+	int voltage;			 /**< Cell voltage in millivolts. */
+	int average_current;	 /**< Average current in milliamperes (signed). */
+	int average_power;		 /**< Average power in milliwatts (signed). */
+	int state_of_charge;	 /**< State of charge in tenths of a percent. */
 	int nominal_available_capacity; /**< Nominal available capacity in mAh. */
 	int full_battery_capacity;		/**< Full available capacity in mAh. */
 	int remaining_capacity;			/**< Remaining capacity in mAh. */
@@ -234,7 +244,10 @@ void bq27427_get_default_config(struct bq27427_config_t* config);
  *
  * Reads temperature, voltage, current, power, state of charge, and the capacity
  * values, updating the driver's cached battery state. A pending POR/reset
- * condition is reported as a failure.
+ * condition is reported as a failure. The refresh timestamp is sampled from
+ * `SYS_CLOCK_REALTIME` through `rtc_get_timestamp_us()`, reported as Unix epoch
+ * microseconds since `1970-01-01 00:00:00 UTC`, and truncated to whole
+ * microseconds.
  *
  * @param state Optional destination for the decoded state. The internal cached
  *        state is updated regardless; @p state is cleared on failure when
@@ -246,7 +259,7 @@ void bq27427_get_default_config(struct bq27427_config_t* config);
 bool bq27427_update_state(struct bq27427_battery_state_t* state);
 
 /**
- * @brief Log the most recently cached battery state.
+ * @brief Log the most recently cached battery state and refresh timestamp.
  */
 void bq27427_print_state(void);
 

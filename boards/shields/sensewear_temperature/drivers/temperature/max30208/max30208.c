@@ -19,11 +19,16 @@
  * sampling period, and the consumer responds by calling max30208_get_samples(),
  * which performs the conversion, fills the internal sample buffer, and publishes
  * ::max30208_event_SampleReady.
+ *
+ * Each drained temperature sample is stamped with the conversion time captured
+ * from rtc_get_timestamp_us(); all samples returned from one drain share that
+ * same timestamp.
  */
 
 #include "max30208.h"
 #include "max30208_config.h"
 #include "max30208_registers.h"
+#include "rtc.h"
 #include "sys_i2c.h"
 #include "device_driver_events.h"
 #include "device_driver_dts_ids.h"
@@ -85,7 +90,7 @@ static struct max30208_t {
 	/** Most recently applied acquisition configuration. */
 	struct max30208_config_t config;
 	/** Internal decoded-sample buffer, republished as event payload. */
-	struct temperature_sample samples[MAX30208_SAMPLE_BUFFER_DEPTH];
+	struct temperature_sample_t samples[MAX30208_SAMPLE_BUFFER_DEPTH];
 	/** Number of valid entries in @ref samples. */
 	size_t sample_count;
 } max30208 = {
@@ -388,10 +393,20 @@ static int max30208_drain_fifo(void) {
 
 	size_t available = data_count.bits.count;
 	if (available == 0) {
+		LOG_INF("MAX30208 FIFO is empty");
 		return 0;
 	}
+
 	if (available > MAX30208_SAMPLE_BUFFER_DEPTH) {
+		LOG_WRN("MAX30208 FIFO has %zu samples, but internal buffer can only hold %d; dropping "
+				"oldest samples",
+				available,
+				MAX30208_SAMPLE_BUFFER_DEPTH);
 		available = MAX30208_SAMPLE_BUFFER_DEPTH;
+	}
+	if (available > 1) {
+		LOG_WRN("MAX30208 FIFO has %zu samples. All samples will have the same timestamp.",
+				available);
 	}
 
 	uint8_t raw[MAX30208_SAMPLE_BUFFER_DEPTH * MAX30208_FIFO_SAMPLE_BYTES] = {0};
@@ -402,13 +417,16 @@ static int max30208_drain_fifo(void) {
 		return ret;
 	}
 
+	time_t now = rtc_get_timestamp_us();
 	for (size_t i = 0; i < available; i++) {
 		if (max30208.sample_count >= MAX30208_SAMPLE_BUFFER_DEPTH) {
 			LOG_WRN("MAX30208 internal sample buffer overflow, dropping sample");
 			break;
 		}
-		max30208.samples[max30208.sample_count++].temperature_mdeg_c =
+		max30208.samples[max30208.sample_count].temperature_mdeg_c =
 			max30208_decode_temperature(&raw[i * MAX30208_FIFO_SAMPLE_BYTES]);
+		max30208.samples[max30208.sample_count].timestamp = now;
+		max30208.sample_count++;
 	}
 
 	return (int) available;
@@ -514,11 +532,7 @@ void max30208_set_sampling_rate(uint16_t new_sampling_rate) {
 	}
 }
 
-void max30208_set_transfer_interval(uint16_t new_transfer_interval) {
-	ARG_UNUSED(new_transfer_interval);
-}
-
-int max30208_get_samples(struct temperature_sample* samples, size_t max_samples) {
+int max30208_get_samples(struct temperature_sample_t* samples, size_t max_samples) {
 	if (max30208.state.bits.bInitialized == 0 || max30208.state.bits.bSampling == 0) {
 		return -EAGAIN;
 	}

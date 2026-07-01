@@ -57,13 +57,15 @@ static struct k_thread test_event_thread;
  * static context and is valid until the next interrupt read, so it is safe to
  * read here in the consumer thread. */
 static void print_sample(const struct device_driver_event_t* event) {
-	const struct touch_sensor_sample* sample = (const struct touch_sensor_sample*) event->p_param;
+	const struct touch_sensor_sample_t* sample =
+		(const struct touch_sensor_sample_t*) event->p_param;
 
 	if (sample == NULL) {
 		return;
 	}
 
-	printk("  touched=%d  x=%u  y=%u  touch_state=0x%02x  gesture=0x%02x\n",
+	printk("  ts=%lld us  touched=%d  x=%u  y=%u  touch_state=0x%02x  gesture=0x%02x\n",
+		   (long long) sample->timestamp,
 		   sample->position.touched,
 		   sample->position.x,
 		   sample->position.y,

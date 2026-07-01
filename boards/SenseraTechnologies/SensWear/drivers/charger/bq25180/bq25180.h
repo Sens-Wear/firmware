@@ -11,7 +11,14 @@
  *
  * The BQ25180 manages battery charging, input-current limiting, battery
  * protection thresholds, power-path behavior, ship mode, and shutdown behavior
- * for the SenseWear main board.
+ * for the SenseWear main board. It also exposes a cached charger-state
+ * snapshot and the most recent interrupt timestamp for policy code that needs
+ * to react to charger events.
+ *
+ * Timestamp values in this driver are captured from `SYS_CLOCK_REALTIME` via
+ * `rtc_get_timestamp_us()`, are expressed as Unix epoch time in microseconds
+ * since `1970-01-01 00:00:00 UTC`, and truncate the sub-microsecond portion of
+ * the clock.
  *
  * The driver uses the board's @ref sensewear_sys_i2c ownership wrapper rather
  * than calling Zephyr's I2C API directly:
@@ -59,8 +66,10 @@
  * 1. Call bq25180_init() to verify the shared bus and probe the charger.
  * 2. Prepare a struct bq25180_config_t using one of the default helpers.
  * 3. Call bq25180_config() to program the device registers.
- * 4. Call bq25180_update_state() periodically or in response to a system event.
- * 5. Use bq25180_enable_charging() and the power-mode operations as required.
+ * 4. Call bq25180_update_state() in response to IRQs or whenever the decoded
+ *    charger state needs to be refreshed.
+ * 5. Use bq25180_enable_charging(), the power-mode operations, and
+ *    bq25180_get_last_irq_timestamp_ms() as required.
  *
  * Initialization and configuration are deliberately separate. A successful
  * probe does not imply that the desired battery parameters have been applied.
@@ -83,8 +92,8 @@
  *     return;
  * }
  *
- * if (bq25180_update_state(&state)) {
- *     bool may_charge = state.bits.bPowerGood && !state.bits.bCharged;
+ * if (bq25180_update_state(&state) == 0) {
+ *     bool may_charge = state.state.bits.bPowerGood && !state.state.bits.bCharged;
  *     (void)bq25180_enable_charging(may_charge);
  * }
  * @endcode
@@ -93,7 +102,10 @@
  *
  * The GPIO callback for `int-gpios` posts bq25180_event_InterruptDetected from
  * ISR context. Call bq25180_update_state() from thread context to read the IC,
- * process the charger state machine, and publish decoded state-change events.
+ * refresh the cached decoded state, and publish state-change events. The
+ * returned snapshot stores the refresh time in microseconds since the Unix
+ * epoch, and bq25180_get_last_irq_timestamp_ms() exposes the most recent IRQ
+ * timestamp captured in the callback.
  */
 
 #ifndef BQ25180_H_
@@ -101,6 +113,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 #include <zephyr/drivers/gpio.h>
 #include <bq25180_registers.h>
 
@@ -146,7 +159,7 @@ enum bq25180_event_type {
  *          (0x01), FLAG0 (0x02), and SHIP_RST (0x09) into logical flags for
  *          application and power-policy code.
  */
-union bq25180_charger_state_t {
+union bq25180_charger_state {
 	unsigned int value; /**< Complete packed state; zero means no flags are asserted. */
 	/**
 	 * @brief Decoded charger-state bit mapping.
@@ -174,6 +187,21 @@ union bq25180_charger_state_t {
 		unsigned int bBatteryUVLOFault : 1;	  /**< Battery UVLO fault is latched. */
 		unsigned int bBatteryOCPFault : 1;	  /**< Battery overcurrent fault is latched. */
 	} bits;
+};
+
+/**
+ * @brief Cached charger-state snapshot returned by bq25180_update_state().
+ * @details `last_update_time` is populated with the wall-clock timestamp of the
+ *          most recent successful refresh, sampled from `SYS_CLOCK_REALTIME`
+ *          through `rtc_get_timestamp_us()`. The value is Unix epoch time in
+ *          microseconds since `1970-01-01 00:00:00 UTC` and truncates the
+ *          sub-microsecond portion of the clock.
+ */
+struct bq25180_charger_state_t {
+	time_t last_update_time; /**< Timestamp of the last state update in microseconds since epoch. */
+	time_t last_irq_time; /**< Timestamp of the last INT pin assertion in microseconds since epoch.
+							 -1 if no interrupt has been detected. */
+	union bq25180_charger_state state; /**< Current charger state. */
 };
 
 /**
@@ -276,13 +304,27 @@ void bq25180_get_default_lipo_usb_charger_config(struct bq25180_config_t* config
  *
  * STAT0, STAT1, FLAG0, and SHIP_RST are read under one ownership scope.
  *
- * @param state Optional destination for the decoded state. The internal cached
- *        state is updated even when this pointer is NULL.
- * @retval true The registers were read and decoded.
- * @retval false The driver is unavailable or unconfigured, or an I2C operation
- *         failed. When @p state is non-NULL it is cleared on failure.
+ * @param state Optional destination for the decoded state. When non-NULL, the
+ *        driver writes the decoded charger flags to @p state->state and the
+ *        refresh timestamp to @p state->last_update_time.
+ * @return 0 The registers were read and decoded.
+ * @return A negative errno-style code on failure. When @p state is non-NULL it
+ *         is cleared on failure.
  */
-bool bq25180_update_state(union bq25180_charger_state_t* state);
+int bq25180_update_state(struct bq25180_charger_state_t* state);
+
+/**
+ * @brief Read the timestamp of the most recent charger interrupt.
+ *
+ * The value is captured in ISR context when the `int-gpios` callback fires by
+ * sampling `SYS_CLOCK_REALTIME` through `rtc_get_timestamp_us()`. It is Unix
+ * epoch time in microseconds since `1970-01-01 00:00:00 UTC` and truncates the
+ * sub-microsecond portion of the clock.
+ *
+ * @return Microseconds since the Unix epoch, or -1 before the first interrupt
+ *         or if the RTC timestamp could not be read.
+ */
+time_t bq25180_get_last_irq_timestamp_ms(void);
 
 /**
  * @brief Request ship mode through the SHIP_RST register.
@@ -345,7 +387,7 @@ bool bq25180_enable_charging(bool enable);
  *
  * @param state Pointer to the charger state to log. If NULL, the internal cached state is logged.
  */
-void bq25180_print_state(union bq25180_charger_state_t* state);
+void bq25180_print_state(union bq25180_charger_state* state);
 
 /** @} */
 

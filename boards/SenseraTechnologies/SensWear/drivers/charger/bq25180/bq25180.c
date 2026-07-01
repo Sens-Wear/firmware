@@ -12,12 +12,17 @@
  * Register helpers in this file intentionally do not lock. They may only be
  * called from a high-level operation that already owns the shared bus.
  *
- * The GPIO interrupt path posts an ISR-safe notification event. Callers should
- * run bq25180_update_state() from thread context to read the IC and process the
+ * The GPIO interrupt path records the most recent interrupt timestamp and
+ * posts an ISR-safe notification event. Timestamps are sampled from
+ * `SYS_CLOCK_REALTIME` through `rtc_get_timestamp_us()`, expressed as Unix
+ * epoch microseconds since `1970-01-01 00:00:00 UTC`, and truncated to whole
+ * microseconds. Callers should run bq25180_update_state() from thread context
+ * to read the IC, refresh the cached charger state snapshot, and process the
  * charger state machine.
  */
 
 #include "bq25180.h"
+#include "rtc.h"
 #include "sys_i2c.h"
 #include "device_driver_events.h"
 #include "device_driver_dts_ids.h"
@@ -40,6 +45,7 @@ union bq25180_state_t {
 	/** Individual internal lifecycle flags. */
 	struct bq25180_state_bits {
 		unsigned int bInitialized : 1;	   /**< Probe completed successfully. */
+		unsigned int bIrqConfigured : 1;   /**< Interrupt GPIO callback was registered. */
 		unsigned int bConfigured : 1;	   /**< Register configuration was applied. */
 		unsigned int bProbed : 1;		   /**< Device presence probe has been attempted. */
 		unsigned int bDeviceFound : 1;	   /**< Device presence was successfully detected. */
@@ -52,8 +58,9 @@ union bq25180_state_t {
  * @brief Internal singleton driver context.
  * @details Stores all private runtime data used by the BQ25180 driver,
  *          including bus bindings, interrupt wiring, cached configuration,
- *          lifecycle flags, latest charger status, and deferred IRQ handling
- *          objects. This context is private to this implementation unit.
+ *          lifecycle flags, the latest decoded charger status, the most recent
+ *          interrupt timestamp, and deferred IRQ handling objects. This
+ *          context is private to this implementation unit.
  */
 static struct bq25180_t {
 	/** Shared-I2C connection and ownership token derived from devicetree. */
@@ -67,16 +74,17 @@ static struct bq25180_t {
 	/** Driver lifecycle state. */
 	union bq25180_state_t state;
 	/** Most recently decoded charger state. */
-	union bq25180_charger_state_t charger_state;
+	union bq25180_charger_state charger_state;
 	/** GPIO callback instance registered for charger interrupt events. */
 	struct gpio_callback irq_cb;
-	/** Whether the interrupt GPIO callback has been configured. */
-	bool irq_ready;
+	/**< Timestamp of the last interrupt event. */
+	time_t last_irq_time;
 } bq25180 = {
 	.device = SYS_I2C_DT_SPEC_GET(BQ25180_NODE),
 	.irq_gpio = GPIO_DT_SPEC_GET(BQ25180_NODE, int_gpios),
 	.kill_gpio = GPIO_DT_SPEC_GET(BQ25180_NODE, kill_gpios),
-	/* All remaining members (config, state, charger_state, irq_cb, irq_ready)
+	.last_irq_time = -1,
+	/* All remaining members (config, state, charger_state, irq_cb, last_irq_time)
 	 * are zero-initialised by static storage duration. */
 };
 
@@ -186,8 +194,8 @@ static bool bq25180_probe(void) {
 	return true;
 }
 
-static void bq25180_process_state_change(union bq25180_charger_state_t state,
-										 union bq25180_charger_state_t newState) {
+static void bq25180_process_state_change(union bq25180_charger_state state,
+										 union bq25180_charger_state newState) {
 	if (state.bits.bPowerGood != newState.bits.bPowerGood) {
 		// power-good changed; decide how to handle it from the new state
 		if (newState.bits.bPowerGood) {
@@ -206,7 +214,7 @@ static void bq25180_process_state_change(union bq25180_charger_state_t state,
 	}
 
 	// we must check what has changed and generate events accordingly.
-	union bq25180_charger_state_t changed = {.value = state.value ^ newState.value};
+	union bq25180_charger_state changed = {.value = state.value ^ newState.value};
 	if (changed.bits.bPowerGood != 0) {
 		enum bq25180_event_type eventType = newState.bits.bPowerGood ? bq25180_event_Plugged
 																	 : bq25180_event_Unplugged;
@@ -272,12 +280,13 @@ static void bq25180_irq_callback(const struct device* dev,
 								 uint32_t pins) {
 	ARG_UNUSED(dev);
 	ARG_UNUSED(cb);
+	bq25180.last_irq_time = rtc_get_timestamp_us();
 	bq25180_post_event_isr(bq25180_event_Irq, pins);
 }
 
 /** Configure the active-low charger interrupt. */
 static int bq25180_irq_init(void) {
-	if (bq25180.irq_ready) {
+	if (bq25180.state.bits.bIrqConfigured != 0) {
 		return 0;
 	}
 
@@ -310,7 +319,7 @@ static int bq25180_irq_init(void) {
 		return ret;
 	}
 
-	bq25180.irq_ready = true;
+	bq25180.state.bits.bIrqConfigured = 1;
 	return 0;
 }
 
@@ -549,12 +558,19 @@ bool bq25180_config(struct bq25180_config_t* config) {
 	return true;
 }
 
-/*
- * \brief Handles BQ25180 interrupt request
- *
- * \return The detected event as a result of handled IRQ
+/**
+ * @brief Return the most recent charger-interrupt timestamp.
+ * @details The timestamp is captured in ISR context with rtc_get_timestamp_us()
+ *          and is expressed as Unix epoch microseconds.
  */
-bool bq25180_update_state(union bq25180_charger_state_t* state) {
+time_t bq25180_get_last_irq_timestamp_ms(void) {
+	__ASSERT(bq25180.state.bits.bInitialized != 0, "BQ25180 driver not initialized");
+	__ASSERT(bq25180.state.bits.bIrqConfigured != 0, "BQ25180 IRQ not configured");
+	__ASSERT(bq25180.state.bits.bConfigured != 0, "BQ25180 not configured");
+	return bq25180.last_irq_time;
+}
+
+int bq25180_update_state(struct bq25180_charger_state_t* state) {
 	assert(bq25180.state.bits.bConfigured != 0);
 
 	union bq25180_STAT0_register_t stat0;
@@ -565,10 +581,11 @@ bool bq25180_update_state(union bq25180_charger_state_t* state) {
 	//	enum bq25180_event_type event = bq25180_event_Invalid;
 	enum bq25180_charging_status_type chargingStatus;
 	enum bq25180_reset_shipment_mode_type operationMode;
-	union bq25180_charger_state_t currentState = {.value = 0};
+	union bq25180_charger_state currentState = {.value = 0};
 
 	if (!bq25180_bus_lock()) {
-		return false;
+		LOG_ERR("Failed to lock I2C bus for BQ25180 state update");
+		return -EIO;
 	}
 
 	bool ret =
@@ -577,12 +594,16 @@ bool bq25180_update_state(union bq25180_charger_state_t* state) {
 		(bq25180_i2c_read_register(bq25180_register_FLAG0, (uint8_t*) &(flag0.value)) == 0) &&
 		(bq25180_i2c_read_register(bq25180_register_SHIP_RST, (uint8_t*) &(shipRst.value)) == 0);
 
+	if (ret == false) {
+		LOG_ERR("Failed to read BQ25180 registers for state update");
+	} else if (state != NULL) {
+		state->last_update_time = rtc_get_timestamp_us();
+		state->last_irq_time = bq25180.last_irq_time;
+	}
 	ret &= bq25180_bus_unlock();
-	if (!ret) {
-		if (state != NULL) {
-			state->value = 0;
-		}
-		return false;
+	if (!ret && (state != NULL)) {
+		state->state.value = 0;
+		return -EIO;
 	}
 
 	chargingStatus = (enum bq25180_charging_status_type) stat0.bits.bChgStat;
@@ -642,12 +663,12 @@ bool bq25180_update_state(union bq25180_charger_state_t* state) {
 	currentState.bits.bBatteryUVLOFault = (flag0.bits.bBattUVLOFault == 0) ? 0 : 1;
 	currentState.bits.bBatteryOCPFault = (flag0.bits.bBattOCPFault == 0) ? 0 : 1;
 	if (state != NULL) {
-		state->value = currentState.value;
+		state->state.value = currentState.value;
 	}
 	if (currentState.value != bq25180.charger_state.value) {
 		bq25180_process_state_change(bq25180.charger_state, currentState);
 	}
-	return true;
+	return 0;
 }
 
 /*
@@ -744,7 +765,7 @@ bool bq25180_shutdown_disable(void) {
 /*
  * \brief Prints the charger state of the device
  */
-void bq25180_print_state(union bq25180_charger_state_t* state) {
+void bq25180_print_state(union bq25180_charger_state* state) {
 	assert(bq25180.state.bits.bConfigured != 0);
 
 	if (state == NULL) {

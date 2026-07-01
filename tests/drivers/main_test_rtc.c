@@ -95,6 +95,9 @@ int main(void) {
 	printk("posix: %04d-%02d-%02d %02d:%02d:%02d UTC\n",
 		   via_posix.tm_year + 1900, via_posix.tm_mon + 1, via_posix.tm_mday,
 		   via_posix.tm_hour, via_posix.tm_min, via_posix.tm_sec);
+	printk("timestamp_ms=%lld timestamp_us=%lld\n",
+		   (long long) rtc_get_timestamp_ms(),
+		   (long long) rtc_get_timestamp_us());
 
 	k_thread_create(&test_event_thread, test_event_stack, TEST_EVENT_STACK_SIZE,
 					rtc_event_consumer_thread, NULL, NULL, NULL,

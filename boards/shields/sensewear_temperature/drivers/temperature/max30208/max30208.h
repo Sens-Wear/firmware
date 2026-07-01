@@ -15,6 +15,13 @@
  * single-shot conversions, and publishes decoded samples as driver-level events
  * on the shared device-event queue.
  *
+ * @section sensewear_max30208_timestamp_semantics Timestamp semantics
+ *
+ * The MAX30208 does not provide a Unix-epoch timestamp for FIFO records. The
+ * driver timestamps each conversion with rtc_get_timestamp_us() when the sample
+ * is drained. If multiple samples are present in one drain, they all share that
+ * same conversion timestamp.
+ *
  * Like the other SenseWear board drivers, the MAX30208 routes every transfer
  * through the board's @ref sensewear_sys_i2c ownership wrapper rather than
  * calling Zephyr's I2C API directly:
@@ -57,7 +64,8 @@
  * 5. On ::max30208_TimerIrq the consumer calls max30208_get_samples(), which
  *    performs the conversion, appends it to the internal buffer, and publishes
  *    ::max30208_event_SampleReady (sample count in `v_param`, a pointer to the
- *    ::temperature_sample array in `p_param`).
+ *    ::temperature_sample_t array in `p_param`). Each decoded sample gets the
+ *    same conversion timestamp.
  * 6. Call max30208_stop() / max30208_deinit() to halt.
  *
  * Initialization and configuration are deliberately separate: programming the
@@ -97,6 +105,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <time.h>
 
 /**
  * @brief Maximum time allowed for acquiring the shared I2C bus.
@@ -126,7 +135,8 @@ enum max30208_event_type {
 /**
  * @brief One decoded temperature sample produced by the driver.
  */
-struct temperature_sample {
+struct temperature_sample_t {
+	time_t timestamp;			/**< Timestamp of the sample in microseconds since the Unix epoch. */
 	int32_t temperature_mdeg_c; /**< Temperature in milli-degrees Celsius. */
 };
 
@@ -226,19 +236,13 @@ void max30208_deinit(void);
 void max30208_set_sampling_rate(uint16_t new_sampling_rate);
 
 /**
- * @brief Set the BLE transfer interval (accepted for API symmetry; unused).
- *
- * @param new_transfer_interval Transfer interval; ignored by this driver.
- */
-void max30208_set_transfer_interval(uint16_t new_transfer_interval);
-
-/**
  * @brief Perform a conversion and drain the latest sample(s).
  *
  * Triggers a single-shot conversion, appends the decoded result to the driver's
  * internal sample buffer, publishes ::max30208_event_SampleReady, and copies the
  * buffered samples into @p samples. Intended to be called by the event consumer
- * in response to ::max30208_TimerIrq.
+ * in response to ::max30208_TimerIrq. All samples returned from one drain share
+ * the same conversion timestamp captured with rtc_get_timestamp_us().
  *
  * @param samples Destination array, or NULL to only refresh the internal buffer
  *        and publish the event.
@@ -248,7 +252,7 @@ void max30208_set_transfer_interval(uint16_t new_transfer_interval);
  * @retval -EIO A bus transfer failed.
  * @retval -ETIMEDOUT The conversion did not complete in time.
  */
-int max30208_get_samples(struct temperature_sample* samples, size_t max_samples);
+int max30208_get_samples(struct temperature_sample_t* samples, size_t max_samples);
 
 /**
  * @brief Return the printable name for a MAX30208 event identifier.

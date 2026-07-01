@@ -22,6 +22,17 @@
  * context, calls bhi360_process_irq(), and then consumes decoded sensor/meta
  * events posted by the parser callbacks.
  *
+ * @section sensewear_bhi360_timestamp_semantics Timestamp semantics
+ *
+ * Sensor payload timestamps come from the BHY2 FIFO parser callback data. The
+ * @c time_stamp value in @c struct bhy2_fifo_parse_data_info is the BHI360
+ * firmware's raw FIFO tick counter, measured in 15.625 us ticks since sensor
+ * boot. The driver converts that counter to elapsed microseconds before storing
+ * it in the payload structs below. These values are not Unix-epoch timestamps.
+ *
+ * IRQ timestamps captured by the driver itself use rtc_get_timestamp_ms() and
+ * therefore are milliseconds since the Unix epoch.
+ *
  * @section sensewear_bhi360_event_model Event-driven architecture
  *
  * The BHI360 posts the following event types (see @ref bhi360_event_type):
@@ -52,21 +63,27 @@
  * - **Pedometer**: Step count and detection state.
  *   @details Sensor ID passed in v_param; data via p_param
  *   (@c struct bhi360_pedometer_data*). Source: Step counter low-power (STC_LP)
- *   at 1 Hz. The current default firmware does not advertise the wake-up
- *   low-power step counter/detector IDs.
+ *   at 1 Hz. @c timestamp is derived from the BHY2 callback timestamp and is
+ *   stored as elapsed microseconds since BHI360 firmware boot. The current
+ *   default firmware does not advertise the wake-up low-power step
+ *   counter/detector IDs.
  *
  * - **Gesture**: Gesture type and sensor ID.
  *   @details Sensor ID and gesture value packed in v_param as (sensor_id << 8) | value;
  *   data via p_param (@c struct bhi360_gesture_data*). Sources: No Motion LP
- *   wake-up, Wrist Gesture Detect LP wake-up, and Wrist Wear LP wake-up. The
- *   current default firmware does not advertise Any Motion LP wake-up or
- *   Significant Motion LP wake-up.
+ *   wake-up, Wrist Gesture Detect LP wake-up, and Wrist Wear LP wake-up.
+ *   @c timestamp is derived from the BHY2 callback timestamp and is stored as
+ *   elapsed microseconds since BHI360 firmware boot. The current default
+ *   firmware does not advertise Any Motion LP wake-up or Significant Motion LP
+ *   wake-up.
  *
  * - **Activity**: Activity classification with start/end flags.
  *   @details Sensor ID and activity bits packed in v_param as (sensor_id << 16) | activity;
- *   data via p_param (@c struct bhi360_activity_data*). Activity bits indicate which
- *   activity started/ended (still, walking, running, bicycle, vehicle, tilting).
- *   Sources: Activity Recognition Wear (AR_WEAR_WU) at 1 Hz.
+ *   data via p_param (@c struct bhi360_activity_data*). Activity bits indicate
+ *   which activity started/ended (still, walking, running, bicycle, vehicle,
+ *   tilting). @c timestamp is derived from the BHY2 callback timestamp and is
+ *   stored as elapsed microseconds since BHI360 firmware boot. Sources:
+ *   Activity Recognition Wear (AR_WEAR_WU) at 1 Hz.
  *
  * - **MetaEvent**: Actionable firmware-generated metadata (sensor mode, reset,
  *   calibration, errors, overflow, etc.).
@@ -297,6 +314,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 #include <zephyr/drivers/gpio.h>
 
 #include "bhi3_defs.h"
@@ -472,11 +490,13 @@ enum bhi360_meta_event_type {
  * @brief Quaternion orientation data.
  * @details X, Y, Z, W components of the quaternion with associated accuracy.
  */
-struct bhi360_quat_data {
-	int16_t x;		   /**< @brief Quaternion X component (fixed-point). */
-	int16_t y;		   /**< @brief Quaternion Y component (fixed-point). */
-	int16_t z;		   /**< @brief Quaternion Z component (fixed-point). */
-	int16_t w;		   /**< @brief Quaternion W component (fixed-point). */
+struct bhi360_quat_data_t {
+	time_t timestamp; /**< @brief Timestamp in microseconds since BHI360 firmware boot, derived from
+						 BHY2 callback_info->time_stamp. */
+	int16_t x;		  /**< @brief Quaternion X component (fixed-point). */
+	int16_t y;		  /**< @brief Quaternion Y component (fixed-point). */
+	int16_t z;		  /**< @brief Quaternion Z component (fixed-point). */
+	int16_t w;		  /**< @brief Quaternion W component (fixed-point). */
 	uint16_t accuracy; /**< @brief Estimation accuracy. */
 };
 
@@ -484,20 +504,24 @@ struct bhi360_quat_data {
  * @brief Linear acceleration data (gravity-compensated).
  * @details Acceleration in X, Y, Z axes with gravity removed.
  */
-struct bhi360_lacc_data {
-	int16_t x; /**< @brief X-axis acceleration (fixed-point). */
-	int16_t y; /**< @brief Y-axis acceleration (fixed-point). */
-	int16_t z; /**< @brief Z-axis acceleration (fixed-point). */
+struct bhi360_lacc_data_t {
+	time_t timestamp; /**< @brief Timestamp in microseconds since BHI360 firmware boot, derived from
+						 BHY2 callback_info->time_stamp. */
+	int16_t x;		  /**< @brief X-axis acceleration (fixed-point). */
+	int16_t y;		  /**< @brief Y-axis acceleration (fixed-point). */
+	int16_t z;		  /**< @brief Z-axis acceleration (fixed-point). */
 };
 
 /**
  * @brief Angular velocity data.
  * @details Rotation rate in X, Y, Z axes.
  */
-struct bhi360_gyro_data {
-	int16_t x; /**< @brief X-axis angular velocity (fixed-point). */
-	int16_t y; /**< @brief Y-axis angular velocity (fixed-point). */
-	int16_t z; /**< @brief Z-axis angular velocity (fixed-point). */
+struct bhi360_gyro_data_t {
+	time_t timestamp; /**< @brief Timestamp in microseconds since BHI360 firmware boot, derived from
+						 BHY2 callback_info->time_stamp. */
+	int16_t x;		  /**< @brief X-axis angular velocity (fixed-point). */
+	int16_t y;		  /**< @brief Y-axis angular velocity (fixed-point). */
+	int16_t z;		  /**< @brief Z-axis angular velocity (fixed-point). */
 };
 
 /**
@@ -505,7 +529,9 @@ struct bhi360_gyro_data {
  * @details Cumulative step count and flag indicating whether a step was
  *          detected in the current interval.
  */
-struct bhi360_pedometer_data {
+struct bhi360_pedometer_data_t {
+	time_t timestamp; /**< @brief Timestamp in microseconds since BHI360 firmware boot, derived from
+						 BHY2 callback_info->time_stamp. */
 	uint8_t sensor_id;	 /**< @brief Sensor identifier (firmware-assigned). */
 	uint32_t step_count; /**< @brief Cumulative step count. */
 	bool step_detected;	 /**< @brief True if a step was detected recently. */
@@ -515,7 +541,9 @@ struct bhi360_pedometer_data {
  * @brief Gesture event data.
  * @details Identifies which gesture (shake, flip, etc.) was detected.
  */
-struct bhi360_gesture_data {
+struct bhi360_gesture_data_t {
+	time_t timestamp; /**< @brief Timestamp in microseconds since BHI360 firmware boot, derived from
+						 BHY2 callback_info->time_stamp. */
 	uint8_t sensor_id; /**< @brief Sensor identifier (firmware-assigned). */
 	uint8_t value;	   /**< @brief Gesture type code. */
 };
@@ -524,7 +552,9 @@ struct bhi360_gesture_data {
  * @brief Activity classification data.
  * @details Identifies the current activity (walk, run, etc.) and confidence.
  */
-struct bhi360_activity_data {
+struct bhi360_activity_data_t {
+	time_t timestamp; /**< @brief Timestamp in microseconds since BHI360 firmware boot, derived from
+						 BHY2 callback_info->time_stamp. */
 	uint8_t sensor_id; /**< @brief Sensor identifier (firmware-assigned). */
 	uint16_t activity; /**< @brief Activity type and confidence bits. */
 };
@@ -674,7 +704,7 @@ int bhi360_stop_periodic_timer(void);
  *         @p max_samples is zero, or -ENODEV if the driver is not configured.
  * @pre bhi360_init() and bhi360_configure() have completed successfully.
  */
-int bhi360_copy_quaternion(struct bhi360_quat_data* out, size_t max_samples);
+int bhi360_copy_quaternion(struct bhi360_quat_data_t* out, size_t max_samples);
 
 /**
  * @brief Copy the most recently decoded linear-acceleration samples out.
@@ -685,7 +715,7 @@ int bhi360_copy_quaternion(struct bhi360_quat_data* out, size_t max_samples);
  *         if the driver is not configured.
  * @pre bhi360_init() and bhi360_configure() have completed successfully.
  */
-int bhi360_copy_linear_acceleration(struct bhi360_lacc_data* out, size_t max_samples);
+int bhi360_copy_linear_acceleration(struct bhi360_lacc_data_t* out, size_t max_samples);
 
 /**
  * @brief Copy the most recently decoded gyroscope samples out.
@@ -696,7 +726,7 @@ int bhi360_copy_linear_acceleration(struct bhi360_lacc_data* out, size_t max_sam
  *         if the driver is not configured.
  * @pre bhi360_init() and bhi360_configure() have completed successfully.
  */
-int bhi360_copy_gyro(struct bhi360_gyro_data* out, size_t max_samples);
+int bhi360_copy_gyro(struct bhi360_gyro_data_t* out, size_t max_samples);
 
 /**
  * @brief FIFO control snapshot.

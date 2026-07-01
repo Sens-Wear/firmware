@@ -21,9 +21,10 @@
  * shared device-event queue and, on that event, calls max30208_get_samples(),
  * which performs the conversion, appends it to the internal buffer, and
  * publishes ::max30208_event_SampleReady, carrying the sample count in `v_param`
- * and a pointer to the decoded ::temperature_sample array in `p_param`, which the
- * consumer prints. This mirrors the consumer-thread structure used by the
- * tests/shields MAX30101 bring-up test.
+ * and a pointer to the decoded ::temperature_sample_t array in `p_param`, which
+ * the consumer prints. Each sample in one drain shares the same conversion
+ * timestamp captured from rtc_get_timestamp_us(). This mirrors the
+ * consumer-thread structure used by the tests/shields MAX30101 bring-up test.
  *
  * Build with the `test_max30208` preset (which also enables the shield); see
  * tests/shields/README.md.
@@ -50,7 +51,8 @@ static struct k_thread test_event_thread;
  * count in v_param; the array lives in the driver's static context and is valid
  * until the next conversion, so it is safe to read here in the consumer thread. */
 static void print_samples(const struct device_driver_event_t* event) {
-	const struct temperature_sample* samples = (const struct temperature_sample*) event->p_param;
+	const struct temperature_sample_t* samples =
+		(const struct temperature_sample_t*) event->p_param;
 
 	if (samples == NULL) {
 		return;
@@ -59,7 +61,10 @@ static void print_samples(const struct device_driver_event_t* event) {
 	for (uint32_t i = 0; i < event->v_param; i++) {
 		int32_t mdeg = samples[i].temperature_mdeg_c;
 
-		printk("  T=%d.%03d C\n", mdeg / 1000, (mdeg < 0 ? -mdeg : mdeg) % 1000);
+		printk("  t=%lld us  T=%d.%03d C\n",
+			   (long long) samples[i].timestamp,
+			   mdeg / 1000,
+			   (mdeg < 0 ? -mdeg : mdeg) % 1000);
 	}
 }
 

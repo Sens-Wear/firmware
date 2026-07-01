@@ -21,7 +21,7 @@
  * queue and, on that event, calls max30101_irq_handler() to decode the status
  * and fill the internal sample buffer. The handler then publishes
  * ::max30101_event_FifoDataReady, carrying the sample count in `v_param` and a
- * pointer to the decoded ::max30101_sample_t array in `p_param`, which the
+ * pointer to the decoded ::max30101_ppg_sample_t array in `p_param`, which the
  * consumer prints. This mirrors the consumer-thread structure used by the
  * tests/drivers bring-up tests.
  *
@@ -59,15 +59,16 @@ static struct k_thread test_event_thread;
  * count in v_param; the array lives in the driver's static context and is valid
  * until the next FIFO drain, so it is safe to read here in the consumer thread. */
 static void print_samples(const struct device_driver_event_t* event) {
-	const struct max30101_sample_t* samples = (const struct max30101_sample_t*) event->p_param;
+	const struct max30101_ppg_sample_t* samples =
+		(const struct max30101_ppg_sample_t*) event->p_param;
 
 	if (samples == NULL) {
 		return;
 	}
 
 	for (uint32_t i = 0; i < event->v_param; i++) {
-		printk("  t=%llu ms  IR=%u  Red=%u  Green=%u\n",
-			   samples[i].unix_ms,
+		printk("  t=%llu us  IR=%u  Red=%u  Green=%u\n",
+			   (unsigned long long) samples[i].timestamp,
 			   samples[i].ir,
 			   samples[i].red,
 			   samples[i].green);

@@ -7,8 +7,10 @@
  * Initialises the gauge, applies the default configuration with a known
  * battery capacity, then polls the battery state every 2 seconds. Each poll
  * triggers a StateUpdated driver event; a dedicated consumer thread drains the
- * device event manager and prints the latest battery state, mirroring the
- * BQ25180 test consumer.
+ * device event manager and prints the latest battery state. The cached state's
+ * `last_update_time` is recorded in Unix epoch microseconds from
+ * `SYS_CLOCK_REALTIME` via `rtc_get_timestamp_us()`, and the test prints that
+ * timestamp directly.
  *
  * Swap this file in for src/main.c (see tests/drivers/README.md) and flash to
  * exercise the driver on hardware.
@@ -117,10 +119,14 @@ int main(void) {
 		return 0;
 	}
 
+	struct bq27427_battery_state_t state;
+
 	printk("configured; polling state every 2 s and consuming driver events...\n");
 
 	while (1) {
-		if (!bq27427_update_state(NULL)) {
+		if (bq27427_update_state(&state)) {
+			printk("state refreshed at %lld us\n", (long long) state.last_update_time);
+		} else {
 			printk("bq27427_update_state() failed\n");
 		}
 
