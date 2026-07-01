@@ -46,17 +46,21 @@ consumes them during configuration:
 
 ## Build graph
 
-The application target `app` (created by Zephyr) is linked against three
-`INTERFACE` libraries, each assembled by an aggregator CMake file:
+The application target `app` (created by Zephyr) is linked against four
+`INTERFACE` libraries. The driver libraries are gathered by one board-level
+aggregator, `boards/drivers.cmake`, which the top-level `CMakeLists.txt`
+includes; it in turn includes each library's own aggregator CMake file:
 
 | Interface library | Aggregator | Contents |
 | --- | --- | --- |
+| `common_drivers` | `boards/common/common_drivers.cmake` | Infrastructure shared by board and shield drivers (event manager, message contract, generated device IDs) |
 | `board_drivers` | `boards/SenseraTechnologies/SensWear/drivers/board_drivers.cmake` | Drivers for permanently-fitted base-board devices |
 | `shield_drivers` | `boards/shields/shields.cmake` | Drivers shipped by the enabled daughter-board shield(s) |
 | `libs` | `libs/libs.cmake` | Vendored third-party code (BHY2 sensor API) |
 
 ```
 app
+├── common_drivers  (boards/drivers.cmake ⇒ boards/common/common_drivers.cmake; always compiled)
 ├── board_drivers   (per-type <type>_drivers.cmake, gated on CONFIG_SENSEWEAR_*_DRIVER)
 ├── shield_drivers  (per-shield shield_drivers.cmake, gated on CONFIG_SHIELD_SENSEWEAR_*)
 ├── libs            (gated on the driver that needs them, e.g. BHY2 ⇐ BHI360)
@@ -66,8 +70,8 @@ app
 ### Board drivers
 
 `board_drivers.cmake` includes one `<type>_drivers.cmake` per subsystem (bus,
-common, daughter_if, charger, gauge, imu, led_controller, memory, regulator).
-Each appends its enabled sources / include dirs to `BOARD_DRIVER_SOURCES` and
+daughter_if, charger, gauge, imu, led_controller, memory, regulator). Each
+appends its enabled sources / include dirs to `BOARD_DRIVER_SOURCES` and
 `BOARD_DRIVER_INCLUDE_DIRS`, gating directly on the driver's Kconfig symbol:
 
 ```cmake
@@ -92,9 +96,9 @@ The base-board driver symbols are all `default y` (see `Kconfig`):
 
 The shared-bus wrappers (`SENSEWEAR_SYS_I2C`, `SENSEWEAR_SYS_SPI`) and the
 device event manager (`SENSEWEAR_DEVICE_DRIVER_EVENTS`) are infrastructure the
-drivers above depend on or `select`. The `common` subsystem is always compiled
-and additionally runs `generate_device_driver_dts_ids.py` at configure time
-against the merged `zephyr.dts` to emit `device_driver_dts_ids.h`.
+drivers above depend on or `select`. The `boards/common/` subsystem is always
+compiled and additionally runs `generate_device_driver_dts_ids.py` at configure
+time against the merged `zephyr.dts` to emit `device_driver_dts_ids.h`.
 
 ### Shield drivers
 

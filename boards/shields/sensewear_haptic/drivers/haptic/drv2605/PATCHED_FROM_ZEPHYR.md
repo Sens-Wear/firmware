@@ -44,7 +44,7 @@ Build wiring:
   `rsource`d from the shield `Kconfig.defconfig`.
 - The patched driver posts events with `DRV2605_DEVICE_DTS_ID`. That macro is
   produced at configure time by
-  `boards/SenseraTechnologies/SensWear/drivers/common/generate_device_driver_dts_ids.py`
+  `boards/common/generate_device_driver_dts_ids.py`
   into the generated `device_driver_dts_ids.h`, keyed off the devicetree node
   label. The haptic node is labelled `drv2605` in
   `boards/shields/sensewear_haptic/sensewear_haptic.overlay`, so the macro

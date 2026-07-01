@@ -42,7 +42,6 @@ The driver tree is organized by subsystem:
 ```text
 drivers/
 ├── bus/             # sys_i2c and sys_spi shared-bus wrappers
-├── common/          # shared device events
 ├── charger/         # BQ25180
 ├── gauge/           # BQ27427
 ├── imu/             # BHI360
@@ -53,8 +52,41 @@ drivers/
 
 `drivers/board_drivers.cmake` includes each subsystem's
 `<type>_drivers.cmake`. Those files append enabled sources and include paths to
-the `board_drivers` interface library, which is linked into Zephyr's `app`
-target.
+the `board_drivers` interface library. `board_drivers.cmake` is itself pulled in
+by the board-level aggregator `boards/drivers.cmake` (see below), alongside the
+shared common infrastructure and the shield drivers.
+
+## Board-level driver aggregation
+
+`boards/drivers.cmake` is the single entry point the top-level `CMakeLists.txt`
+includes to collect all driver code, as three INTERFACE libraries linked into
+Zephyr's `app` target:
+
+- `common_drivers` — shared infrastructure (below), used by both board and
+  shield drivers;
+- `board_drivers` — the base-board device drivers;
+- `shield_drivers` — the selected daughter-board (shield) drivers.
+
+Keeping the shared `common/` include in this aggregator means neither the board
+nor the shield aggregate has to reach across trees to pull it in.
+
+## Shared driver infrastructure
+
+Infrastructure used by both the base-board drivers and the shield drivers lives
+at the top of the boards tree, so it belongs to neither in particular:
+
+```text
+boards/common/
+├── device_driver_events.*        # shared device event manager (queue + consumer)
+├── device_driver_messages.h      # device-manager message contract
+├── generate_device_driver_dts_ids.py  # generates <LABEL>_DEVICE_ID at configure time
+└── common_drivers.cmake          # builds the `common_drivers` INTERFACE library
+```
+
+`common_drivers.cmake` collects these into the `common_drivers` interface
+library and additionally generates `device_driver_dts_ids.h` at configure time.
+Because `common_drivers` is linked into `app` alongside `board_drivers` and
+`shield_drivers`, both board and shield sources see these headers when compiled.
 
 ## Daughter boards
 

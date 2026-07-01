@@ -84,13 +84,10 @@ endforeach()
 # `libs` INTERFACE library. Linked always: board_drivers' bhi360.c uses BHY2.
 include(${CMAKE_CURRENT_SOURCE_DIR}/libs/libs.cmake)
 
-# Board driver subsystem: per-type cmakes collect enabled driver sources and
-# include directories into the `board_drivers` INTERFACE library.
-include(${CMAKE_CURRENT_SOURCE_DIR}/boards/SenseraTechnologies/SensWear/drivers/board_drivers.cmake)
-
-# Shield driver subsystem: the shields aggregator checks enabled shields and
-# collects their colocated driver sources into the `shield_drivers` INTERFACE library.
-include(${CMAKE_CURRENT_SOURCE_DIR}/boards/shields/shields.cmake)
+# Board-level driver subsystem: aggregates the shared `common_drivers`, the
+# base-board `board_drivers`, and the selected `shield_drivers` INTERFACE
+# libraries (see boards/drivers.cmake).
+include(${CMAKE_CURRENT_SOURCE_DIR}/boards/drivers.cmake)
 
 # Count the enabled SenseWear shields (one per daughter board). The CONFIG_
 # symbols are readable here as CMake variables because find_package(Zephyr) has
@@ -145,7 +142,7 @@ endif()
 # count to the application.
 target_compile_definitions(app PRIVATE SENSEWEAR_NUM_SHIELDS=${_shield_count})
 
-target_link_libraries(app PRIVATE board_drivers shield_drivers libs)
+target_link_libraries(app PRIVATE common_drivers board_drivers shield_drivers libs)
 
 if(TEST_DRIVERS AND TEST_SHIELDS)
     message(FATAL_ERROR

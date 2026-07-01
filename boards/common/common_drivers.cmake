@@ -1,6 +1,9 @@
-# Common driver infrastructure (device event manager, ...).
+# Common driver infrastructure (device event manager, message contract, ...).
+#
+# This is shared by both the base-board drivers and the shield drivers, so it is
+# collected into its own `common_drivers` INTERFACE library rather than folded
+# into either driver aggregate.
 file(GLOB _common_src CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/*.c)
-list(APPEND BOARD_DRIVER_SOURCES ${_common_src})
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
@@ -29,5 +32,11 @@ if(NOT _sensewear_device_ids_result EQUAL 0)
 		"${PROJECT_BINARY_DIR}/zephyr/zephyr.dts (exit ${_sensewear_device_ids_result})")
 endif()
 
-list(APPEND BOARD_DRIVER_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/generated)
-list(APPEND BOARD_DRIVER_INCLUDE_DIRS ${CMAKE_CURRENT_LIST_DIR})
+add_library(common_drivers INTERFACE)
+
+target_sources(common_drivers INTERFACE ${_common_src})
+
+target_include_directories(common_drivers INTERFACE
+	${CMAKE_CURRENT_BINARY_DIR}/generated
+	${CMAKE_CURRENT_LIST_DIR}
+)

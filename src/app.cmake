@@ -60,7 +60,7 @@ target_include_directories(app_src INTERFACE
     ${APP_SRC_DIR}/drivers/actuators/led
     ${CMAKE_SOURCE_DIR}/boards/SenseraTechnologies/SensWear
     ${CMAKE_SOURCE_DIR}/boards/SenseraTechnologies/SensWear/drivers/bus
-    ${CMAKE_SOURCE_DIR}/boards/SenseraTechnologies/SensWear/drivers/common
+    ${CMAKE_SOURCE_DIR}/boards/common
 )
 
 # The application uses the BHY2 sensor API; link the libs aggregate so the
