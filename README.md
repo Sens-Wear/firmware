@@ -95,3 +95,44 @@ the configure line (`-DCONFIG_…=y`) and forwarded into Kconfig — ready-made
 combinations are provided as presets in `CMakePresets.json`. The full list of
 which CMake options must be set for each test, how they reach Kconfig, and the
 preset/`west` invocations is in [BUILD.md](BUILD.md#tests-selection-and-how-it-reaches-kconfig).
+
+## Flashing
+
+In VS Code, flashing and debugging run through the hybrid nRF Connect + CMake
+Tools flow described in [SETUP.md](SETUP.md#vs-code-extensions-hybrid-nrf-connect--cmake-tools-flow).
+From the command line, flash a build directory with west:
+
+```sh
+west flash -d build
+```
+
+## Bluetooth
+
+On boot the firmware starts connectable advertising and registers its GATT
+services (the LED and IMU services, plus the selected daughter board's service).
+The advertised device name is set with `CONFIG_BT_DEVICE_NAME` in `prj.conf`.
+
+## Storage and filesystem
+
+The M95P EEPROM is registered with Zephyr's disk-access subsystem and mounted as
+a LittleFS filesystem at `/eeprom`. The mount happens automatically at boot
+(`CONFIG_SENSEWEAR_M95P_DISK_AUTOMOUNT`); application code can also mount or
+unmount it explicitly with `m95p_fs_mount()` / `m95p_fs_unmount()`.
+
+`prj.conf` enables `CONFIG_POSIX_API`, so the filesystem is reachable through
+three layers:
+
+- Zephyr's native filesystem API (`fs_open`/`fs_read`/`fs_write`).
+- POSIX file operations (`open`/`read`/`write`/`close`).
+- The C standard-library stdio API (`fopen`/`fread`/`fwrite`/`fclose`), which the
+  libc retargets onto the POSIX calls above.
+
+`CONFIG_ZVFS_OPEN_MAX` bounds the number of simultaneously open file descriptors.
+The M95P bring-up test (`tests/drivers/main_test_m95p.c`) demonstrates the POSIX
+file API by round-tripping a text file and a binary file against `/eeprom`.
+
+## Logging
+
+Logging is enabled over UART in immediate mode; adjust verbosity with
+`CONFIG_LOG_DEFAULT_LEVEL` in `prj.conf`. A shell is available over the same
+UART.

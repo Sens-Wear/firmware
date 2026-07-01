@@ -51,8 +51,8 @@ at `/eeprom` using POSIX file operations (`open`/`read`/`write`/`close`). This
 relies on the storage and POSIX options already set in `prj.conf` — chiefly
 `CONFIG_FILE_SYSTEM_LITTLEFS`, `CONFIG_SENSEWEAR_M95P_DISK_AUTOMOUNT`, and
 `CONFIG_POSIX_API` (sized by `CONFIG_ZVFS_OPEN_MAX`) — which route the POSIX
-calls onto the mounted filesystem. See the "Storage and Filesystem" section of
-the top-level `README.rst`.
+calls onto the mounted filesystem. See the "Storage and filesystem" section of
+the top-level [README.md](../../README.md#storage-and-filesystem).
 
 The `test_m95p` preset also overrides `CONFIG_SHELL=n` and `CONFIG_I2C_SHELL=n`
 (the rest of the firmware keeps the shell). The shell's serial backend and the
