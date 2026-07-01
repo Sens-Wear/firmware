@@ -3,7 +3,7 @@
 # This is shared by both the base-board drivers and the shield drivers, so it is
 # collected into its own `common_drivers` INTERFACE library rather than folded
 # into either driver aggregate.
-file(GLOB _common_src CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/*.c)
+file(GLOB _common_src CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/device_driver_events/*.c)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
@@ -38,5 +38,6 @@ target_sources(common_drivers INTERFACE ${_common_src})
 
 target_include_directories(common_drivers INTERFACE
 	${CMAKE_CURRENT_BINARY_DIR}/generated
-	${CMAKE_CURRENT_LIST_DIR}
+	${CMAKE_CURRENT_LIST_DIR}/device_driver_events
+	${CMAKE_CURRENT_LIST_DIR}/device_manager
 )
