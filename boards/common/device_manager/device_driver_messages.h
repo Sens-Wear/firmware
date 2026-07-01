@@ -67,16 +67,82 @@
  *          messages, in which case this tag is not needed.
  */
 enum device_msg_type {
-	DEVICE_MSG_NONE = 0,		 /**< No/invalid message. */
-	DEVICE_MSG_IMU_QUATERNION,	 /**< ::imu_quaternion_msg_t payload. */
-	DEVICE_MSG_IMU_ACCEL,		 /**< ::imu_accel_msg_t payload (linear acceleration). */
-	DEVICE_MSG_IMU_GYRO,		 /**< ::imu_gyro_msg_t payload. */
-	DEVICE_MSG_PPG,				 /**< ::ppg_msg_t payload. */
-	DEVICE_MSG_TEMPERATURE,		 /**< ::temperature_msg_t payload. */
-	DEVICE_MSG_TOUCH,			 /**< ::touch_msg_t payload. */
-	DEVICE_MSG_BATTERY,			 /**< ::battery_msg_t payload (fuel gauge). */
-	DEVICE_MSG_CHARGER,			 /**< ::charger_msg_t payload. */
-	DEVICE_MSG_COUNT,			 /**< Number of valid message types. */
+	device_msg_None = 0,	  /**< No/invalid message. */
+	device_msg_ImuQuaternion, /**< ::imu_quaternion_msg_t payload. */
+	device_msg_ImuAccel,	  /**< ::imu_accel_msg_t payload (linear acceleration). */
+	device_msg_ImuGyro,		  /**< ::imu_gyro_msg_t payload. */
+	device_msg_ImuPedometer,  /**< ::imu_pedometer_msg_t payload (step counter/detector). */
+	device_msg_ImuGesture,	  /**< ::imu_gesture_msg_t payload (wrist/motion gestures). */
+	device_msg_ImuActivity,	  /**< ::imu_activity_msg_t payload (activity recognition). */
+	device_msg_Ppg,			  /**< ::ppg_msg_t payload. */
+	device_msg_Temperature,	  /**< ::temperature_msg_t payload. */
+	device_msg_Touch,		  /**< ::touch_msg_t payload (touch position/presence). */
+	device_msg_TouchGesture,  /**< ::touch_gesture_msg_t payload (discrete touch gestures). */
+	device_msg_Battery,		  /**< ::battery_msg_t payload (fuel gauge). */
+	device_msg_Charger,		  /**< ::charger_msg_t payload. */
+	device_msg_Count,		  /**< Number of valid message types. */
+};
+
+/**
+ * @brief IMU gesture types.
+ * @details Contract-level mirror of the BHI360 wrist-gesture-detect output. The
+ *          values match the sensor-hub encoding. Interpret ::imu_gesture_msg_t.gesture
+ *          with this enum when the message comes from the wrist-gesture-detect
+ *          source (see @c sensor_id); other gesture sources (no-motion, wrist
+ *          wear) report a detection rather than a gesture code.
+ */
+enum imu_gesture_type {
+	imu_gesture_None = 0x00,			 /**< No gesture. */
+	imu_gesture_WristShakeJiggle = 0x03, /**< Wrist shake / jiggle. */
+	imu_gesture_FlickIn = 0x04,			 /**< Wrist flick in. */
+	imu_gesture_FlickOut = 0x05,		 /**< Wrist flick out. */
+};
+
+/**
+ * @brief IMU activity-recognition types.
+ * @details Contract-level mirror of the BHI360 activity classes. The device
+ *          manager decodes the sensor hub's packed activity word and publishes
+ *          one ::imu_activity_msg_t per activity transition, so each message
+ *          names a single activity via this enum rather than a combined bit mask.
+ */
+enum imu_activity_type {
+	imu_activity_Still = 0, /**< Still / stationary. */
+	imu_activity_Walking,	/**< Walking. */
+	imu_activity_Running,	/**< Running. */
+	imu_activity_OnBicycle, /**< On a bicycle. */
+	imu_activity_InVehicle, /**< In a vehicle. */
+	imu_activity_Tilting,	/**< Tilting. */
+};
+
+/**
+ * @brief IMU activity transition direction.
+ * @details Whether the activity named in an ::imu_activity_msg_t just started or
+ *          just ended.
+ */
+enum imu_activity_transition {
+	imu_activity_transition_Ended = 0, /**< The activity ended. */
+	imu_activity_transition_Started,   /**< The activity started. */
+};
+
+/**
+ * @brief Touch gesture types.
+ * @details Normalized touch-gesture identifiers decoded from the touch
+ *          controller (mirrors the touch driver's gesture events). Used for
+ *          ::touch_gesture_msg_t.gesture.
+ */
+enum touch_gesture_type {
+	touch_gesture_None = 0,			 /**< No gesture. */
+	touch_gesture_SingleClick,		 /**< Single click / tap. */
+	touch_gesture_ClickAndHold,		 /**< Click and hold. */
+	touch_gesture_DoubleClick,		 /**< Double click / tap. */
+	touch_gesture_DownSwipe,		 /**< Downward swipe. */
+	touch_gesture_DownSwipeAndHold,	 /**< Downward swipe and hold. */
+	touch_gesture_RightSwipe,		 /**< Rightward swipe. */
+	touch_gesture_RightSwipeAndHold, /**< Rightward swipe and hold. */
+	touch_gesture_UpSwipe,			 /**< Upward swipe. */
+	touch_gesture_UpSwipeAndHold,	 /**< Upward swipe and hold. */
+	touch_gesture_LeftSwipe,		 /**< Leftward swipe. */
+	touch_gesture_LeftSwipeAndHold,	 /**< Leftward swipe and hold. */
 };
 
 /**
@@ -114,6 +180,41 @@ struct imu_gyro_msg_t {
 };
 
 /**
+ * @brief IMU pedometer (step counter / detector) message.
+ * @details From the BHI360 step-counter/detector virtual sensors.
+ */
+struct imu_pedometer_msg_t {
+	time_t timestamp;	 /**< Microseconds since the Unix epoch. */
+	uint8_t sensor_id;	 /**< Firmware-assigned source virtual-sensor ID. */
+	uint32_t step_count; /**< Cumulative step count. */
+	bool step_detected;	 /**< True when a step was detected in this update. */
+};
+
+/**
+ * @brief IMU gesture message.
+ * @details From the BHI360 gesture virtual sensors (for example wrist gesture,
+ *          wrist wear, no-motion). @c gesture is the firmware gesture-type code.
+ */
+struct imu_gesture_msg_t {
+	time_t timestamp;			   /**< Microseconds since the Unix epoch. */
+	uint8_t sensor_id;			   /**< Firmware-assigned source virtual-sensor ID. */
+	enum imu_gesture_type gesture; /**< Decoded gesture type (see ::imu_gesture_type). */
+};
+
+/**
+ * @brief IMU activity-recognition message.
+ * @details From the BHI360 activity-recognition virtual sensor. One message
+ *          reports a single activity transition; the device manager splits the
+ *          sensor hub's packed activity word into one message per set bit.
+ */
+struct imu_activity_msg_t {
+	time_t timestamp;						 /**< Microseconds since the Unix epoch. */
+	uint8_t sensor_id;						 /**< Firmware-assigned source virtual-sensor ID. */
+	enum imu_activity_type activity;		 /**< Which activity (see ::imu_activity_type). */
+	enum imu_activity_transition transition; /**< Whether it started or ended. */
+};
+
+/**
  * @brief PPG (optical) message.
  * @details One decoded multi-channel PPG sample. Channels not active in the
  *          current acquisition mode are reported as zero. Counts are raw 18-bit
@@ -135,20 +236,28 @@ struct temperature_msg_t {
 };
 
 /**
- * @brief Touch / gesture message.
- * @details Flattened decode of a touch controller sample. @c event carries the
- *          decoded touch/gesture identifier from the touch driver's event enum
- *          (negative for "invalid"); the raw position and status bytes are
- *          included for consumers that want the unmodified state.
+ * @brief Touch position / presence message.
+ * @details Continuous touch state decoded from the touch controller. Discrete
+ *          gestures are reported separately as ::touch_gesture_msg_t.
  */
 struct touch_msg_t {
-	time_t timestamp;	  /**< Microseconds since the Unix epoch. */
-	int32_t event;		  /**< Decoded touch/gesture event identifier. */
-	bool touched;		  /**< True while a touch is present. */
-	uint16_t x;			  /**< Touch X coordinate (valid when @c touched). */
-	uint16_t y;			  /**< Touch Y coordinate (valid when @c touched). */
-	uint8_t touch_state;  /**< Raw touch-state register byte. */
-	uint8_t gesture_state; /**< Raw gesture-state register byte. */
+	time_t timestamp;	 /**< Microseconds since the Unix epoch. */
+	bool touched;		 /**< True while a touch is present. */
+	uint16_t x;			 /**< Touch X coordinate (valid when @c touched). */
+	uint16_t y;			 /**< Touch Y coordinate (valid when @c touched). */
+	uint8_t touch_state; /**< Raw touch-state register byte. */
+};
+
+/**
+ * @brief Touch gesture message.
+ * @details One discrete touch gesture (tap, double-tap, click-and-hold, swipes,
+ *          ...). @c gesture is the decoded identifier from the touch driver's
+ *          event enum; @c gesture_state is the raw controller gesture code.
+ */
+struct touch_gesture_msg_t {
+	time_t timestamp;				 /**< Microseconds since the Unix epoch. */
+	enum touch_gesture_type gesture; /**< Decoded gesture type (see ::touch_gesture_type). */
+	uint8_t gesture_state;			 /**< Raw gesture-state register byte. */
 };
 
 /**
@@ -157,16 +266,16 @@ struct touch_msg_t {
  *          negative on discharge.
  */
 struct battery_msg_t {
-	time_t timestamp;					/**< Microseconds since the Unix epoch. */
-	int32_t temperature_ddeg_c;			/**< Battery temperature in tenths of a degree Celsius. */
-	int32_t voltage_mv;					/**< Cell voltage in millivolts. */
-	int32_t average_current_ma;			/**< Average current in milliamperes (signed). */
-	int32_t average_power_mw;			/**< Average power in milliwatts (signed). */
-	int32_t state_of_charge_dpct;		/**< State of charge in tenths of a percent. */
+	time_t timestamp;			  /**< Microseconds since the Unix epoch. */
+	int32_t temperature_ddeg_c;	  /**< Battery temperature in tenths of a degree Celsius. */
+	int32_t voltage_mv;			  /**< Cell voltage in millivolts. */
+	int32_t average_current_ma;	  /**< Average current in milliamperes (signed). */
+	int32_t average_power_mw;	  /**< Average power in milliwatts (signed). */
+	int32_t state_of_charge_dpct; /**< State of charge in tenths of a percent. */
 	int32_t nominal_available_capacity_mah; /**< Nominal available capacity in mAh. */
-	int32_t full_capacity_mah;			/**< Full available capacity in mAh. */
-	int32_t remaining_capacity_mah;		/**< Remaining capacity in mAh. */
-	bool learning_in_progress;			/**< True while the gauge is still qualifying capacity. */
+	int32_t full_capacity_mah;				/**< Full available capacity in mAh. */
+	int32_t remaining_capacity_mah;			/**< Remaining capacity in mAh. */
+	bool learning_in_progress; /**< True while the gauge is still qualifying capacity. */
 };
 
 /**
@@ -177,13 +286,13 @@ struct battery_msg_t {
  *          conditions without requiring the charger driver header.
  */
 struct charger_msg_t {
-	time_t timestamp;	 /**< Microseconds since the Unix epoch. */
+	time_t timestamp;	  /**< Microseconds since the Unix epoch. */
 	time_t last_irq_time; /**< Timestamp of the last INT assertion, or -1 if none. */
-	uint32_t flags;		 /**< Complete packed charger-state word from the driver. */
-	bool power_good;	 /**< VIN is power-good. */
-	bool charging;		 /**< Constant-current or constant-voltage charging. */
-	bool charged;		 /**< Charge cycle is complete. */
-	bool fault;			 /**< At least one charger fault is latched. */
+	uint32_t flags;		  /**< Complete packed charger-state word from the driver. */
+	bool power_good;	  /**< VIN is power-good. */
+	bool charging;		  /**< Constant-current or constant-voltage charging. */
+	bool charged;		  /**< Charge cycle is complete. */
+	bool fault;			  /**< At least one charger fault is latched. */
 };
 
 /**
@@ -197,14 +306,23 @@ struct device_msg_t {
 	uint32_t device_id;		   /**< Producing device's generated `<LABEL>_DEVICE_ID`. */
 	enum device_msg_type type; /**< Selects the valid @c payload member. */
 	union {
-		struct imu_quaternion_msg_t imu_quaternion; /**< Valid when @c type == ::DEVICE_MSG_IMU_QUATERNION. */
-		struct imu_accel_msg_t imu_accel;			/**< Valid when @c type == ::DEVICE_MSG_IMU_ACCEL. */
-		struct imu_gyro_msg_t imu_gyro;				/**< Valid when @c type == ::DEVICE_MSG_IMU_GYRO. */
-		struct ppg_msg_t ppg;						/**< Valid when @c type == ::DEVICE_MSG_PPG. */
-		struct temperature_msg_t temperature;		/**< Valid when @c type == ::DEVICE_MSG_TEMPERATURE. */
-		struct touch_msg_t touch;					/**< Valid when @c type == ::DEVICE_MSG_TOUCH. */
-		struct battery_msg_t battery;				/**< Valid when @c type == ::DEVICE_MSG_BATTERY. */
-		struct charger_msg_t charger;				/**< Valid when @c type == ::DEVICE_MSG_CHARGER. */
+		struct imu_quaternion_msg_t
+			imu_quaternion;				  /**< Valid when @c type == ::device_msg_ImuQuaternion. */
+		struct imu_accel_msg_t imu_accel; /**< Valid when @c type == ::device_msg_ImuAccel. */
+		struct imu_gyro_msg_t imu_gyro;	  /**< Valid when @c type == ::device_msg_ImuGyro. */
+		struct imu_pedometer_msg_t
+			imu_pedometer; /**< Valid when @c type == ::device_msg_ImuPedometer. */
+		struct imu_gesture_msg_t imu_gesture; /**< Valid when @c type == ::device_msg_ImuGesture. */
+		struct imu_activity_msg_t
+			imu_activity;	  /**< Valid when @c type == ::device_msg_ImuActivity. */
+		struct ppg_msg_t ppg; /**< Valid when @c type == ::device_msg_Ppg. */
+		struct temperature_msg_t
+			temperature;		  /**< Valid when @c type == ::device_msg_Temperature. */
+		struct touch_msg_t touch; /**< Valid when @c type == ::device_msg_Touch. */
+		struct touch_gesture_msg_t
+			touch_gesture;			  /**< Valid when @c type == ::device_msg_TouchGesture. */
+		struct battery_msg_t battery; /**< Valid when @c type == ::device_msg_Battery. */
+		struct charger_msg_t charger; /**< Valid when @c type == ::device_msg_Charger. */
 	} payload;
 };
 
