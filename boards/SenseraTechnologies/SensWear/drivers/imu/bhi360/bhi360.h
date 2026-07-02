@@ -128,11 +128,11 @@
  *
  * 1. Call bhi360_init() to verify the shared SPI/GPIO resources and initialize
  *    interrupt handlers.
- * 2. Call bhi360_configure() to bind the BHY2 transport hooks, probe the
+ * 2. Call bhi360_config() to bind the BHY2 transport hooks, probe the
  *    product ID, upload firmware, configure FIFO/host interrupt routing, and
- *    enable the low-rate gesture, activity, step, and motion event sensors.
- * 3. Start high-rate physical streams either by passing @c true to
- *    bhi360_configure() or later by calling bhi360_start_phy_sensor_streams().
+ *    enable the configured low-rate activity-class event sensors.
+ * 3. Start high-rate physical streams later by calling
+ *    bhi360_start_phy_sensor_streams().
  * 4. Process BHI360 device events as they arrive via the event queue. On each
  *    bhi360_event_Irq, call bhi360_process_irq() from caller thread context.
  * 5. Use bhi360_stop_phy_sensor_streams() to stop only the high-rate physical
@@ -142,8 +142,8 @@
  *
  * @section sensewear_bhi360_sensors Configured Sensors
  *
- * The driver uses three requested sensor groups.
- * Sensor availability is firmware-dependent: bhi360_configure() only enables
+ * The driver uses two requested sensor groups.
+ * Sensor availability is firmware-dependent: bhi360_config() only enables
  * sensors advertised by the loaded BHI360 firmware. If the firmware image is
  * changed, update these requested sensor tables to match the virtual sensors
  * exposed by that firmware.
@@ -156,30 +156,26 @@
  *
  * The high-rate streams intentionally use wake-up virtual-sensor IDs so their
  * samples are placed in the wake FIFO. They are enabled only when
- * bhi360_configure(true, period_ms) is used, or when
  * bhi360_start_phy_sensor_streams(period_ms) is called after configuration.
  * They are disabled by bhi360_stop_phy_sensor_streams() without disabling the
  * low-rate event sensors.
  *
  * The wake and non-wake FIFO watermarks are both programmed to 8 bytes during
- * bhi360_configure() so host interrupts are generated after small batches
+ * bhi360_config() so host interrupts are generated after small batches
  * instead of waiting for firmware default watermarks.
  *
- * **Step and motion event sensors** (1 Hz sample rate, enabled by configure):
+ * **Activity-class event sensors** (configured by bhi360_config()):
  * - Step Counter LP (STC_LP): Cumulative low-power step count.
  * - Step Detector LP (STD_LP): Step-detected events.
  * - Any Motion LP (ANY_MOTION_LP): Low-power motion event.
  * - No Motion LP wake-up (NO_MOTION_LP_WU): Wake-up no-motion event.
- *
- * Step Counter LP, Step Detector LP, and Any Motion LP are non-wake streams in
- * the current firmware, so the non-wake FIFO watermark is also kept small.
- *
- * **Gesture sensors** (1 Hz sample rate, enabled by configure):
  * - Wrist Gesture Detect LP wake-up, Wrist Wear LP wake-up.
- *
- * **Activity sensors** (1 Hz sample rate, enabled by configure):
  * - Activity Recognition Wear (AR_WEAR_WU): Wake-up variant for detecting
  *   when user activity changes.
+ *
+ * Each configured entry provides its own sample rate and report latency. Step
+ * Counter LP, Step Detector LP, and Any Motion LP are non-wake streams in the
+ * current firmware, so the non-wake FIFO watermark is also kept small.
  *
  * **Meta-Events** (firmware-generated, always enabled):
  * - Flush complete, sample rate changed, power mode changed, algorithm events,
@@ -196,9 +192,8 @@
  *     return;  // Probe failed
  * }
  *
- * // Configure low-rate event sensors. Pass true to start physical streams
- * // immediately; pass false to start them later.
- * if (!bhi360_configure(false, 0)) {
+ * // Configure the default low-rate activity-class event sensors.
+ * if (!bhi360_config(NULL)) {
  *     return;  // Configuration failed
  * }
  *
@@ -299,7 +294,7 @@
  * }
  *
  * // Later, stop only the high-rate physical streams. Low-rate event sensors
- * // configured by bhi360_configure() continue to run.
+ * // configured by bhi360_config() continue to run.
  * (void)bhi360_stop_phy_sensor_streams();
  * @endcode
  *
@@ -451,6 +446,44 @@ enum bhi360_activity_event_type {
 	bhi360_activity_event_WearRecognitionWakeup = BHI3_SENSOR_ID_AR_WEAR_WU,
 };
 
+/**
+ * @brief Activity-class sensor sources supported by bhi360_config().
+ * @details This is the supported subset for the current SenseWear BHI360
+ *          firmware and parser implementation. Other BHY2 activity-capable
+ *          virtual sensors may exist, but they are intentionally not exposed
+ *          until the driver has parser and firmware support for them.
+ */
+enum bhi360_activity_sensor_type {
+	bhi360_activity_sensor_AnyMotionLowPower,
+	bhi360_activity_sensor_NoMotionLowPowerWakeup,
+	bhi360_activity_sensor_WristGestureDetectLowPowerWakeup,
+	bhi360_activity_sensor_WristWearLowPowerWakeup,
+	bhi360_activity_sensor_WearRecognitionWakeup,
+	bhi360_activity_sensor_StepCounterLowPower,
+	bhi360_activity_sensor_StepDetectorLowPower,
+	bhi360_activity_sensor_Count,
+};
+
+/**
+ * @brief Configuration for one supported BHI360 activity-class sensor.
+ */
+struct bhi360_activity_sensor_config_t {
+	enum bhi360_activity_sensor_type sensor; /**< Supported activity-class sensor to enable. */
+	float sample_rate_hz;					/**< Output data rate in Hz. */
+	uint32_t latency_ms;						/**< Report latency in milliseconds; 0 for real-time. */
+};
+
+/**
+ * @brief BHI360 firmware and low-rate sensor configuration.
+ * @details Physical high-rate streams are not controlled here. Configure the
+ *          device first, then enable quaternion/accelerometer/gyroscope streams
+ *          later with bhi360_start_phy_sensor_streams().
+ */
+struct bhi360_config_t {
+	const struct bhi360_activity_sensor_config_t* activity_sensors;
+	size_t activity_sensor_count;
+};
+
 /** @brief Activity transition bits carried in bits 15:0 of v_param for bhi360_event_Activity. */
 enum bhi360_activity_transition_type {
 	bhi360_activity_transition_StillEnded = BHY2_STILL_ACTIVITY_ENDED,
@@ -579,24 +612,31 @@ bool bhi360_init(void);
 bool bhi360_is_ready(void);
 
 /**
+ * @brief Populate the SenseWear default BHI360 configuration.
+ * @details The default enables the supported low-rate activity-class sensors at
+ *          their historical SenseWear rates and latencies. Physical high-rate
+ *          streams are intentionally not enabled by this configuration.
+ *
+ * @param config Destination configuration. Must not be NULL. The returned
+ *        `activity_sensors` pointer refers to driver-owned immutable storage.
+ */
+void bhi360_get_default_config(struct bhi360_config_t* config);
+
+/**
  * @brief Configure the BHI360 for sensor operation.
  * @details Binds the BHY2 transport hooks, verifies the product ID, uploads
  *          firmware, configures host IRQ/FIFO routing, registers parser
- *          callbacks, and enables the low-rate event sensors. Physical stream
- *          sensors (GAMERV_WU, ACC_WU, GYRO_WU) are enabled only when
- *          @p enable_phy_streams is true; otherwise call
- *          bhi360_start_phy_sensor_streams() later when high-rate data is
- *          needed.
- * @param enable_phy_streams true to start quaternion, accelerometer, and
- *        gyroscope streams during configuration; false to leave them disabled.
- * @param phy_stream_period_ms Software stream-drain event period used when
- *        @p enable_phy_streams is true. Ignored when @p enable_phy_streams is
- *        false. Use a period near the desired maximum stream latency.
+ *          callbacks, and enables the activity-class sensors requested in
+ *          @p config. Passing NULL selects bhi360_get_default_config().
+ *          Physical stream sensors (GAMERV_WU, ACC_WU, GYRO_WU) are not enabled
+ *          here; call bhi360_start_phy_sensor_streams() later when high-rate data
+ *          is needed.
+ * @param config Configuration to apply, or NULL for the SenseWear defaults.
  * @retval true Firmware upload and sensor configuration completed.
  * @retval false Upload or configuration failed.
  * @pre bhi360_init() has completed successfully.
  */
-bool bhi360_configure(bool enable_phy_streams, uint32_t phy_stream_period_ms);
+bool bhi360_config(const struct bhi360_config_t* config);
 
 /**
  * @brief Drain the FIFO and generate sensor events.
@@ -608,7 +648,7 @@ bool bhi360_configure(bool enable_phy_streams, uint32_t phy_stream_period_ms);
  * @retval 0 FIFO processing completed.
  * @retval -ENODEV The driver is not initialized and configured.
  * @retval -EIO Device communication or FIFO parsing failed.
- * @pre bhi360_init() and bhi360_configure() have completed successfully.
+ * @pre bhi360_init() and bhi360_config() have completed successfully.
  * @pre Called from thread context, not ISR.
  */
 int bhi360_irq_handler(void);
@@ -629,14 +669,13 @@ int bhi360_irq_handler(void);
  *          different period, this call fails with -EBUSY.
  *
  *          Calling this function does not affect the low-rate event sensors that
- *          were enabled by bhi360_configure().
+ *          were enabled by bhi360_config().
  * @param period_ms Software stream-drain period in milliseconds.
  * @retval 0 Physical streams were enabled and the stream timer was started.
  * @retval -ENODEV Driver is not initialized and configured.
  * @retval -EBUSY Physical streams are already enabled, or the shared timer is
  *         already running at a different period.
- * @pre bhi360_init() and bhi360_configure(false, 0) or equivalent configuration
- *      have completed successfully.
+ * @pre bhi360_init() and bhi360_config() have completed successfully.
  */
 int bhi360_start_phy_sensor_streams(uint32_t period_ms);
 
@@ -645,7 +684,7 @@ int bhi360_start_phy_sensor_streams(uint32_t period_ms);
  * @details Stops the software stream timer and disables only the physical stream
  *          sensor table: Game Rotation Vector wake-up, Accelerometer wake-up,
  *          and Gyroscope wake-up. The low-rate event sensors configured by
- *          bhi360_configure() remain enabled and can continue to produce events.
+ *          bhi360_config() remain enabled and can continue to produce events.
  *
  *          The disabled physical streams are flushed as part of the stop path,
  *          so queued stream samples may be discarded. Callers should continue to
@@ -654,7 +693,7 @@ int bhi360_start_phy_sensor_streams(uint32_t period_ms);
  * @retval 0 Physical streams were disabled.
  * @retval -ENODEV Driver is not initialized and configured.
  * @retval -EINVAL Physical streams are not currently enabled.
- * @pre bhi360_init() and bhi360_configure() have completed successfully.
+ * @pre bhi360_init() and bhi360_config() have completed successfully.
  */
 int bhi360_stop_phy_sensor_streams(void);
 
@@ -679,7 +718,7 @@ int bhi360_stop_phy_sensor_streams(void);
  * @retval 0 Timer is running at @p period_ms.
  * @retval -ENODEV Driver is not initialized and configured.
  * @retval -EBUSY Shared timer is already running at a different period.
- * @pre bhi360_init() and bhi360_configure() have completed successfully.
+ * @pre bhi360_init() and bhi360_config() have completed successfully.
  */
 int bhi360_start_periodic_timer(uint32_t period_ms);
 
@@ -689,14 +728,14 @@ int bhi360_start_periodic_timer(uint32_t period_ms);
  *          currently enabled, this also disables and flushes the physical stream
  *          sensor table because those streams depend on the same timer for
  *          bounded FIFO draining. Low-rate event sensors configured by
- *          bhi360_configure() remain enabled.
+ *          bhi360_config() remain enabled.
  *
  *          A final bhi360_event_Irq is posted after stopping so the caller can
  *          drain any remaining FIFO, flush, or meta packets from thread context.
  * @retval 0 Timer was stopped.
  * @retval -ENODEV Driver is not initialized and configured.
  * @retval -EINVAL Periodic timer is not currently running.
- * @pre bhi360_init() and bhi360_configure() have completed successfully.
+ * @pre bhi360_init() and bhi360_config() have completed successfully.
  */
 int bhi360_stop_periodic_timer(void);
 
@@ -711,7 +750,7 @@ int bhi360_stop_periodic_timer(void);
  * @param max_samples Capacity of @p out in samples.
  * @return Number of samples copied (>= 0), -EINVAL if @p out is NULL or
  *         @p max_samples is zero, or -ENODEV if the driver is not configured.
- * @pre bhi360_init() and bhi360_configure() have completed successfully.
+ * @pre bhi360_init() and bhi360_config() have completed successfully.
  */
 int bhi360_copy_quaternion(struct bhi360_quat_data_t* out, size_t max_samples);
 
@@ -722,7 +761,7 @@ int bhi360_copy_quaternion(struct bhi360_quat_data_t* out, size_t max_samples);
  * @param max_samples Capacity of @p out in samples.
  * @return Number of samples copied (>= 0), -EINVAL on bad arguments, or -ENODEV
  *         if the driver is not configured.
- * @pre bhi360_init() and bhi360_configure() have completed successfully.
+ * @pre bhi360_init() and bhi360_config() have completed successfully.
  */
 int bhi360_copy_linear_acceleration(struct bhi360_lacc_data_t* out, size_t max_samples);
 
@@ -733,7 +772,7 @@ int bhi360_copy_linear_acceleration(struct bhi360_lacc_data_t* out, size_t max_s
  * @param max_samples Capacity of @p out in samples.
  * @return Number of samples copied (>= 0), -EINVAL on bad arguments, or -ENODEV
  *         if the driver is not configured.
- * @pre bhi360_init() and bhi360_configure() have completed successfully.
+ * @pre bhi360_init() and bhi360_config() have completed successfully.
  */
 int bhi360_copy_gyro(struct bhi360_gyro_data_t* out, size_t max_samples);
 
@@ -759,7 +798,7 @@ struct bhi360_fifo_status {
  *          pushes status messages into the same channel this parameter read uses;
  *          the read then collides (returns -EIO) and can leave the channel stuck,
  *          breaking subsequent FIFO processing. The driver already logs the FIFO
- *          control once at bhi360_configure() time, before the async status
+ *          control once at bhi360_config() time, before the async status
  *          channel is enabled, which is the reliable source for these values.
  *          This call is only safe when sensor streaming is quiesced (for example
  *          after bhi360_stop()).
@@ -772,7 +811,7 @@ struct bhi360_fifo_status {
  * @retval -EINVAL @p out is NULL.
  * @retval -ENODEV The driver is not initialized and configured.
  * @retval -EIO Device read failed (for example, async status pending).
- * @pre bhi360_init() and bhi360_configure() have completed successfully.
+ * @pre bhi360_init() and bhi360_config() have completed successfully.
  */
 int bhi360_get_fifo_status(struct bhi360_fifo_status* out);
 

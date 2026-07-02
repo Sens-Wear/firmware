@@ -16,7 +16,7 @@
  * The operational flow is:
  * - bhi360_init() prepares shared SPI access, chip-select/reset GPIOs, and the
  *   IRQ callback.
- * - bhi360_configure() binds the BHY2 transport hooks, probes the product,
+ * - bhi360_config() binds the BHY2 transport hooks, probes the product,
  *   uploads firmware, discovers available virtual sensors, and enables the
  *   driver's default sensor sets.
  * - bhi360_irq_callback() posts bhi360_event_Irq from ISR context.
@@ -51,12 +51,12 @@
  *
  * @section bhi360_impl_enabled_sensors Enabled Sensors
  *
- * The default configuration enables three groups of virtual sensors:
- * - Base sensors: rotation vector, linear acceleration, gyroscope, step count,
- *   and step detector variants.
- * - Gesture sensors: wake, glance, pickup, wrist tilt, motion/stationary, and
- *   related low-power gesture-classifier outputs.
- * - Activity sensors: activity recognition and wear-aware activity recognition.
+ * bhi360_config() enables the activity-class virtual sensors requested by
+ * struct bhi360_config_t. Passing NULL selects the SenseWear default list:
+ * motion/no-motion, wrist gesture/wear, wear-aware activity recognition, step
+ * counter, and step detector. High-rate physical streams (rotation vector,
+ * acceleration, gyroscope) are enabled later through
+ * bhi360_start_phy_sensor_streams().
  *
  * Meta-event streams are also registered so firmware status notifications are
  * surfaced to the event system and logs.
@@ -142,6 +142,16 @@ struct bhi360_sensor_enable {
 	/** @brief Acceptable latency in milliseconds; 0 for real-time. */
 	uint32_t latency_ms;
 	/** @brief FIFO parser callback function that decodes and posts events. */
+	bhy2_fifo_parse_callback_t parser;
+};
+
+/**
+ * @brief Static metadata for one supported activity-class virtual sensor.
+ */
+struct bhi360_activity_sensor_descriptor {
+	enum bhi360_activity_sensor_type sensor;
+	uint8_t sensor_id;
+	const char* name;
 	bhy2_fifo_parse_callback_t parser;
 };
 
@@ -580,27 +590,47 @@ static const struct bhi360_sensor_enable bhi360_phy_sensors[] = {
 	{BHY2_SENSOR_ID_GYRO_WU, "Gyroscope", 100.0f, BHI360_REPORT_LATENCY_MS, parse_gyro},
 };
 
-/**
- * @brief Gesture and motion-classifier sensors enabled by default.
- * @details All of these report through parse_scalar_event() and become
- *          bhi360_event_Gesture events.
- */
-static const struct bhi360_sensor_enable bhi360_gesture_sensors[] = {
-	{BHI3_SENSOR_ID_WRIST_GEST_DETECT_LP_WU, "Wrist gesture detect", 1.0f, 0, parse_scalar_event},
-	{BHI3_SENSOR_ID_WRIST_WEAR_LP_WU, "Wrist wear", 1.0f, 0, parse_scalar_event},
+/** Supported low-rate activity-class sensors. */
+static const struct bhi360_activity_sensor_descriptor bhi360_activity_sensor_descriptors[] = {
+	{bhi360_activity_sensor_AnyMotionLowPower,
+	 BHY2_SENSOR_ID_ANY_MOTION_LP,
+	 "Any motion",
+	 parse_scalar_event},
+	{bhi360_activity_sensor_NoMotionLowPowerWakeup,
+	 BHI3_SENSOR_ID_NO_MOTION_LP_WU,
+	 "No motion",
+	 parse_scalar_event},
+	{bhi360_activity_sensor_WristGestureDetectLowPowerWakeup,
+	 BHI3_SENSOR_ID_WRIST_GEST_DETECT_LP_WU,
+	 "Wrist gesture detect",
+	 parse_scalar_event},
+	{bhi360_activity_sensor_WristWearLowPowerWakeup,
+	 BHI3_SENSOR_ID_WRIST_WEAR_LP_WU,
+	 "Wrist wear",
+	 parse_scalar_event},
+	{bhi360_activity_sensor_WearRecognitionWakeup,
+	 BHI3_SENSOR_ID_AR_WEAR_WU,
+	 "Wear activity",
+	 parse_activity},
+	{bhi360_activity_sensor_StepCounterLowPower,
+	 BHY2_SENSOR_ID_STC_LP,
+	 "Step counter",
+	 parse_step_counter},
+	{bhi360_activity_sensor_StepDetectorLowPower,
+	 BHY2_SENSOR_ID_STD_LP,
+	 "Step detector",
+	 parse_scalar_event},
 };
 
-/**
- * @brief Activity-recognition sensors enabled by default.
- * @details These produce packed activity bitfields and are published as
- *          bhi360_event_Activity.
- */
-static const struct bhi360_sensor_enable bhi360_activity_sensors[] = {
-	{BHY2_SENSOR_ID_ANY_MOTION_LP, "Any motion", 1.0f, 0, parse_scalar_event},
-	{BHI3_SENSOR_ID_NO_MOTION_LP_WU, "No motion", 1.0f, 0, parse_scalar_event},
-	{BHI3_SENSOR_ID_AR_WEAR_WU, "Wear activity", 1.0f, BHI360_REPORT_LATENCY_MS, parse_activity},
-	{BHY2_SENSOR_ID_STC_LP, "Step counter", 1.0f, BHI360_REPORT_LATENCY_MS, parse_step_counter},
-	{BHY2_SENSOR_ID_STD_LP, "Step detector", 1.0f, BHI360_REPORT_LATENCY_MS, parse_scalar_event},
+/** SenseWear default activity-class sensor configuration. */
+static const struct bhi360_activity_sensor_config_t bhi360_default_activity_sensors[] = {
+	{bhi360_activity_sensor_AnyMotionLowPower, 1.0f, 0},
+	{bhi360_activity_sensor_NoMotionLowPowerWakeup, 1.0f, 0},
+	{bhi360_activity_sensor_WristGestureDetectLowPowerWakeup, 1.0f, 0},
+	{bhi360_activity_sensor_WristWearLowPowerWakeup, 1.0f, 0},
+	{bhi360_activity_sensor_WearRecognitionWakeup, 1.0f, BHI360_REPORT_LATENCY_MS},
+	{bhi360_activity_sensor_StepCounterLowPower, 1.0f, BHI360_REPORT_LATENCY_MS},
+	{bhi360_activity_sensor_StepDetectorLowPower, 1.0f, BHI360_REPORT_LATENCY_MS},
 };
 
 /**
@@ -662,6 +692,69 @@ static void bhi360_enable_sensor_table(struct bhi360_t* dev,
 	}
 }
 
+static const struct bhi360_activity_sensor_descriptor*
+bhi360_activity_sensor_descriptor(enum bhi360_activity_sensor_type sensor_type) {
+	for (size_t i = 0; i < ARRAY_SIZE(bhi360_activity_sensor_descriptors); i++) {
+		if (bhi360_activity_sensor_descriptors[i].sensor == sensor_type) {
+			return &bhi360_activity_sensor_descriptors[i];
+		}
+	}
+
+	return NULL;
+}
+
+static bool
+bhi360_enable_activity_sensors(struct bhi360_t* dev,
+							   const struct bhi360_activity_sensor_config_t* sensors,
+							   size_t count) {
+	if (count > 0U && sensors == NULL) {
+		LOG_ERR("%s: activity sensor config list is NULL", dev->name);
+		return false;
+	}
+
+	for (size_t i = 0; i < count; i++) {
+		const struct bhi360_activity_sensor_config_t* config = &sensors[i];
+		const struct bhi360_activity_sensor_descriptor* sensor =
+			bhi360_activity_sensor_descriptor(config->sensor);
+
+		if (sensor == NULL) {
+			LOG_ERR("%s: unsupported activity sensor %d", dev->name, (int) config->sensor);
+			return false;
+		}
+		if (!bhy2_is_sensor_available(sensor->sensor_id, &dev->bhy2)) {
+			LOG_WRN("%s: %s (id %u) is not available",
+					dev->name,
+					sensor->name,
+					sensor->sensor_id);
+			continue;
+		}
+
+		int8_t rslt =
+			bhy2_register_fifo_parse_callback(sensor->sensor_id, sensor->parser, dev, &dev->bhy2);
+		print_api_error(rslt, &dev->bhy2);
+		if (rslt != BHY2_OK) {
+			return false;
+		}
+
+		rslt = bhy2_set_virt_sensor_cfg(sensor->sensor_id,
+										(bhy2_float) config->sample_rate_hz,
+										config->latency_ms,
+										&dev->bhy2);
+		print_api_error(rslt, &dev->bhy2);
+		if (rslt != BHY2_OK) {
+			return false;
+		}
+
+		LOG_INF("%s: enabled %s (id %u) at %.2f Hz",
+				dev->name,
+				sensor->name,
+				sensor->sensor_id,
+				(double) config->sample_rate_hz);
+	}
+
+	return true;
+}
+
 /**
  * @brief Disable every sensor listed in a descriptor table.
  * @details Sensor output rate is set to zero and each FIFO stream is flushed.
@@ -674,6 +767,16 @@ static void bhi360_disable_sensor_table(struct bhi360_t* dev,
 		(void) bhy2_flush_fifo(sensors[i].sensor_id, &dev->bhy2);
 	}
 	ARG_UNUSED(dev);
+}
+
+static void bhi360_disable_activity_sensors(struct bhi360_t* dev) {
+	for (size_t i = 0; i < ARRAY_SIZE(bhi360_activity_sensor_descriptors); i++) {
+		const struct bhi360_activity_sensor_descriptor* sensor =
+			&bhi360_activity_sensor_descriptors[i];
+
+		(void) bhy2_set_virt_sensor_cfg(sensor->sensor_id, 0.0f, 0, &dev->bhy2);
+		(void) bhy2_flush_fifo(sensor->sensor_id, &dev->bhy2);
+	}
 }
 
 /**
@@ -1035,8 +1138,18 @@ bool bhi360_is_ready(void) {
 	return bhi360.state.bits.initialized != 0U && bhi360.state.bits.configured != 0U;
 }
 
-bool bhi360_configure(bool enable_phy_streams, uint32_t phy_stream_period_ms) {
+void bhi360_get_default_config(struct bhi360_config_t* config) {
+	if (config == NULL) {
+		return;
+	}
+
+	config->activity_sensors = bhi360_default_activity_sensors;
+	config->activity_sensor_count = ARRAY_SIZE(bhi360_default_activity_sensors);
+}
+
+bool bhi360_config(const struct bhi360_config_t* config) {
 	struct bhi360_t* imu = &bhi360;
+	struct bhi360_config_t default_config;
 	int8_t rslt;
 	uint8_t product_id = 0;
 	uint16_t version = 0;
@@ -1049,6 +1162,10 @@ bool bhi360_configure(bool enable_phy_streams, uint32_t phy_stream_period_ms) {
 
 	if (!bhi360_init()) {
 		return false;
+	}
+	if (config == NULL) {
+		bhi360_get_default_config(&default_config);
+		config = &default_config;
 	}
 
 	LOG_INF("%s: Starting configuration", imu->name);
@@ -1177,19 +1294,12 @@ bool bhi360_configure(bool enable_phy_streams, uint32_t phy_stream_period_ms) {
 	 * again while sensors are running; the parameter exchange shares the status
 	 * channel with async firmware status traffic. */
 
-	bhi360_enable_sensor_table(imu, bhi360_gesture_sensors, ARRAY_SIZE(bhi360_gesture_sensors));
-	bhi360_enable_sensor_table(imu, bhi360_activity_sensors, ARRAY_SIZE(bhi360_activity_sensors));
-	if (enable_phy_streams) {
-		bhi360_enable_sensor_table(&bhi360, bhi360_phy_sensors, ARRAY_SIZE(bhi360_phy_sensors));
-		k_timer_start(&bhi360.fifo_timer,
-					  K_MSEC(phy_stream_period_ms),
-					  K_MSEC(phy_stream_period_ms));
-		bhi360.enable_phy_sensor_streams = true;
-		bhi360.timer_running = true;
-		bhi360.timer_period_ms = phy_stream_period_ms;
-	} else {
-		bhi360.enable_phy_sensor_streams = false;
+	if (!bhi360_enable_activity_sensors(imu,
+										config->activity_sensors,
+										config->activity_sensor_count)) {
+		return false;
 	}
+	bhi360.enable_phy_sensor_streams = false;
 
 	imu->state.bits.configured = 1U;
 	LOG_INF("%s: Configuration complete", imu->name);
@@ -1450,12 +1560,7 @@ void bhi360_stop(void) {
 	}
 
 	bhi360_disable_sensor_table(&bhi360, bhi360_phy_sensors, ARRAY_SIZE(bhi360_phy_sensors));
-	bhi360_disable_sensor_table(&bhi360,
-								bhi360_gesture_sensors,
-								ARRAY_SIZE(bhi360_gesture_sensors));
-	bhi360_disable_sensor_table(&bhi360,
-								bhi360_activity_sensors,
-								ARRAY_SIZE(bhi360_activity_sensors));
+	bhi360_disable_activity_sensors(&bhi360);
 	(void) bhy2_soft_reset(&bhi360.bhy2);
 	bhi360.state.bits.configured = 0U;
 }
