@@ -29,6 +29,8 @@
  * firmware's raw FIFO tick counter, measured in 15.625 us ticks since sensor
  * boot. The driver converts that counter to elapsed microseconds before storing
  * it in the payload structs below. These values are not Unix-epoch timestamps.
+ * The driver also records a host-minus-sensor offset at IRQ entry for internal
+ * time alignment; the payload timestamps themselves remain sensor-boot-relative.
  *
  * IRQ timestamps captured by the driver itself use rtc_get_timestamp_ms() and
  * therefore are milliseconds since the Unix epoch.
@@ -602,7 +604,7 @@ bool bhi360_configure(bool enable_phy_streams, uint32_t phy_stream_period_ms);
  * @pre bhi360_init() and bhi360_configure() have completed successfully.
  * @pre Called from thread context, not ISR.
  */
-int bhi360_process_irq(void);
+int bhi360_irq_handler(void);
 
 /**
  * @brief Enable high-rate physical sensor streams.

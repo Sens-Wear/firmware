@@ -78,6 +78,7 @@
 #include "bhi360.h"
 #include "bhi360_api_error.h"
 #include "bhy2.h"
+#include "bhy2_hif.h"
 #include "bhy2_parse.h"
 #include "device_driver_dts_ids.h"
 #include "device_driver_events.h"
@@ -235,6 +236,8 @@ static struct bhi360_t {
 	/** @brief Cached activity sample published through bhi360_event_Activity p_param. */
 	struct bhi360_activity_data_t activity_data;
 
+	/** @brief Host-minus-sensor timestamp offset in microseconds, refreshed at IRQ entry. */
+	time_t sensor_time_offset;
 	time_t last_irq_timestamp; /**< @brief Timestamp of the most recent IRQ (milliseconds since the
 								  Unix epoch). */
 } bhi360 = {
@@ -245,6 +248,7 @@ static struct bhi360_t {
 	.gpio0 = GPIO_DT_SPEC_GET(BHI360_NODE, gpio0_gpios),
 	.gpio1 = GPIO_DT_SPEC_GET(BHI360_NODE, gpio1_gpios),
 	.name = "BHI360",
+	.sensor_time_offset = -1,
 	.last_irq_timestamp = -1,
 };
 
@@ -466,6 +470,7 @@ static void parse_step_counter(const struct bhy2_fifo_parse_data_info* callback_
 static void parse_activity(const struct bhy2_fifo_parse_data_info* callback_info,
 						   void* callback_ref);
 static void print_api_error(int8_t rslt, struct bhy2_dev* dev);
+static void bhi360_update_sensor_time_offset(struct bhi360_t* dev);
 
 /**
  * @brief Program and log the BHI360 host interrupt routing.
@@ -1265,7 +1270,7 @@ int bhi360_stop_periodic_timer(void) {
 	return 0;
 }
 
-int bhi360_process_irq(void) {
+int bhi360_irq_handler(void) {
 	if (!bhi360.state.bits.initialized || !bhi360.state.bits.configured) {
 		return -ENODEV;
 	}
@@ -1274,6 +1279,8 @@ int bhi360_process_irq(void) {
 	 * refill the per-drain arrays without a copy-out reader observing a partial
 	 * batch. Start a fresh batch by resetting the counts before draining. */
 	k_mutex_lock(&bhi360.lock, K_FOREVER);
+
+	bhi360_update_sensor_time_offset(&bhi360);
 
 	bhi360.quat_count = 0;
 	bhi360.lacc_count = 0;
@@ -1458,6 +1465,25 @@ static inline time_t bhy2_timestamp_to_elapsed_us(uint64_t bhy2_timestamp) {
 }
 
 /**
+ * @brief Refresh the host-minus-sensor timestamp offset at IRQ entry.
+ * @details Samples the local RTC in microseconds, requests the BHI360 hardware
+ *          timestamp through BHY2, converts the returned sensor time to
+ *          microseconds, and stores the difference as host time minus sensor
+ *          time.
+ */
+static void bhi360_update_sensor_time_offset(struct bhi360_t* dev) {
+	uint64_t sensor_timestamp = 0;
+	time_t rtc_timestamp_us = rtc_get_timestamp_us();
+	int8_t rslt = bhy2_hif_req_and_get_hw_timestamp(&sensor_timestamp, &dev->bhy2.hif);
+
+	if (rslt != BHY2_OK) {
+		print_api_error(rslt, &dev->bhy2);
+		return;
+	}
+	dev->sensor_time_offset = rtc_timestamp_us - bhy2_timestamp_to_elapsed_us(sensor_timestamp);
+}
+
+/**
  * @brief Parse a rotation-vector FIFO packet into the per-drain quaternion array.
  * @details Samples are only collected here; no event is posted per sample.
  *          bhi360_process_irq() posts a single bhi360_event_QuaternionBatch once
@@ -1486,7 +1512,8 @@ static void parse_quaternion(const struct bhy2_fifo_parse_data_info* callback_in
 	slot->z = data.z;
 	slot->w = data.w;
 	slot->accuracy = data.accuracy;
-	slot->timestamp = bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp));
+	slot->timestamp =
+		bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp)) + bhi360.sensor_time_offset;
 }
 
 /**
@@ -1511,7 +1538,8 @@ static void parse_linear_acceleration(const struct bhy2_fifo_parse_data_info* ca
 	slot->x = data.x;
 	slot->y = data.y;
 	slot->z = data.z;
-	slot->timestamp = bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp));
+	slot->timestamp =
+		bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp)) + bhi360.sensor_time_offset;
 }
 
 /**
@@ -1535,7 +1563,8 @@ static void parse_gyro(const struct bhy2_fifo_parse_data_info* callback_info, vo
 	slot->x = data.x;
 	slot->y = data.y;
 	slot->z = data.z;
-	slot->timestamp = bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp));
+	slot->timestamp =
+		bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp)) + bhi360.sensor_time_offset;
 }
 
 /**
@@ -1554,14 +1583,16 @@ static void parse_scalar_event(const struct bhy2_fifo_parse_data_info* callback_
 		(callback_info->sensor_id == BHY2_SENSOR_ID_STD_LP_WU)) {
 		dev->pedometer_data.sensor_id = callback_info->sensor_id;
 		dev->pedometer_data.step_detected = true;
-		dev->pedometer_data.timestamp = bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp));
+		dev->pedometer_data.timestamp =
+			bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp)) + bhi360.sensor_time_offset;
 		bhi360_post_event(bhi360_event_Pedometer, callback_info->sensor_id, &dev->pedometer_data);
 		return;
 	}
 
 	dev->gesture_data.sensor_id = callback_info->sensor_id;
 	dev->gesture_data.value = value;
-	dev->gesture_data.timestamp = bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp));
+	dev->gesture_data.timestamp =
+		bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp)) + bhi360.sensor_time_offset;
 	bhi360_post_event(bhi360_event_Gesture, event_value, &dev->gesture_data);
 	LOG_INF("Gesture/event sensor id %u value 0x%02x", callback_info->sensor_id, value);
 }
@@ -1588,7 +1619,8 @@ static void parse_step_counter(const struct bhy2_fifo_parse_data_info* callback_
 	dev->pedometer_data.sensor_id = callback_info->sensor_id;
 	dev->pedometer_data.step_count = count;
 	dev->pedometer_data.step_detected = false;
-	dev->pedometer_data.timestamp = bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp));
+	dev->pedometer_data.timestamp =
+		bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp)) + bhi360.sensor_time_offset;
 	bhi360_post_event(bhi360_event_Pedometer, callback_info->sensor_id, &dev->pedometer_data);
 	LOG_INF("Step counter sensor id %u count %u", callback_info->sensor_id, count);
 }
@@ -1613,7 +1645,8 @@ static void parse_activity(const struct bhy2_fifo_parse_data_info* callback_info
 	uint16_t activity = BHY2_LE2U16(callback_info->data_ptr);
 	dev->activity_data.sensor_id = callback_info->sensor_id;
 	dev->activity_data.activity = activity;
-	dev->activity_data.timestamp = bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp));
+	dev->activity_data.timestamp =
+		bhy2_timestamp_to_elapsed_us(*(callback_info->time_stamp)) + bhi360.sensor_time_offset;
 	bhi360_post_event(bhi360_event_Activity,
 					  ((uint32_t) callback_info->sensor_id << 16) | activity,
 					  &dev->activity_data);
