@@ -202,10 +202,10 @@ void max30208_get_default_config(struct max30208_config_t* config);
 int max30208_config(struct max30208_config_t* config);
 
 /**
- * @brief Report whether max30208_init() successfully detected the sensor.
+ * @brief Report whether the MAX30208 is initialized and configured.
  *
- * @retval true The sensor is available.
- * @retval false Initialization has not succeeded.
+ * @retval true The sensor has been detected and its acquisition configuration was applied.
+ * @retval false Initialization, probing, or configuration has not succeeded.
  */
 bool max30208_is_ready(void);
 

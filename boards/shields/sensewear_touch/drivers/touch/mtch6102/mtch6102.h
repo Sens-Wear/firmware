@@ -276,10 +276,10 @@ const char* mtch6102_event_name(enum mtch6102_event_type event_id);
 enum mtch6102_event_type mtch6102_sample_event(const struct touch_sensor_sample_t* sample);
 
 /**
- * @brief Report whether mtch6102_init() has successfully probed the part.
+ * @brief Report whether the MTCH6102 is initialized and configured.
  *
- * @retval true The controller is available.
- * @retval false Initialization has not succeeded.
+ * @retval true The controller has been detected and its register configuration was applied.
+ * @retval false Initialization, probing, or configuration has not succeeded.
  */
 bool mtch6102_is_ready(void);
 

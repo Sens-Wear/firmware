@@ -146,13 +146,13 @@ int main(void) {
 		return 0;
 	}
 
-	if (!max30208_is_ready()) {
-		printk("MAX30208 not ready\n");
+	if (max30208_config(NULL) != 0) {
+		printk("max30208_config() failed\n");
 		return 0;
 	}
 
-	if (max30208_config(NULL) != 0) {
-		printk("max30208_config() failed\n");
+	if (!max30208_is_ready()) {
+		printk("MAX30208 not ready after configuration\n");
 		return 0;
 	}
 

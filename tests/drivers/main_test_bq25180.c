@@ -122,11 +122,6 @@ int main(void) {
 		return 0;
 	}
 
-	if (!bq25180_is_ready()) {
-		printk("bq25180_is_ready() == false\n");
-		return 0;
-	}
-
 	struct bq25180_config_t config;
 
 	bq25180_get_default_lipo_usb_charger_config(&config);
@@ -134,6 +129,11 @@ int main(void) {
 
 	if (!bq25180_config(&config)) {
 		printk("bq25180_config() failed\n");
+		return 0;
+	}
+
+	if (!bq25180_is_ready()) {
+		printk("bq25180_is_ready() == false after configuration\n");
 		return 0;
 	}
 

@@ -355,13 +355,16 @@ static int bq25180_kill_init(void) {
 
 /* Check if the BQ25180 is available. */
 bool bq25180_is_ready(void) {
-	assert(bq25180.state.bits.bInitialized != 0);
+	if (bq25180.state.bits.bInitialized == 0) {
+		return false;
+	}
 	if (bq25180.state.bits.bProbed == 0) {
 		bq25180_bus_lock();
 		bq25180_probe();
 		bq25180_bus_unlock();
 	}
-	return bq25180.state.bits.bProbed != 0 && bq25180.state.bits.bDeviceFound != 0;
+	return bq25180.state.bits.bProbed != 0 && bq25180.state.bits.bDeviceFound != 0 &&
+		   bq25180.state.bits.bConfigured != 0;
 }
 
 /*
@@ -472,7 +475,6 @@ bool bq25180_init(void) {
  * \param config The configuration to be loaded.
  */
 bool bq25180_config(struct bq25180_config_t* config) {
-	assert(bq25180.state.bits.bInitialized != 0);
 	// for an initialized, we can apply the configuration.
 	union bq25180_VBAT_CTRL_register_t vbatCtrl = {.value = BQ25180_VBAT_CTRL_DEFAULT};
 	union bq25180_ICHG_CTRL_register_t ichgCtrl = {.value = BQ25180_ICHG_CTRL_DEFAULT};
@@ -485,7 +487,8 @@ bool bq25180_config(struct bq25180_config_t* config) {
 	union bq25180_TS_CONTROL_register_t tsControlReg = {.value = BQ25180_TS_CONTROL_DEFAULT};
 	union bq25180_MASK_ID_register_t maskId = {.value = BQ25180_MASK_ID_DEFAULT};
 
-	if (!bq25180_is_ready() || (bq25180.state.bits.bInitialized == 0)) {
+	if ((bq25180.state.bits.bInitialized == 0) || (bq25180.state.bits.bProbed == 0) ||
+		(bq25180.state.bits.bDeviceFound == 0)) {
 		return false;
 	}
 	if (config == NULL) {

@@ -174,13 +174,13 @@ int main(void) {
 		return 0;
 	}
 
-	if (!max30101_is_ready()) {
-		printk("MAX30101 not ready\n");
+	if (max30101_config(NULL) != 0) {
+		printk("max30101_config() failed\n");
 		return 0;
 	}
 
-	if (max30101_config(NULL) != 0) {
-		printk("max30101_config() failed\n");
+	if (!max30101_is_ready()) {
+		printk("MAX30101 not ready after configuration\n");
 		return 0;
 	}
 

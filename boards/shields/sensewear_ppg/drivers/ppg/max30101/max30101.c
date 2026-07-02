@@ -322,6 +322,9 @@ static int max30101_irq_init(void) {
 /* ------------------------------------------------------------------------- */
 
 bool max30101_is_ready(void) {
+	if (max30101.state.bits.bInitialized == 0) {
+		return false;
+	}
 	if (max30101.state.bits.bProbed == 0) {
 		if (!max30101_bus_lock()) {
 			return false;
@@ -329,7 +332,8 @@ bool max30101_is_ready(void) {
 		max30101_probe();
 		max30101_bus_unlock();
 	}
-	return max30101.state.bits.bProbed != 0 && max30101.state.bits.bDeviceFound != 0;
+	return max30101.state.bits.bProbed != 0 && max30101.state.bits.bDeviceFound != 0 &&
+		   max30101.state.bits.bConfigured != 0;
 }
 
 /**

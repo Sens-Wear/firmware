@@ -835,7 +835,8 @@ int mtch6102_config(struct mtch6102_config_t* config) {
 }
 
 bool mtch6102_is_ready(void) {
-	return mtch6102.state.bits.bInitialized && mtch6102.state.bits.bDeviceFound;
+	return mtch6102.state.bits.bInitialized && mtch6102.state.bits.bDeviceFound &&
+		   mtch6102.state.bits.bConfigured;
 }
 
 int mtch6102_get_position(struct mtch6102_position* pos) {

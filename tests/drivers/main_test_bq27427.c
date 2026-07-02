@@ -104,11 +104,6 @@ int main(void) {
 		return 0;
 	}
 
-	if (!bq27427_is_ready()) {
-		printk("bq27427_is_ready() == false\n");
-		return 0;
-	}
-
 	struct bq27427_config_t config;
 
 	bq27427_get_default_config(&config);
@@ -116,6 +111,11 @@ int main(void) {
 
 	if (!bq27427_config(&config)) {
 		printk("bq27427_config() failed\n");
+		return 0;
+	}
+
+	if (!bq27427_is_ready()) {
+		printk("bq27427_is_ready() == false after configuration\n");
 		return 0;
 	}
 

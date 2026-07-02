@@ -257,10 +257,10 @@ struct bq25180_config_t {
 bool bq25180_init(void);
 
 /**
- * @brief Report whether bq25180_init() successfully detected the charger.
+ * @brief Report whether the BQ25180 is initialized and configured.
  *
- * @retval true The charger is available.
- * @retval false Initialization has not succeeded.
+ * @retval true The charger has been detected and its register configuration was applied.
+ * @retval false Initialization, probing, or configuration has not succeeded.
  */
 bool bq25180_is_ready(void);
 

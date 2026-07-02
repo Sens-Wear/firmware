@@ -149,13 +149,13 @@ int main(void) {
 		return 0;
 	}
 
-	if (!mtch6102_is_ready()) {
-		printk("MTCH6102 not ready\n");
+	if (mtch6102_config(NULL) != 0) {
+		printk("mtch6102_config() failed\n");
 		return 0;
 	}
 
-	if (mtch6102_config(NULL) != 0) {
-		printk("mtch6102_config() failed\n");
+	if (!mtch6102_is_ready()) {
+		printk("MTCH6102 not ready after configuration\n");
 		return 0;
 	}
 

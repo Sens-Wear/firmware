@@ -231,10 +231,10 @@ struct max30101_ppg_sample_t {
 int max30101_init(void);
 
 /**
- * @brief Report whether max30101_init() successfully detected the sensor.
+ * @brief Report whether the MAX30101 is initialized and configured.
  *
- * @retval true The sensor is available.
- * @retval false Initialization has not succeeded.
+ * @retval true The sensor has been detected and its acquisition configuration was applied.
+ * @retval false Initialization, probing, or configuration has not succeeded.
  */
 bool max30101_is_ready(void);
 

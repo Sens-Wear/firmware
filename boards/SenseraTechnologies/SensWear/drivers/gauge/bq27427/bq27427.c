@@ -169,7 +169,8 @@ static bool bq27427_probe(void) {
 }
 
 bool bq27427_is_ready(void) {
-	return bq27427.state.bits.bProbed != 0 && bq27427.state.bits.bDeviceFound != 0;
+	return bq27427.state.bits.bInitialized != 0 && bq27427.state.bits.bProbed != 0 &&
+		   bq27427.state.bits.bDeviceFound != 0 && bq27427.state.bits.bConfigured != 0;
 }
 
 static inline uint16_t swap_bytes16(uint16_t val) {

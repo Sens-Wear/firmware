@@ -572,9 +572,9 @@ struct bhi360_activity_data_t {
 bool bhi360_init(void);
 
 /**
- * @brief Report whether bhi360_init() has completed successfully.
- * @retval true The driver is initialized and ready for configuration.
- * @retval false Initialization has not (yet) succeeded.
+ * @brief Report whether the BHI360 is initialized and configured.
+ * @retval true The driver resources are initialized and firmware/sensors are configured.
+ * @retval false Initialization or configuration has not succeeded.
  */
 bool bhi360_is_ready(void);
 

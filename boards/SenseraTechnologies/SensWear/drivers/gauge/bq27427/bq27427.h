@@ -189,10 +189,10 @@ struct bq27427_battery_state_t {
 bool bq27427_init(void);
 
 /**
- * @brief Report whether bq27427_init() successfully detected the gauge.
+ * @brief Report whether the BQ27427 is initialized and configured.
  *
- * @retval true The gauge is available.
- * @retval false Initialization has not succeeded.
+ * @retval true The gauge has been detected and its design parameters were programmed.
+ * @retval false Initialization, probing, or configuration has not succeeded.
  */
 bool bq27427_is_ready(void);
 

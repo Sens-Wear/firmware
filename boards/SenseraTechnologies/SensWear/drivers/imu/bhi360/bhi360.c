@@ -1032,7 +1032,7 @@ bool bhi360_init(void) {
 }
 
 bool bhi360_is_ready(void) {
-	return bhi360.state.bits.initialized != 0U;
+	return bhi360.state.bits.initialized != 0U && bhi360.state.bits.configured != 0U;
 }
 
 bool bhi360_configure(bool enable_phy_streams, uint32_t phy_stream_period_ms) {

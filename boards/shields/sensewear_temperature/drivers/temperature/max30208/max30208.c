@@ -471,7 +471,8 @@ int max30208_init(void) {
 }
 
 bool max30208_is_ready(void) {
-	return max30208.state.bits.bInitialized != 0 && max30208.state.bits.bDeviceFound != 0;
+	return max30208.state.bits.bInitialized != 0 && max30208.state.bits.bDeviceFound != 0 &&
+		   max30208.state.bits.bConfigured != 0;
 }
 
 int max30208_start(void) {
