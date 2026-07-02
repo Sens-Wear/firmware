@@ -49,7 +49,7 @@ static void bhi360_event_consumer_thread(void* a, void* b, void* c) {
 		const char* event_name = bhi360_event_name(event.event_id, event.v_param);
 
 		if (event.event_id == bhi360_event_Irq) {
-			int ret = bhi360_process_irq();
+			int ret = bhi360_irq_handler();
 			if ((ret != 0) && (ret != -ENODEV)) {
 				printk("bhi360_process_irq() failed: %d\n", ret);
 			}
