@@ -211,7 +211,7 @@ bool bq27427_is_ready(void);
  *
  * @warning Blocks for several seconds (see the file-level warning).
  */
-bool bq27427_config(struct bq27427_config_t* config);
+bool bq27427_config(const struct bq27427_config_t* config);
 
 /**
  * @brief Reset the gauge and optionally reapply a configuration.
@@ -227,7 +227,7 @@ bool bq27427_config(struct bq27427_config_t* config);
  *
  * @warning Blocks for several seconds (see the file-level warning).
  */
-bool bq27427_reset(struct bq27427_config_t* config);
+bool bq27427_reset(const struct bq27427_config_t* config);
 
 /**
  * @brief Populate a configuration with the SenseWear battery defaults.

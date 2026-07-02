@@ -474,7 +474,7 @@ bool bq25180_init(void) {
  *
  * \param config The configuration to be loaded.
  */
-bool bq25180_config(struct bq25180_config_t* config) {
+bool bq25180_config(const struct bq25180_config_t* config) {
 	// for an initialized, we can apply the configuration.
 	union bq25180_VBAT_CTRL_register_t vbatCtrl = {.value = BQ25180_VBAT_CTRL_DEFAULT};
 	union bq25180_ICHG_CTRL_register_t ichgCtrl = {.value = BQ25180_ICHG_CTRL_DEFAULT};
@@ -805,7 +805,7 @@ void bq25180_print_state(union bq25180_charger_state* state) {
  * The function returns   true  if the command could be sent,
  *                        false otherwise (lock or I²C failure).
  */
-bool bq25180_reset(struct bq25180_config_t* config) {
+bool bq25180_reset(const struct bq25180_config_t* config) {
 	/* 1. Ensure the driver was already initialised */
 	assert(bq25180.state.bits.bInitialized != 0);
 	/* 2. Prepare the SHIP_RST register value

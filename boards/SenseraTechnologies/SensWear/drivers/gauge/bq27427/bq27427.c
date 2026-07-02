@@ -651,7 +651,7 @@ static inline void program_byte_parameter_in_memory(enum bq27427_flash_class_typ
 	} while (prevVal != value);
 }
 
-static inline void bq27427_program_design_parameters(struct bq27427_config_t* config) {
+static inline void bq27427_program_design_parameters(const struct bq27427_config_t* config) {
 	// now we have to check whether the device is sealed or now
 	bool sealed = is_gauge_sealed();
 	assert(sealed == false);
@@ -737,7 +737,7 @@ static inline void bq27427_flip_current_gain(void) {
 	}
 }
 
-static inline void gauge_initialization_configure(struct bq27427_config_t* config) {
+static inline void gauge_initialization_configure(const struct bq27427_config_t* config) {
 	// now we have to check whether the device is sealed or now
 	const bool sealed = is_gauge_sealed();
 	if (sealed != false) {
@@ -759,7 +759,7 @@ static inline void gauge_initialization_configure(struct bq27427_config_t* confi
 	seal_gauge();
 }
 
-bool bq27427_config(struct bq27427_config_t* config) {
+bool bq27427_config(const struct bq27427_config_t* config) {
 	if (config == NULL || (bq27427.state.bits.bInitialized == 0)) {
 		return false;
 	}
@@ -982,7 +982,7 @@ void bq27427_print_state(void) {
 			controlStatus.value);
 }
 
-bool bq27427_reset(struct bq27427_config_t* config) {
+bool bq27427_reset(const struct bq27427_config_t* config) {
 	union bq27427_flags_register_t flags = {.value = 0};
 	/* Driver must be initialised before we can issue a reset */
 	if (bq27427.state.bits.bInitialized == 0) {

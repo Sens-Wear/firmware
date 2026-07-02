@@ -792,7 +792,7 @@ static int mtch6102_apply_config(const struct mtch6102_config_t* config) {
 	return 0;
 }
 
-int mtch6102_config(struct mtch6102_config_t* config) {
+int mtch6102_config(const struct mtch6102_config_t* config) {
 	int ret;
 
 	if (!mtch6102.state.bits.bInitialized) {

@@ -261,7 +261,7 @@ void max30101_get_default_config(struct max30101_config_t* config);
  * @retval -EINVAL The driver was not initialized or the configuration is out of range.
  * @retval -EIO Locking failed or a register transfer failed.
  */
-int max30101_config(struct max30101_config_t* config);
+int max30101_config(const struct max30101_config_t* config);
 
 /**
  * @brief Return the printable name for a MAX30101 event identifier.

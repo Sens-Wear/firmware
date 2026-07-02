@@ -275,7 +275,7 @@ bool bq25180_is_ready(void);
  * @retval false The driver was not initialized, locking failed, a transfer
  *         failed, or ownership could not be released.
  */
-bool bq25180_config(struct bq25180_config_t* config);
+bool bq25180_config(const struct bq25180_config_t* config);
 
 /**
  * @brief Return the printable name for a BQ25180 event identifier.
@@ -368,7 +368,7 @@ bool bq25180_shutdown_disable(void);
  * @retval true The control write and reconfiguration succeeded.
  * @retval false The driver was unavailable or a bus/configuration step failed.
  */
-bool bq25180_reset(struct bq25180_config_t* config);
+bool bq25180_reset(const struct bq25180_config_t* config);
 
 /**
  * @brief Enable or disable battery charging.

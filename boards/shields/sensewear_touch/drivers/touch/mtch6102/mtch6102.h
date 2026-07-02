@@ -320,7 +320,7 @@ void mtch6102_get_default_config(struct mtch6102_config_t* config);
  * @retval -EBUSY The driver is currently sampling.
  * @return A negative errno if a register transfer failed.
  */
-int mtch6102_config(struct mtch6102_config_t* config);
+int mtch6102_config(const struct mtch6102_config_t* config);
 
 /**
  * @brief Initialize and probe the MTCH6102.

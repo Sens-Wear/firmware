@@ -278,7 +278,7 @@ static bool max30208_reset_locked(void) {
 	return false;
 }
 
-int max30208_config(struct max30208_config_t* config) {
+int max30208_config(const struct max30208_config_t* config) {
 	if (max30208.state.bits.bInitialized == 0) {
 		LOG_ERR("MAX30208 not initialized");
 		return -EINVAL;

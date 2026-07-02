@@ -199,7 +199,7 @@ void max30208_get_default_config(struct max30208_config_t* config);
  * @retval -EINVAL The driver was not initialized.
  * @retval -EIO Locking failed or a register transfer failed.
  */
-int max30208_config(struct max30208_config_t* config);
+int max30208_config(const struct max30208_config_t* config);
 
 /**
  * @brief Report whether the MAX30208 is initialized and configured.
