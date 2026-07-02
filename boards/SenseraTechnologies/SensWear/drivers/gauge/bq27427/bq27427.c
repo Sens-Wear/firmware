@@ -935,11 +935,13 @@ bool bq27427_update_state(struct bq27427_battery_state_t* state) {
 	if (state != NULL) {
 		memcpy(state, &(bq27427.battery_state), sizeof(struct bq27427_battery_state_t));
 	}
-	// notify consumers that a fresh battery state is available.
+	// notify consumers that a fresh battery state is available. The cached state
+	// (valid for the life of the driver) travels in p_param so a consumer can
+	// read it without re-reading the gauge (which would re-post this event).
 	device_driver_event_post(BQ27427_DEVICE_DTS_ID,
 							 bq27427_event_StateUpdated,
 							 0,
-							 (uintptr_t) NULL,
+							 (uintptr_t) &bq27427.battery_state,
 							 K_MSEC(BQ27427_I2C_TIMEOUT));
 	return true;
 }
