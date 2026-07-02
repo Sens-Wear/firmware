@@ -572,6 +572,13 @@ struct bhi360_activity_data_t {
 bool bhi360_init(void);
 
 /**
+ * @brief Report whether bhi360_init() has completed successfully.
+ * @retval true The driver is initialized and ready for configuration.
+ * @retval false Initialization has not (yet) succeeded.
+ */
+bool bhi360_is_ready(void);
+
+/**
  * @brief Configure the BHI360 for sensor operation.
  * @details Binds the BHY2 transport hooks, verifies the product ID, uploads
  *          firmware, configures host IRQ/FIFO routing, registers parser

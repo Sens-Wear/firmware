@@ -1031,6 +1031,10 @@ bool bhi360_init(void) {
 	return true;
 }
 
+bool bhi360_is_ready(void) {
+	return bhi360.state.bits.initialized != 0U;
+}
+
 bool bhi360_configure(bool enable_phy_streams, uint32_t phy_stream_period_ms) {
 	struct bhi360_t* imu = &bhi360;
 	int8_t rslt;
