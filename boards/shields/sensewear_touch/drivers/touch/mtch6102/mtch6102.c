@@ -831,6 +831,7 @@ int mtch6102_config(const struct mtch6102_config_t* config) {
 
 	mtch6102.state.bits.bConfigured = 1U;
 	mtch6102.state.bits.bSampling = 0U;
+	mtch6102_post_event_isr(mtch6102_Irq, 0);
 	return 0;
 }
 
