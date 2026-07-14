@@ -80,6 +80,7 @@ enum device_msg_type {
 	device_msg_TouchGesture,  /**< ::touch_gesture_msg_t payload (discrete touch gestures). */
 	device_msg_Battery,		  /**< ::battery_msg_t payload (fuel gauge). */
 	device_msg_Charger,		  /**< ::charger_msg_t payload. */
+	device_msg_Regulator,	  /**< ::regulator_msg_t payload (rail on/off + VOUT). */
 	device_msg_Count,		  /**< Number of valid message types. */
 };
 
@@ -296,6 +297,20 @@ struct charger_msg_t {
 };
 
 /**
+ * @brief Voltage-regulator status message.
+ * @details Decoded snapshot of a managed regulator rail (for example the
+ *          TPSM83102 buck converter). Emitted on rail enable/disable and on
+ *          output-voltage setpoint changes. Regulator lifecycle events do not
+ *          carry a device timestamp, so @c timestamp is stamped by the device
+ *          manager when it translates the event.
+ */
+struct regulator_msg_t {
+	time_t timestamp; /**< Microseconds since the Unix epoch (stamped by the manager). */
+	uint32_t vout_uv; /**< Output-voltage setpoint in microvolts. */
+	bool enabled;	  /**< True when the rail is enabled. */
+};
+
+/**
  * @brief Tagged device-manager message envelope.
  * @details A single value type able to carry any device message, for use on one
  *          shared channel. @c type selects the valid @c payload member and @c
@@ -323,6 +338,7 @@ struct device_msg_t {
 			touch_gesture;			  /**< Valid when @c type == ::device_msg_TouchGesture. */
 		struct battery_msg_t battery; /**< Valid when @c type == ::device_msg_Battery. */
 		struct charger_msg_t charger; /**< Valid when @c type == ::device_msg_Charger. */
+		struct regulator_msg_t regulator; /**< Valid when @c type == ::device_msg_Regulator. */
 	} payload;
 };
 

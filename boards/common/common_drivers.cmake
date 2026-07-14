@@ -41,3 +41,13 @@ target_include_directories(common_drivers INTERFACE
 	${CMAKE_CURRENT_LIST_DIR}/device_driver_events
 	${CMAKE_CURRENT_LIST_DIR}/device_manager
 )
+
+# The device manager is opt-in (CONFIG_SENSEWEAR_DEVICE_MANAGER): it translates
+# driver events into the message contract and publishes them over zbus, so it is
+# excluded from isolated device/shield test images. It compiles in the app
+# context, where the board and shield driver include dirs are already on the path
+# for its per-device translators.
+if(CONFIG_SENSEWEAR_DEVICE_MANAGER)
+	file(GLOB _device_manager_src CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/device_manager/*.c)
+	target_sources(common_drivers INTERFACE ${_device_manager_src})
+endif()
