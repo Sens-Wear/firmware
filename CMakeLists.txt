@@ -64,11 +64,16 @@ set(BOARD_FLASH_RUNNER pyocd)
 # application main (src/main.c). The CONFIG_ symbols are available as CMake
 # variables because find_package(Zephyr) above has already run Kconfig.
 set(TEST_DRIVERS OFF)
+set(_enabled_bringup_tests "")
 foreach(_t BQ25180 BQ27427 BHI360 LP5562 M95P TPSM83102 RTC)
     if(CONFIG_SENSEWEAR_TEST_${_t}_DRIVER)
         set(TEST_DRIVERS ON)
     endif()
 endforeach()
+# The device manager test is a driver-style test but has no _DRIVER suffix.
+if(CONFIG_SENSEWEAR_TEST_DEVICE_MANAGER)
+    set(TEST_DRIVERS ON)
+endif()
 
 # Shield driver bring-up tests (tests/shields). Same Kconfig-driven selection as
 # the board-driver tests above; these exercise drivers shipped by a shield, so
@@ -156,6 +161,7 @@ if(TEST_DRIVERS OR TEST_SHIELDS)
     # (src/app.cmake -> app_src) are not built at all.
     if(TEST_DRIVERS)
         include(${CMAKE_CURRENT_SOURCE_DIR}/tests/drivers/tests.cmake)
+        include(${CMAKE_CURRENT_SOURCE_DIR}/tests/device_manager/tests.cmake)
     endif()
     if(TEST_SHIELDS)
         include(${CMAKE_CURRENT_SOURCE_DIR}/tests/shields/tests.cmake)
@@ -164,4 +170,17 @@ else()
     # Normal build: application sources / includes (app_src INTERFACE library).
     # include(${CMAKE_CURRENT_SOURCE_DIR}/src/app.cmake)
     # target_link_libraries(app PRIVATE app_src)
+endif()
+
+if(TEST_DRIVERS)
+    list(LENGTH _enabled_bringup_tests _enabled_driver_test_count)
+    if(_enabled_driver_test_count EQUAL 0)
+        message(FATAL_ERROR
+            "TEST_DRIVERS is ON but no SENSEWEAR_TEST_<driver>_DRIVER is enabled. "
+            "Enable exactly one, e.g. CONFIG_SENSEWEAR_TEST_M95P_DRIVER=y.")
+    elseif(_enabled_driver_test_count GREATER 1)
+        message(FATAL_ERROR
+            "Multiple driver tests enabled (${_enabled_bringup_tests}); each defines "
+            "main(). Enable exactly one SENSEWEAR_TEST_<driver>_DRIVER.")
+    endif()
 endif()

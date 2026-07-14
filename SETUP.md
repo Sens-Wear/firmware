@@ -64,6 +64,9 @@ installed**:
 - **CMake Tools** (`ms-vscode.cmake-tools`) — drives configure/build from
   `CMakePresets.json` (`cmake.useCMakePresets` is `always`) and exposes the
   *active preset's build directory*, which the flash and debug launchers consume.
+  The workspace reads `cmake.cmakePath` from `CODEX_CMAKE_PATH`, which the
+  repo's `config/scripts/code-with-env.*` launchers export to the platform-
+  correct wrapper path.
 
 The two are coupled through the CMake **configure preset** you select:
 

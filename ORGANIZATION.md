@@ -78,7 +78,7 @@ at the top of the boards tree, so it belongs to neither in particular:
 ```text
 boards/common/
 ├── device_driver_events/         # shared device event manager (queue + consumer)
-├── device_manager/               # device-manager message contract (and, later, the manager)
+├── device_manager/               # message contract + device manager (zbus streams, opt-in)
 ├── generate_device_driver_dts_ids.py  # generates <LABEL>_DEVICE_ID at configure time
 └── common_drivers.cmake          # builds the `common_drivers` INTERFACE library
 ```

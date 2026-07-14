@@ -112,6 +112,81 @@
             }
         },
         {
+            "name": "test_device_manager_base",
+            "hidden": true,
+            "inherits": "test_base",
+            "description": "Device-manager zbus stream test. Disables the fuel gauge by default because it requires a battery to be present.",
+            "cacheVariables": {
+                "CONFIG_SENSEWEAR_TEST_DEVICE_MANAGER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_device_manager",
+            "displayName": "Test: device manager (base streams, no shield)",
+            "inherits": "test_device_manager_base",
+            "binaryDir": "${sourceDir}/build/tests/device_manager",
+            "description": "Device-manager zbus stream test. Disables the fuel gauge by default because it requires a battery to be present.",
+            "cacheVariables": {
+                "CONFIG_SENSEWEAR_TEST_DEVICE_MANAGER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_device_manager_haptic",
+            "displayName": "Test: device manager + haptic shield",
+            "inherits": "test_device_manager_base",
+            "binaryDir": "${sourceDir}/build/tests/device_manager_haptic",
+            "description": "Device-manager zbus stream test for haptic shield. Disables the fuel gauge by default because it requires a battery to be present.",
+            "cacheVariables": {
+                "SHIELD": "sensewear_haptic",
+                "CONFIG_SENSEWEAR_TEST_DEVICE_MANAGER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_device_manager_ppg",
+            "displayName": "Test: device manager + PPG shield",
+            "inherits": "test_device_manager_base",
+            "binaryDir": "${sourceDir}/build/tests/device_manager_ppg",
+            "description": "Device-manager zbus stream test for PPG shield. Disables the fuel gauge by default because it requires a battery to be present.",
+            "cacheVariables": {
+                "SHIELD": "sensewear_ppg sensewear_temperature",
+                "CONFIG_SENSEWEAR_TEST_DEVICE_MANAGER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_device_manager_temperature",
+            "displayName": "Test: device manager + temperature shield",
+            "inherits": "test_device_manager_base",
+            "binaryDir": "${sourceDir}/build/tests/device_manager_temperature",
+            "description": "Device-manager zbus stream test for temperature shield. Disables the fuel gauge by default because it requires a battery to be present.",
+            "cacheVariables": {
+                "SHIELD": "sensewear_temperature",
+                "CONFIG_SENSEWEAR_TEST_DEVICE_MANAGER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_device_manager_touch",
+            "displayName": "Test: device manager + touch shield",
+            "inherits": "test_device_manager_base",
+            "binaryDir": "${sourceDir}/build/tests/device_manager_touch",
+            "description": "Device-manager zbus stream test for touch shield. Disables the fuel gauge by default because it requires a battery to be present.",
+            "cacheVariables": {
+                "SHIELD": "sensewear_touch",
+                "CONFIG_SENSEWEAR_TEST_DEVICE_MANAGER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
             "name": "test_drv2605",
             "displayName": "Test: DRV2605 haptics (sensewear_haptic shield)",
             "inherits": "test_base",
@@ -192,6 +267,26 @@
         {
             "name": "test_rtc",
             "configurePreset": "test_rtc"
+        },
+        {
+            "name": "test_device_manager",
+            "configurePreset": "test_device_manager"
+        },
+        {
+            "name": "test_device_manager_haptic",
+            "configurePreset": "test_device_manager_haptic"
+        },
+        {
+            "name": "test_device_manager_ppg",
+            "configurePreset": "test_device_manager_ppg"
+        },
+        {
+            "name": "test_device_manager_temperature",
+            "configurePreset": "test_device_manager_temperature"
+        },
+        {
+            "name": "test_device_manager_touch",
+            "configurePreset": "test_device_manager_touch"
         },
         {
             "name": "test_drv2605",
