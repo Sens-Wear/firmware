@@ -278,6 +278,45 @@ static int drv2605_i2c_update_register(const struct device* dev,
 	return drv2605_i2c_write_register(dev, reg, current);
 }
 
+int drv2605_is_active(const struct device* dev) {
+	struct drv2605_data* data = dev->data;
+	uint8_t value;
+	int ret;
+	int release_ret;
+
+	/* RTP streaming state is tracked in software, so answer it without any bus
+	 * traffic and before touching the device. */
+	if (atomic_get(&data->rtp_active) != 0) {
+		return 1;
+	}
+
+	/* ROM waveform-sequencer playback (internal trigger) has no software
+	 * completion signal: the device clears the GO bit when the sequence ends.
+	 * Read it back to tell whether a sequence is still running. Other GO-driven
+	 * modes (diagnostics, auto-calibration) are not haptic playback and are not
+	 * reported here. */
+	if (data->mode != DRV2605_MODE_INTERNAL_TRIGGER) {
+		return 0;
+	}
+
+	ret = drv2605_bus_lock(dev);
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = drv2605_i2c_read_register(dev, DRV2605_REG_GO, &value);
+
+	release_ret = drv2605_bus_release(dev);
+	if (ret < 0) {
+		return ret;
+	}
+	if (release_ret < 0) {
+		return release_ret;
+	}
+
+	return FIELD_GET(DRV2605_GO, value) ? 1 : 0;
+}
+
 /*
  * Validate the dedicated DRV2605 supply rail and cache its regulator handle in
  * the driver object. Mirrors the MAX30101 power-up checks: a NULL regulator

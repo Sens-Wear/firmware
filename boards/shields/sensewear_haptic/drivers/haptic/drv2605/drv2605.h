@@ -375,6 +375,24 @@ const char *drv2605_event_name(enum drv2605_event_type event_id);
  */
 bool drv2605_rtp_is_active(const struct device *dev);
 
+/**
+ * @brief Report whether any haptic output is currently playing.
+ *
+ * @details Covers both playback paths: an asynchronous RTP stream and a ROM
+ * waveform-sequencer sequence started through the internal trigger. RTP state
+ * is tracked in software and answered without bus access; ROM state has no
+ * software completion signal, so this reads back the device GO bit, which the
+ * controller clears when the sequence ends. Because of that read it may perform
+ * a blocking I2C transaction, must be called from thread context, and can fail.
+ * GO-driven non-playback modes (diagnostics, auto-calibration) are not reported.
+ *
+ * @param dev Pointer to the device structure for haptic device instance.
+ * @retval 1 RTP streaming or a ROM sequence is playing.
+ * @retval 0 No playback is in progress.
+ * @return A negative errno if the ROM GO-bit read (or bus lock/release) failed.
+ */
+int drv2605_is_active(const struct device *dev);
+
 
 /** @} */
 
