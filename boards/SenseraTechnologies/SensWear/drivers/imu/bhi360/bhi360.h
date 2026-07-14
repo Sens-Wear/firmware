@@ -19,7 +19,7 @@
  * The driver operates in interrupt-driven mode: GPIO callbacks post raw IRQ
  * events to the central device-driver event queue (see @ref
  * device_driver_events.h). The application consumes those events from thread
- * context, calls bhi360_process_irq(), and then consumes decoded sensor/meta
+ * context, calls bhi360_irq_handler(), and then consumes decoded sensor/meta
  * events posted by the parser callbacks.
  *
  * @section sensewear_bhi360_timestamp_semantics Timestamp semantics
@@ -40,31 +40,31 @@
  * The BHI360 posts the following event types (see @ref bhi360_event_type):
  *
  * - **Irq**: Raw interrupt signal. The application/caller thread should call
- *   bhi360_process_irq() to read and parse FIFO data, which may generate zero or
+ *   bhi360_irq_handler() to read and parse FIFO data, which may generate zero or
  *   more downstream decoded events.
  *
  * - **QuaternionBatch**: A batch of orientation samples (x, y, z, w, accuracy).
  *   @details Posted once per FIFO drain, not per sample. v_param carries the number
  *   of samples collected during the drain; p_param points at the first of that many
- *   contiguous @c struct bhi360_quat_data (oldest first). Source: Game rotation
+ *   contiguous @c struct bhi360_quat_data_t (oldest first). Source: Game rotation
  *   vector wake-up sensor at 100 Hz. The pointed-to array is valid only until
  *   the next drain; bhi360_copy_quaternion() returns a thread-safe snapshot.
  *
  * - **LinearAccelerationBatch**: A batch of X, Y, Z acceleration samples.
  *   @details Posted once per FIFO drain, not per sample. v_param carries the number
- *   of samples; p_param points at that many contiguous @c struct bhi360_lacc_data
+ *   of samples; p_param points at that many contiguous @c struct bhi360_lacc_data_t
  *   (oldest first). Source: Accelerometer wake-up sensor at 100 Hz. Valid until
  *   the next drain; bhi360_copy_linear_acceleration() returns a thread-safe snapshot.
  *
  * - **GyroBatch**: A batch of angular velocity X, Y, Z samples.
  *   @details Posted once per FIFO drain, not per sample. v_param carries the number
- *   of samples; p_param points at that many contiguous @c struct bhi360_gyro_data
+ *   of samples; p_param points at that many contiguous @c struct bhi360_gyro_data_t
  *   (oldest first). Source: Gyroscope wake-up (GYRO_WU) sensor at 100 Hz. Valid
  *   until the next drain; bhi360_copy_gyro() returns a thread-safe snapshot.
  *
  * - **Pedometer**: Step count and detection state.
  *   @details Sensor ID passed in v_param; data via p_param
- *   (@c struct bhi360_pedometer_data*). Source: Step counter low-power (STC_LP)
+ *   (@c struct bhi360_pedometer_data_t*). Source: Step counter low-power (STC_LP)
  *   at 1 Hz. @c timestamp is derived from the BHY2 callback timestamp and is
  *   stored as elapsed microseconds since BHI360 firmware boot. The current
  *   default firmware does not advertise the wake-up low-power step
@@ -72,7 +72,7 @@
  *
  * - **Gesture**: Gesture type and sensor ID.
  *   @details Sensor ID and gesture value packed in v_param as (sensor_id << 8) | value;
- *   data via p_param (@c struct bhi360_gesture_data*). Sources: No Motion LP
+ *   data via p_param (@c struct bhi360_gesture_data_t*). Sources: No Motion LP
  *   wake-up, Wrist Gesture Detect LP wake-up, and Wrist Wear LP wake-up.
  *   @c timestamp is derived from the BHY2 callback timestamp and is stored as
  *   elapsed microseconds since BHI360 firmware boot. The current default
@@ -81,7 +81,7 @@
  *
  * - **Activity**: Activity classification with start/end flags.
  *   @details Sensor ID and activity bits packed in v_param as (sensor_id << 16) | activity;
- *   data via p_param (@c struct bhi360_activity_data*). Activity bits indicate
+ *   data via p_param (@c struct bhi360_activity_data_t*). Activity bits indicate
  *   which activity started/ended (still, walking, running, bicycle, vehicle,
  *   tilting). @c timestamp is derived from the BHY2 callback timestamp and is
  *   stored as elapsed microseconds since BHI360 firmware boot. Sources:
@@ -134,7 +134,7 @@
  * 3. Start high-rate physical streams later by calling
  *    bhi360_start_phy_sensor_streams().
  * 4. Process BHI360 device events as they arrive via the event queue. On each
- *    bhi360_event_Irq, call bhi360_process_irq() from caller thread context.
+ *    bhi360_event_Irq, call bhi360_irq_handler() from caller thread context.
  * 5. Use bhi360_stop_phy_sensor_streams() to stop only the high-rate physical
  *    streams; low-rate event sensors remain configured.
  * 6. Call bhi360_stop() to disable all configured virtual sensors and soft-reset
@@ -214,14 +214,14 @@
  *
  *     case bhi360_event_Irq:
  *         // Drain FIFO and post downstream sensor/meta events
- *         bhi360_process_irq();
+ *         bhi360_irq_handler();
  *         break;
  *
  *     case bhi360_event_QuaternionBatch:
  *         {
  *             uint32_t count = event.v_param;
- *             const struct bhi360_quat_data *quat =
- *                 (const struct bhi360_quat_data *)(uintptr_t)event.p_param;
+ *             const struct bhi360_quat_data_t *quat =
+ *                 (const struct bhi360_quat_data_t *)(uintptr_t)event.p_param;
  *             for (uint32_t i = 0; i < count; i++) {
  *                 printk("quat[%u] x=%d y=%d z=%d w=%d acc=%u\n", i,
  *                        quat[i].x, quat[i].y, quat[i].z, quat[i].w, quat[i].accuracy);
@@ -232,8 +232,8 @@
  *     case bhi360_event_LinearAccelerationBatch:
  *         {
  *             uint32_t count = event.v_param;
- *             const struct bhi360_lacc_data *lacc =
- *                 (const struct bhi360_lacc_data *)(uintptr_t)event.p_param;
+ *             const struct bhi360_lacc_data_t *lacc =
+ *                 (const struct bhi360_lacc_data_t *)(uintptr_t)event.p_param;
  *             for (uint32_t i = 0; i < count; i++) {
  *                 printk("lacc[%u] x=%d y=%d z=%d\n", i, lacc[i].x, lacc[i].y, lacc[i].z);
  *             }
@@ -243,8 +243,8 @@
  *     case bhi360_event_GyroBatch:
  *         {
  *             uint32_t count = event.v_param;
- *             const struct bhi360_gyro_data *gyro =
- *                 (const struct bhi360_gyro_data *)(uintptr_t)event.p_param;
+ *             const struct bhi360_gyro_data_t *gyro =
+ *                 (const struct bhi360_gyro_data_t *)(uintptr_t)event.p_param;
  *             for (uint32_t i = 0; i < count; i++) {
  *                 printk("gyro[%u] x=%d y=%d z=%d\n", i, gyro[i].x, gyro[i].y, gyro[i].z);
  *             }
@@ -254,8 +254,8 @@
  *     case bhi360_event_Pedometer:
  *         {
  *             uint32_t sensor_id = event.v_param;
- *             const struct bhi360_pedometer_data *ped =
- *                 (const struct bhi360_pedometer_data *)(uintptr_t)event.p_param;
+ *             const struct bhi360_pedometer_data_t *ped =
+ *                 (const struct bhi360_pedometer_data_t *)(uintptr_t)event.p_param;
  *             printk("pedometer count=%u detected=%u\n",
  *                    ped->step_count, ped->step_detected);
  *         }
@@ -265,8 +265,8 @@
  *         {
  *             uint32_t sensor_id = (event.v_param >> 8) & 0xFF;
  *             uint8_t gesture_value = event.v_param & 0xFF;
- *             const struct bhi360_gesture_data *gest =
- *                 (const struct bhi360_gesture_data *)(uintptr_t)event.p_param;
+ *             const struct bhi360_gesture_data_t *gest =
+ *                 (const struct bhi360_gesture_data_t *)(uintptr_t)event.p_param;
  *             printk("gesture id=%u value=0x%02x\n", sensor_id, gesture_value);
  *         }
  *         break;
@@ -275,8 +275,8 @@
  *         {
  *             uint32_t sensor_id = (event.v_param >> 16) & 0xFFFF;
  *             uint16_t activity = event.v_param & 0xFFFF;
- *             const struct bhi360_activity_data *act =
- *                 (const struct bhi360_activity_data *)(uintptr_t)event.p_param;
+ *             const struct bhi360_activity_data_t *act =
+ *                 (const struct bhi360_activity_data_t *)(uintptr_t)event.p_param;
  *             printk("activity id=%u bits=0x%04x\n", sensor_id, activity);
  *         }
  *         break;
@@ -301,7 +301,7 @@
  * @section sensewear_bhi360_isr Interrupt handling
  *
  * GPIO callbacks fire in ISR context and post bhi360_event_Irq to the event
- * queue. The application must call bhi360_process_irq() from thread context to
+ * queue. The application must call bhi360_irq_handler() from thread context to
  * read the FIFO, decode data, and generate downstream sensor events.
  */
 
@@ -331,39 +331,39 @@ enum bhi360_event_type {
 	/**
 	 * @brief Raw interrupt notification (enum value 0).
 	 * @details v_param unused; p_param unused.
-	 * The application/caller thread calls bhi360_process_irq() from thread context
+	 * The application/caller thread calls bhi360_irq_handler() from thread context
 	 * to drain the FIFO and post downstream sensor and meta-events.
 	 */
 	bhi360_event_Irq = 0,
 	/**
 	 * @brief Quaternion orientation batch ready (enum value 1).
-	 * @details Posted once per bhi360_process_irq() drain that decoded at least one
+	 * @details Posted once per bhi360_irq_handler() drain that decoded at least one
 	 * Game Rotation Vector wake-up (GAMERV_WU, 100 Hz) sample, not once per sample.
 	 * v_param: Number of quaternion samples collected during this drain (uint32_t).
 	 * p_param: Pointer to the first element of an array of that many
-	 * @c struct bhi360_quat_data (x, y, z, w, accuracy), oldest first. The array is
+	 * @c struct bhi360_quat_data_t (x, y, z, w, accuracy), oldest first. The array is
 	 * driver-owned and remains valid only until the next drain; use
 	 * bhi360_copy_quaternion() for a thread-safe snapshot.
 	 */
 	bhi360_event_QuaternionBatch,
 	/**
 	 * @brief Linear acceleration batch ready (enum value 2).
-	 * @details Posted once per bhi360_process_irq() drain that decoded at least one
+	 * @details Posted once per bhi360_irq_handler() drain that decoded at least one
 	 * Accelerometer wake-up (ACC_WU, 100 Hz) sample, not once per sample.
 	 * v_param: Number of acceleration samples collected during this drain (uint32_t).
 	 * p_param: Pointer to the first element of an array of that many
-	 * @c struct bhi360_lacc_data (x, y, z), oldest first. The array is driver-owned
+	 * @c struct bhi360_lacc_data_t (x, y, z), oldest first. The array is driver-owned
 	 * and remains valid only until the next drain; use
 	 * bhi360_copy_linear_acceleration() for a thread-safe snapshot.
 	 */
 	bhi360_event_LinearAccelerationBatch,
 	/**
 	 * @brief Angular velocity batch ready (enum value 3).
-	 * @details Posted once per bhi360_process_irq() drain that decoded at least one
+	 * @details Posted once per bhi360_irq_handler() drain that decoded at least one
 	 * Gyroscope wake-up (GYRO_WU, 100 Hz) sample, not once per sample.
 	 * v_param: Number of gyroscope samples collected during this drain (uint32_t).
 	 * p_param: Pointer to the first element of an array of that many
-	 * @c struct bhi360_gyro_data (x, y, z), oldest first. The array is driver-owned
+	 * @c struct bhi360_gyro_data_t (x, y, z), oldest first. The array is driver-owned
 	 * and remains valid only until the next drain; use bhi360_copy_gyro() for a
 	 * thread-safe snapshot.
 	 */
@@ -371,7 +371,7 @@ enum bhi360_event_type {
 	/**
 	 * @brief Step count or step detection event (enum value 4).
 	 * @details v_param: Sensor ID (uint32_t).
-	 * p_param: Pointer to @c struct bhi360_pedometer_data (sensor_id, step_count, step_detected).
+	 * p_param: Pointer to @c struct bhi360_pedometer_data_t (sensor_id, step_count, step_detected).
 	 * - Step Counter LP (STC_LP): Cumulative count, step_detected false.
 	 * Wake-up low-power step counter/detector sensors are supported by the parser
 	 * but are not enabled by the default table because the current firmware does
@@ -381,7 +381,7 @@ enum bhi360_event_type {
 	/**
 	 * @brief Gesture detection event (enum value 5).
 	 * @details v_param: Packed as (sensor_id << 8) | gesture_value (uint32_t).
-	 * p_param: Pointer to @c struct bhi360_gesture_data (sensor_id, value).
+	 * p_param: Pointer to @c struct bhi360_gesture_data_t (sensor_id, value).
 	 * Sources: No Motion LP wake-up, Wrist Gesture Detect LP wake-up, and Wrist
 	 * Wear LP wake-up. All post at 1 Hz.
 	 */
@@ -389,7 +389,7 @@ enum bhi360_event_type {
 	/**
 	 * @brief Activity classification event (enum value 6).
 	 * @details v_param: Packed as (sensor_id << 16) | activity_bits (uint32_t).
-	 * p_param: Pointer to @c struct bhi360_activity_data (sensor_id, activity).
+	 * p_param: Pointer to @c struct bhi360_activity_data_t (sensor_id, activity).
 	 * Activity bits indicate which activity (still, walking, running, bicycle, vehicle, tilt)
 	 * started or ended. Source: AR_WEAR_WU. Post at 1 Hz.
 	 */
@@ -658,7 +658,7 @@ int bhi360_irq_handler(void);
  * @details Enables the physical stream sensor table: Game Rotation Vector
  *          wake-up, Accelerometer wake-up, and Gyroscope wake-up. These sensors
  *          generate QuaternionBatch, LinearAccelerationBatch, and GyroBatch
- *          events after bhi360_process_irq() drains FIFO data. The driver starts
+ *          events after bhi360_irq_handler() drains FIFO data. The driver starts
  *          its software stream timer with @p period_ms; the timer posts a
  *          bhi360_event_Irq into the common event queue so the caller's existing
  *          event consumer can drain the FIFO in thread context. Hardware FIFO
@@ -688,7 +688,7 @@ int bhi360_start_phy_sensor_streams(uint32_t period_ms);
  *
  *          The disabled physical streams are flushed as part of the stop path,
  *          so queued stream samples may be discarded. Callers should continue to
- *          service bhi360_event_Irq events and call bhi360_process_irq() so any
+ *          service bhi360_event_Irq events and call bhi360_irq_handler() so any
  *          remaining low-rate FIFO data and flush/meta events are parsed.
  * @retval 0 Physical streams were disabled.
  * @retval -ENODEV Driver is not initialized and configured.
@@ -702,7 +702,7 @@ int bhi360_stop_phy_sensor_streams(void);
  * @details Starts the driver's shared FIFO timer without enabling any additional
  *          virtual sensors. Each timer expiry posts bhi360_event_Irq to the
  *          common device-driver event queue; the caller's event consumer must
- *          still call bhi360_process_irq() from thread context to drain and
+ *          still call bhi360_irq_handler() from thread context to drain and
  *          parse FIFO data.
  *
  *          Use this when low-rate event sensors need bounded latency even when
@@ -742,7 +742,7 @@ int bhi360_stop_periodic_timer(void);
 /**
  * @brief Copy the most recently decoded quaternion samples out of the driver.
  * @details Copies up to @p max_samples quaternion samples decoded during the
- *          last bhi360_process_irq() drain into @p out. The driver cache lock is
+ *          last bhi360_irq_handler() drain into @p out. The driver cache lock is
  *          held during the copy so a concurrent FIFO drain cannot overwrite the
  *          samples mid-read. The cache is replaced wholesale on each drain, so
  *          this returns the latest batch rather than an accumulating history.
@@ -803,7 +803,7 @@ struct bhi360_fifo_status {
  *          This call is only safe when sensor streaming is quiesced (for example
  *          after bhi360_stop()).
  *
- *          Shares the BHY2 device SPI access with bhi360_process_irq(), so it must
+ *          Shares the BHY2 device SPI access with bhi360_irq_handler(), so it must
  *          be called from thread context; the driver serializes the two with the
  *          cache lock.
  * @param out Destination for the FIFO control snapshot.

@@ -11,6 +11,7 @@
 
 #define IMU_EVENT_THREAD_PRIO 7
 #define IMU_EVENT_STACK_SIZE 2048
+#define IMU_STREAM_DRAIN_PERIOD_MS 100
 
 static bool imu_bridge_started;
 static atomic_t imu_quat_notify_enabled;
@@ -38,7 +39,7 @@ static void imu_event_thread_fn(void *a, void *b, void *c)
 		}
 
 		if (event.event_id == bhi360_event_Irq) {
-			(void)bhi360_process_irq();
+			(void)bhi360_irq_handler();
 			continue;
 		}
 
@@ -46,9 +47,9 @@ static void imu_event_thread_fn(void *a, void *b, void *c)
 		    atomic_get(&imu_streaming_enabled) &&
 		    (event.p_param != 0U) &&
 		    (event.v_param > 0U)) {
-			const struct bhi360_quat_data *samples =
-				(const struct bhi360_quat_data *)(uintptr_t)event.p_param;
-			const struct bhi360_quat_data *data = &samples[event.v_param - 1U];
+			const struct bhi360_quat_data_t *samples =
+				(const struct bhi360_quat_data_t *)(uintptr_t)event.p_param;
+			const struct bhi360_quat_data_t *data = &samples[event.v_param - 1U];
 			struct imu_lbs_quat ble_data = {
 				.x = data->x,
 				.y = data->y,
@@ -63,9 +64,9 @@ static void imu_event_thread_fn(void *a, void *b, void *c)
 		    atomic_get(&imu_streaming_enabled) &&
 		    (event.p_param != 0U) &&
 		    (event.v_param > 0U)) {
-			const struct bhi360_lacc_data *samples =
-				(const struct bhi360_lacc_data *)(uintptr_t)event.p_param;
-			const struct bhi360_lacc_data *data = &samples[event.v_param - 1U];
+			const struct bhi360_lacc_data_t *samples =
+				(const struct bhi360_lacc_data_t *)(uintptr_t)event.p_param;
+			const struct bhi360_lacc_data_t *data = &samples[event.v_param - 1U];
 			struct imu_lbs_lacc ble_data = {
 				.x = data->x,
 				.y = data->y,
@@ -106,7 +107,9 @@ static void imu_update_streaming_state(void)
 
 	if (enabled) {
 		atomic_set(&imu_streaming_enabled, 1);
-		(void)bhi360_configure();
+		if (bhi360_config(NULL)) {
+			(void)bhi360_start_phy_sensor_streams(IMU_STREAM_DRAIN_PERIOD_MS);
+		}
 	} else {
 		atomic_set(&imu_streaming_enabled, 0);
 		bhi360_stop();

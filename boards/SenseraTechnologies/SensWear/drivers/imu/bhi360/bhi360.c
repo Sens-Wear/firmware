@@ -20,7 +20,7 @@
  *   uploads firmware, discovers available virtual sensors, and enables the
  *   driver's default sensor sets.
  * - bhi360_irq_callback() posts bhi360_event_Irq from ISR context.
- * - bhi360_process_irq() runs from caller thread context, reads interrupt
+ * - bhi360_irq_handler() runs from caller thread context, reads interrupt
  *   status, and drains the FIFO. BHY2 dispatches FIFO packets into the parser
  *   callbacks below.
  * - Parser callbacks decode payloads into cached driver-owned structs and post
@@ -43,7 +43,7 @@
  * one summary event (bhi360_event_QuaternionBatch, _LinearAccelerationBatch,
  * _GyroBatch) whose v_param is the number of samples collected and whose p_param
  * points at the first element of the array. The arrays are reset at the start of
- * each bhi360_process_irq() pass, so a published pointer stays valid only until
+ * each bhi360_irq_handler() pass, so a published pointer stays valid only until
  * the next FIFO drain; bhi360_copy_*() returns a thread-safe snapshot. The
  * remaining low-rate classes are still posted one event per sample and reuse one
  * cached struct each. Consumers that need long-lived copies must duplicate the
@@ -114,7 +114,7 @@ LOG_MODULE_REGISTER(bhi360, CONFIG_LOG_DEFAULT_LEVEL);
 
 /**
  * @brief Maximum number of high-rate samples cached per FIFO drain.
- * @details A single bhi360_process_irq() pass can decode several samples of the
+ * @details A single bhi360_irq_handler() pass can decode several samples of the
  *          same high-rate stream (quaternion, accelerometer, gyroscope). Each
  *          decoded sample is stored in its own slot so the pointer published in
  *          a posted event stays valid until the next FIFO drain, instead of
@@ -831,7 +831,7 @@ static int8_t upload_firmware(struct bhy2_dev* dev) {
  * @brief GPIO callback that translates hardware IRQ edges into queue events.
  * @details No SPI/FIFO work is performed here; only the pin bitmap is forwarded
  *          to the central driver-event queue as bhi360_event_Irq. The consumer
- *          calls bhi360_process_irq() from its own thread context.
+ *          calls bhi360_irq_handler() from its own thread context.
  */
 static void bhi360_irq_callback(const struct device* dev, struct gpio_callback* cb, uint32_t pins) {
 	ARG_UNUSED(dev);
@@ -1403,7 +1403,7 @@ int bhi360_irq_handler(void) {
 	bhi360.quat_skipped_count = 0;
 	bhi360.lacc_skipped_count = 0;
 	bhi360.gyro_skipped_count = 0;
-	LOG_DBG("bhi360_process_irq() starting processing... ");
+	LOG_DBG("bhi360_irq_handler() starting processing... ");
 	/* BHY2 reads INT_STATUS internally; a separate pre-read can consume FIFO cause bits. */
 	int8_t rslt =
 		bhy2_get_and_process_fifo(bhi360.work_buffer, sizeof(bhi360.work_buffer), &bhi360.bhy2);
@@ -1451,7 +1451,7 @@ int bhi360_irq_handler(void) {
 				BHI360_MAX_SAMPLES_PER_IRQ,
 				bhi360.gyro_skipped_count);
 	}
-	LOG_DBG("bhi360_process_irq() finished processing. ");
+	LOG_DBG("bhi360_irq_handler() finished processing. ");
 	return 0;
 }
 
@@ -1595,7 +1595,7 @@ static void bhi360_update_sensor_time_offset(struct bhi360_t* dev) {
 /**
  * @brief Parse a rotation-vector FIFO packet into the per-drain quaternion array.
  * @details Samples are only collected here; no event is posted per sample.
- *          bhi360_process_irq() posts a single bhi360_event_QuaternionBatch once
+ *          bhi360_irq_handler() posts a single bhi360_event_QuaternionBatch once
  *          the drain finishes, carrying the collected count in v_param.
  */
 static void parse_quaternion(const struct bhy2_fifo_parse_data_info* callback_info,
@@ -1628,7 +1628,7 @@ static void parse_quaternion(const struct bhy2_fifo_parse_data_info* callback_in
 /**
  * @brief Parse a linear-acceleration FIFO packet into the per-drain array.
  * @details Samples are only collected here; no event is posted per sample.
- *          bhi360_process_irq() posts a single bhi360_event_LinearAccelerationBatch
+ *          bhi360_irq_handler() posts a single bhi360_event_LinearAccelerationBatch
  *          once the drain finishes, carrying the collected count in v_param.
  */
 static void parse_linear_acceleration(const struct bhy2_fifo_parse_data_info* callback_info,
@@ -1654,7 +1654,7 @@ static void parse_linear_acceleration(const struct bhy2_fifo_parse_data_info* ca
 /**
  * @brief Parse a gyroscope FIFO packet into the per-drain gyroscope array.
  * @details Samples are only collected here; no event is posted per sample.
- *          bhi360_process_irq() posts a single bhi360_event_GyroBatch once the
+ *          bhi360_irq_handler() posts a single bhi360_event_GyroBatch once the
  *          drain finishes, carrying the collected count in v_param.
  */
 static void parse_gyro(const struct bhy2_fifo_parse_data_info* callback_info, void* callback_ref) {

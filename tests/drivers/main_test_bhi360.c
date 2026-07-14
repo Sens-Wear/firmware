@@ -51,7 +51,7 @@ static void bhi360_event_consumer_thread(void* a, void* b, void* c) {
 		if (event.event_id == bhi360_event_Irq) {
 			int ret = bhi360_irq_handler();
 			if ((ret != 0) && (ret != -ENODEV)) {
-				printk("bhi360_process_irq() failed: %d\n", ret);
+				printk("bhi360_irq_handler() failed: %d\n", ret);
 			}
 			continue;
 		}
@@ -175,8 +175,8 @@ int main(void) {
 		return 0;
 	}
 
-	if (!bhi360_configure(false, 0)) {
-		printk("bhi360_configure() failed\n");
+	if (!bhi360_config(NULL)) {
+		printk("bhi360_config() failed\n");
 		return 0;
 	}
 
