@@ -12,9 +12,8 @@
  *
  *   - imu / power / body_temperature: their zbus listeners are registered
  *     here once the producing device reported ready.
- *   - ppg / touch: their services run retry threads that register themselves
- *     as soon as the stream is ready; nothing to do here beyond configuring
- *     the device.
+ *   - ppg / touch: their services expose explicit registration/configuration
+ *     APIs and do not create their own threads.
  *   - led / haptic / time: pure GATT services (writes are forwarded to the
  *     device manager); they have no start step.
  *
@@ -24,16 +23,29 @@
  * configured the thread exits.
  */
 
+#include <errno.h>
+
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/gap.h>
+#include <zephyr/bluetooth/uuid.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/settings/settings.h>
 
 #include "device_manager.h"
 
 #include "bluetooth/services/imu/imu_lbs.h"
+#include "bluetooth/services/led/led_lbs.h"
 #include "bluetooth/services/power/power_lbs.h"
+#include "bluetooth/services/time/time_lbs.h"
 
 #if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
 #include "bq27427.h"
+#endif
+
+#if defined(CONFIG_SENSEWEAR_DAUGHTER_PPG)
+#include "bluetooth/services/ppg/ppg_lbs.h"
 #endif
 
 #if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
@@ -44,7 +56,19 @@
 #include "bluetooth/services/body_temperature/body_temperature_lbs.h"
 #endif
 
+#if defined(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
+#include "bluetooth/services/touch/touch_lbs.h"
+#endif
+
+#if defined(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
+#include "bluetooth/services/haptic/haptic_lbs.h"
+#endif
+
 LOG_MODULE_REGISTER(SENSE_WEAR_OOB_MAIN_LOGGER);
+
+#define DEVICE_NAME CONFIG_BT_DEVICE_NAME
+#define DEVICE_NAME_LEN (sizeof(DEVICE_NAME) - 1)
+#define BT_UUID_LBS_VAL BT_UUID_128_ENCODE(0x56966294, 0x9cb8, 0x4c92, 0x9d74, 0x834187f486de)
 
 /** Retry cadence for devices that are still unconfigured, in ms. */
 #define OOB_MAIN_MONITOR_PERIOD_MS 60000U
@@ -87,6 +111,134 @@ static bool touch_configured;
 /* One-shot follow-ups after the manager is running. */
 static bool gauge_kicked;
 #endif
+
+/* Connectable advertising on the identity address, 500 ms - 500.625 ms
+ * interval (800/801 * 0.625 ms), undirected. */
+static const struct bt_le_adv_param* adv_param =
+	BT_LE_ADV_PARAM((BT_LE_ADV_OPT_CONN | BT_LE_ADV_OPT_USE_IDENTITY), 800, 801, NULL);
+
+static const struct bt_data ad[] = {
+	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+	BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
+};
+
+static const struct bt_data sd[] = {
+	BT_DATA_BYTES(BT_DATA_UUID128_ALL, BT_UUID_LBS_VAL),
+};
+
+static struct bt_conn* current_conn;
+
+static void adv_restart_work_fn(struct k_work* work) {
+	ARG_UNUSED(work);
+
+	int err = bt_le_adv_stop();
+
+	if (err && err != -EALREADY && err != -EINVAL) {
+		LOG_WRN("bt_le_adv_stop returned %d", err);
+	}
+
+	err = bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+	if (err) {
+		LOG_ERR("Advertising restart failed (err %d)", err);
+	} else {
+		LOG_INF("Advertising restarted");
+	}
+}
+
+K_WORK_DELAYABLE_DEFINE(adv_restart_work, adv_restart_work_fn);
+
+static void on_connected(struct bt_conn* conn, uint8_t err) {
+	if (err) {
+		LOG_INF("Connection error %d", err);
+		return;
+	}
+
+	LOG_INF("Connected");
+	if (current_conn != NULL) {
+		bt_conn_unref(current_conn);
+	}
+	current_conn = bt_conn_ref(conn);
+
+	imu_lbs_set_conn(conn);
+	led_lbs_set_conn(conn);
+	power_lbs_set_conn(conn);
+	time_lbs_set_conn(conn);
+#if defined(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
+	haptic_lbs_set_conn(conn);
+#endif
+#if defined(CONFIG_SENSEWEAR_DAUGHTER_PPG)
+	ppg_lbs_set_conn(conn);
+#endif
+#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+	body_temperature_lbs_set_conn(conn);
+#endif
+#if defined(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
+	touch_lbs_set_conn(conn);
+#endif
+}
+
+static void on_disconnected(struct bt_conn* conn, uint8_t reason) {
+	ARG_UNUSED(conn);
+
+	LOG_INF("Disconnected. Reason %u", reason);
+
+	if (current_conn != NULL) {
+		bt_conn_unref(current_conn);
+		current_conn = NULL;
+	}
+
+	imu_lbs_clear_conn();
+	led_lbs_clear_conn();
+	power_lbs_clear_conn();
+	time_lbs_clear_conn();
+#if defined(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
+	haptic_lbs_clear_conn();
+#endif
+#if defined(CONFIG_SENSEWEAR_DAUGHTER_PPG)
+	ppg_lbs_clear_conn();
+#endif
+#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+	body_temperature_lbs_clear_conn();
+#endif
+#if defined(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
+	touch_lbs_clear_conn();
+#endif
+
+	k_work_schedule(&adv_restart_work, K_MSEC(1000));
+}
+
+static struct bt_conn_cb connection_callbacks = {
+	.connected = on_connected,
+	.disconnected = on_disconnected,
+};
+
+static int oob_ble_start(void) {
+	int err = bt_enable(NULL);
+
+	if (err) {
+		LOG_ERR("Bluetooth init failed (err %d)", err);
+		return err;
+	}
+	LOG_INF("Bluetooth initialized");
+
+	if (IS_ENABLED(CONFIG_SETTINGS)) {
+		err = settings_load();
+		if (err) {
+			LOG_ERR("Settings load failed (err %d)", err);
+		}
+	}
+
+	bt_conn_cb_register(&connection_callbacks);
+
+	err = bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+	if (err) {
+		LOG_ERR("Advertising failed to start (err %d)", err);
+		return err;
+	}
+	LOG_INF("Advertising as \"%s\"", DEVICE_NAME);
+
+	return 0;
+}
 
 static bool configure_ready_device(enum device_manager_device_type device,
 								   enum device_manager_stream_type stream,
@@ -240,6 +392,26 @@ static void oob_start_services(void) {
 	}
 #endif
 
+#if defined(CONFIG_SHIELD_SENSEWEAR_PPG) && defined(CONFIG_SENSEWEAR_DAUGHTER_PPG)
+	if (ppg_configured) {
+		int ret = ppg_lbs_register_stream();
+
+		if (ret != 0) {
+			LOG_WRN("ppg_lbs_register_stream() failed: %d", ret);
+		}
+	}
+#endif
+
+#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH) && defined(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
+	if (touch_configured) {
+		int ret = touch_lbs_register_streams();
+
+		if (ret != 0) {
+			LOG_WRN("touch_lbs_register_streams() failed: %d", ret);
+		}
+	}
+#endif
+
 #if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
 	/* One immediate refresh for deterministic battery output; the manager's
 	 * RTC-minute cadence takes over from here. */
@@ -311,6 +483,12 @@ static void oob_main_thread(void* a, void* b, void* c) {
 	ARG_UNUSED(a);
 	ARG_UNUSED(b);
 	ARG_UNUSED(c);
+
+	/* Bluetooth first: the GATT services are registered statically, so a
+	 * client may connect while the device pipeline below is still coming up. */
+	if (oob_ble_start() != 0) {
+		LOG_ERR("oob_ble_start() failed; continuing without BLE");
+	}
 
 #if defined(CONFIG_SENSEWEAR_RTC_DRIVER)
 	int rtc_ret = device_manager_set_rtc_time(OOB_MAIN_RTC_EPOCH_DEFAULT);
