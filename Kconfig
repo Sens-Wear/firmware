@@ -206,6 +206,19 @@ config SENSEWEAR_DEVICE_DRIVER_EVENTS_AUTO_INIT
 
 endif # SENSEWEAR_DEVICE_DRIVER_EVENTS
 
+config SENSEWEAR_DEVICE_MANAGER
+	bool "SenseWear device manager (zbus message streams)"
+	select ZBUS
+	select ZBUS_RUNTIME_OBSERVERS
+	select SENSEWEAR_DEVICE_DRIVER_EVENTS
+	help
+	  Enable the device manager: a single publisher that drains the shared
+	  device event queue, drives each device's interrupt handler, and publishes
+	  decoded per-message-type streams over zbus for application actors (the BLE
+	  manager, storage, app logic, ...) to subscribe to. Leave this disabled for
+	  isolated device or shield bring-up tests, which replace the application and
+	  do not need the manager.
+
 # Driver bring-up tests (tests/drivers). All off by default. Enabling exactly
 # one replaces the application main() with the selected test main(); see
 # tests/drivers/tests.cmake. These are Kconfig symbols (not CMake options) so
@@ -250,6 +263,16 @@ config SENSEWEAR_TEST_TPSM83102_DRIVER
 	bool "Build the TPSM83102 regulator bring-up test"
 	help
 	  Replace the application with the TPSM83102 regulator driver bring-up test.
+
+config SENSEWEAR_TEST_DEVICE_MANAGER
+	bool "Build the device manager test"
+	select SENSEWEAR_DEVICE_MANAGER
+	help
+	  Replace the application with the device manager test
+	  (tests/device_manager/main_test_device_manager.c). Enables the device manager and
+	  its zbus streams, subscribes to every stream, and drives the fuel gauge (and
+	  the haptic motor when the sensewear_haptic shield is present) to exercise the
+	  publish pipeline.
 
 config SENSEWEAR_TEST_DRV2605_DRIVER
 	bool "Build the DRV2605 haptics bring-up test"
