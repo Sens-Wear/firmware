@@ -180,9 +180,9 @@
  * **Meta-Events** (firmware-generated, always enabled):
  * - Flush complete, sample rate changed, power mode changed, algorithm events,
  *   sensor status, BSX calibration steps, sensor errors, FIFO overflow,
- *   dynamic range changed, watermark, firmware initialization, transfer cause,
- *   sensor framework, and reset notifications. Routine spacer and initialized
- *   notifications are filtered in the driver.
+ *   dynamic range changed, watermark, firmware initialization (boot/reset
+ *   complete), transfer cause, sensor framework, and reset notifications. Only
+ *   routine spacer (FIFO padding) packets are filtered in the driver.
  *
  * @section sensewear_bhi360_example Typical usage
  *

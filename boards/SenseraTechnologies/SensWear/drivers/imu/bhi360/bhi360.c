@@ -1329,6 +1329,8 @@ bool bhi360_config(const struct bhi360_config_t* config) {
 
 	imu->state.bits.configured = 1U;
 	LOG_INF("%s: Configuration complete", imu->name);
+	k_sleep(K_MSEC(10));  /* give the firmware a moment to flush any pending FIFO frames */
+	bhi360_irq_handler(); /* drain any FIFO frames that arrived during config */
 	return true;
 }
 
@@ -1385,8 +1387,8 @@ int bhi360_start_periodic_timer(uint32_t period_ms) {
 	k_timer_start(&bhi360.fifo_timer, K_MSEC(period_ms), K_MSEC(period_ms));
 	bhi360.timer_running = true;
 	bhi360.timer_period_ms = period_ms;
-	bhi360_post_event(bhi360_event_Irq, 0, 0);
 	k_mutex_unlock(&bhi360.lock);
+	bhi360_post_event(bhi360_event_Irq, 0, 0);
 	return 0;
 }
 
@@ -1477,6 +1479,16 @@ int bhi360_irq_handler(void) {
 				BHI360_MAX_SAMPLES_PER_IRQ,
 				bhi360.gyro_skipped_count);
 	}
+	/* The BHI360 holds HIRQ asserted (level) while the FIFO still has data, but the
+	 * host line is edge-triggered: if a batch is still pending after this drain (or
+	 * arrived while draining), no new falling edge is produced and the interrupt
+	 * would stall until the periodic timer happens to drain again. Re-check the pin
+	 * and re-post so the FIFO is drained to completion and the active-low line
+	 * returns high, re-arming the next hardware edge. */
+	if (gpio_pin_get_dt(&bhi360.irq_gpio) > 0) {
+		bhi360_post_event(bhi360_event_Irq, 0, 0);
+	}
+
 	LOG_DBG("bhi360_irq_handler() finished processing. ");
 	return 0;
 }
@@ -1892,16 +1904,15 @@ static void bhi360_post_meta_event(uint8_t type, uint8_t byte1, uint8_t byte2) {
 
 /**
  * @brief Decide whether a meta-event should be visible to the application.
- * @details Routine spacer and initialized meta packets can be emitted repeatedly
- *          by the firmware and are not actionable during normal streaming. Keep
- *          them out of the shared application event queue while preserving
- *          diagnostics such as errors, overflows, resets, status, and watermark
- *          notifications.
+ * @details Routine spacer packets are pure FIFO padding and are dropped. Every
+ *          other meta-event is published, including Initialized (firmware
+ *          boot/reset complete): the firmware emits it once after each boot, so
+ *          surfacing it lets consumers detect the initial boot and, more
+ *          importantly, an unexpected mid-run reset that requires reconfiguration.
  */
 static bool bhi360_should_publish_meta_event(uint8_t type) {
 	switch (type) {
 	case BHY2_META_EVENT_SPACER:
-	case BHY2_META_EVENT_INITIALIZED:
 		return false;
 	default:
 		return true;
