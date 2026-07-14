@@ -112,6 +112,13 @@ LOG_MODULE_REGISTER(bhi360, CONFIG_LOG_DEFAULT_LEVEL);
 #define BHI360_WAKE_FIFO_WATERMARK_BYTES 8U
 #define BHI360_NONWAKE_FIFO_WATERMARK_BYTES 8U
 
+/** @brief Sentinel for sensor_time_offset before the first successful sync. */
+#define BHI360_TIME_OFFSET_UNSET ((time_t) -1)
+/** @brief Minimum age of the last time sync before it is refreshed, in microseconds. */
+#define BHI360_TIME_SYNC_PERIOD_US ((time_t) 60 * 1000 * 1000)
+/** @brief Settle time after a config-time timestamp-event request, in milliseconds. */
+#define BHI360_TIME_SYNC_INIT_DELAY_MS 5
+
 /**
  * @brief Maximum number of high-rate samples cached per FIFO drain.
  * @details A single bhi360_irq_handler() pass can decode several samples of the
@@ -246,8 +253,11 @@ static struct bhi360_t {
 	/** @brief Cached activity sample published through bhi360_event_Activity p_param. */
 	struct bhi360_activity_data_t activity_data;
 
-	/** @brief Host-minus-sensor timestamp offset in microseconds, refreshed at IRQ entry. */
+	/** @brief Host-minus-sensor timestamp offset in microseconds; established at
+	 *         config and re-synced at most once per ::BHI360_TIME_SYNC_PERIOD_US. */
 	time_t sensor_time_offset;
+	/** @brief RTC time (microseconds) of the last time-sync attempt, or 0 if never. */
+	time_t last_time_sync_us;
 	time_t last_irq_timestamp; /**< @brief Timestamp of the most recent IRQ (milliseconds since the
 								  Unix epoch). */
 } bhi360 = {
@@ -258,7 +268,8 @@ static struct bhi360_t {
 	.gpio0 = GPIO_DT_SPEC_GET(BHI360_NODE, gpio0_gpios),
 	.gpio1 = GPIO_DT_SPEC_GET(BHI360_NODE, gpio1_gpios),
 	.name = "BHI360",
-	.sensor_time_offset = -1,
+	.sensor_time_offset = BHI360_TIME_OFFSET_UNSET,
+	.last_time_sync_us = 0,
 	.last_irq_timestamp = -1,
 };
 
@@ -480,7 +491,9 @@ static void parse_step_counter(const struct bhy2_fifo_parse_data_info* callback_
 static void parse_activity(const struct bhy2_fifo_parse_data_info* callback_info,
 						   void* callback_ref);
 static void print_api_error(int8_t rslt, struct bhy2_dev* dev);
-static void bhi360_update_sensor_time_offset(struct bhi360_t* dev);
+static int8_t bhi360_try_sync_sensor_time_offset(struct bhi360_t* dev, time_t now_us);
+static void bhi360_init_sensor_time_offset(struct bhi360_t* dev);
+static void bhi360_maybe_sync_sensor_time_offset(struct bhi360_t* dev);
 
 /**
  * @brief Program and log the BHI360 host interrupt routing.
@@ -491,10 +504,17 @@ static void bhi360_update_sensor_time_offset(struct bhi360_t* dev);
  *          Wake and non-wake FIFO interrupt sources remain enabled. Status and
  *          debug HIRQ sources are disabled to avoid meta/status traffic waking
  *          the host independently of FIFO data.
+ *
+ *          The HIRQ line (P1.09 MPU_IRQ#) is a dedicated point-to-point signal,
+ *          so it is driven push-pull rather than open-drain: the firmware
+ *          actively drives both edges and no external/internal pull-up is
+ *          required. Open-drain would need a pull-up to return the active-low
+ *          line high between pulses; without one the line floats after the first
+ *          pulse and no further GPIO_INT_EDGE_TO_ACTIVE edges are seen, so no
+ *          interrupts fire at all.
  */
 static bool bhi360_configure_host_interrupts(struct bhi360_t* imu) {
-	uint8_t hintr_ctrl = BHY2_ICTL_DISABLE_DEBUG | BHY2_ICTL_ACTIVE_LOW | BHY2_ICTL_OPEN_DRAIN |
-						 BHY2_ICTL_EDGE;
+	uint8_t hintr_ctrl = BHY2_ICTL_DISABLE_DEBUG | BHY2_ICTL_ACTIVE_LOW | BHY2_ICTL_EDGE;
 	int8_t rslt = bhy2_set_host_interrupt_ctrl(hintr_ctrl, &imu->bhy2);
 	print_api_error(rslt, &imu->bhy2);
 	if (rslt != BHY2_OK) {
@@ -624,13 +644,18 @@ static const struct bhi360_activity_sensor_descriptor bhi360_activity_sensor_des
 
 /** SenseWear default activity-class sensor configuration. */
 static const struct bhi360_activity_sensor_config_t bhi360_default_activity_sensors[] = {
+	/* Report latency 0 on every low-rate event sensor: these are on-change/event
+	 * sensors, so a zero max-report-latency makes the firmware raise a host
+	 * interrupt the moment a frame (motion, step, activity transition) enters the
+	 * FIFO, rather than batching it for BHI360_REPORT_LATENCY_MS and depending on
+	 * the byte watermark or the periodic software drain to surface it. */
 	{bhi360_activity_sensor_AnyMotionLowPower, 1.0f, 0},
 	{bhi360_activity_sensor_NoMotionLowPowerWakeup, 1.0f, 0},
 	{bhi360_activity_sensor_WristGestureDetectLowPowerWakeup, 1.0f, 0},
 	{bhi360_activity_sensor_WristWearLowPowerWakeup, 1.0f, 0},
-	{bhi360_activity_sensor_WearRecognitionWakeup, 1.0f, BHI360_REPORT_LATENCY_MS},
-	{bhi360_activity_sensor_StepCounterLowPower, 1.0f, BHI360_REPORT_LATENCY_MS},
-	{bhi360_activity_sensor_StepDetectorLowPower, 1.0f, BHI360_REPORT_LATENCY_MS},
+	{bhi360_activity_sensor_WearRecognitionWakeup, 1.0f, 0},
+	{bhi360_activity_sensor_StepCounterLowPower, 1.0f, 0},
+	{bhi360_activity_sensor_StepDetectorLowPower, 1.0f, 0},
 };
 
 /**
@@ -692,8 +717,8 @@ static void bhi360_enable_sensor_table(struct bhi360_t* dev,
 	}
 }
 
-static const struct bhi360_activity_sensor_descriptor*
-bhi360_activity_sensor_descriptor(enum bhi360_activity_sensor_type sensor_type) {
+static const struct bhi360_activity_sensor_descriptor* bhi360_activity_sensor_descriptor(
+	enum bhi360_activity_sensor_type sensor_type) {
 	for (size_t i = 0; i < ARRAY_SIZE(bhi360_activity_sensor_descriptors); i++) {
 		if (bhi360_activity_sensor_descriptors[i].sensor == sensor_type) {
 			return &bhi360_activity_sensor_descriptors[i];
@@ -703,10 +728,9 @@ bhi360_activity_sensor_descriptor(enum bhi360_activity_sensor_type sensor_type) 
 	return NULL;
 }
 
-static bool
-bhi360_enable_activity_sensors(struct bhi360_t* dev,
-							   const struct bhi360_activity_sensor_config_t* sensors,
-							   size_t count) {
+static bool bhi360_enable_activity_sensors(struct bhi360_t* dev,
+										   const struct bhi360_activity_sensor_config_t* sensors,
+										   size_t count) {
 	if (count > 0U && sensors == NULL) {
 		LOG_ERR("%s: activity sensor config list is NULL", dev->name);
 		return false;
@@ -722,10 +746,7 @@ bhi360_enable_activity_sensors(struct bhi360_t* dev,
 			return false;
 		}
 		if (!bhy2_is_sensor_available(sensor->sensor_id, &dev->bhy2)) {
-			LOG_WRN("%s: %s (id %u) is not available",
-					dev->name,
-					sensor->name,
-					sensor->sensor_id);
+			LOG_WRN("%s: %s (id %u) is not available", dev->name, sensor->name, sensor->sensor_id);
 			continue;
 		}
 
@@ -1301,6 +1322,11 @@ bool bhi360_config(const struct bhi360_config_t* config) {
 	}
 	bhi360.enable_phy_sensor_streams = false;
 
+	/* Establish the host/sensor timestamp mapping here so the per-IRQ hot path
+	 * only re-syncs it every BHI360_TIME_SYNC_PERIOD_US. Retries past the first
+	 * miss; if it still fails the offset stays unset and the next IRQ retries. */
+	bhi360_init_sensor_time_offset(imu);
+
 	imu->state.bits.configured = 1U;
 	LOG_INF("%s: Configuration complete", imu->name);
 	return true;
@@ -1394,7 +1420,7 @@ int bhi360_irq_handler(void) {
 	 * batch. Start a fresh batch by resetting the counts before draining. */
 	k_mutex_lock(&bhi360.lock, K_FOREVER);
 
-	bhi360_update_sensor_time_offset(&bhi360);
+	bhi360_maybe_sync_sensor_time_offset(&bhi360);
 
 	bhi360.quat_count = 0;
 	bhi360.lacc_count = 0;
@@ -1562,6 +1588,9 @@ void bhi360_stop(void) {
 	bhi360_disable_sensor_table(&bhi360, bhi360_phy_sensors, ARRAY_SIZE(bhi360_phy_sensors));
 	bhi360_disable_activity_sensors(&bhi360);
 	(void) bhy2_soft_reset(&bhi360.bhy2);
+	/* Sensor time restarts on soft reset; drop the offset so reconfigure re-syncs. */
+	bhi360.sensor_time_offset = BHI360_TIME_OFFSET_UNSET;
+	bhi360.last_time_sync_us = 0;
 	bhi360.state.bits.configured = 0U;
 }
 
@@ -1574,22 +1603,75 @@ static inline time_t bhy2_timestamp_to_elapsed_us(uint64_t bhy2_timestamp) {
 }
 
 /**
- * @brief Refresh the host-minus-sensor timestamp offset at IRQ entry.
- * @details Samples the local RTC in microseconds, requests the BHI360 hardware
- *          timestamp through BHY2, converts the returned sensor time to
- *          microseconds, and stores the difference as host time minus sensor
- *          time.
+ * @brief Attempt one host-minus-sensor timestamp sync.
+ * @details Reads the BHI360 hardware timestamp latched at the most recent host
+ *          interrupt (BHY2_REG_HOST_INTR_TIME) and, on success, stores the
+ *          difference from @p now_us as host time minus sensor time. This is a
+ *          plain register read: unlike bhy2_hif_req_and_get_hw_timestamp() it does
+ *          not request a fresh timestamp event and poll ~50 us for the register to
+ *          change, so it cannot spuriously return BHY2_E_TIMEOUT. Called at IRQ
+ *          entry, where the triggering interrupt has just latched a fresh value.
+ *          The attempt is stamped regardless of outcome so a failed read does not
+ *          re-fire on every IRQ; an offset that has never been established is
+ *          retried on the next IRQ instead. Returns the BHY2 result without logging
+ *          so callers can choose whether to log.
+ *
+ * @param dev    Driver instance.
+ * @param now_us RTC time in microseconds sampled just before the read.
+ * @return The BHY2 API result; ::BHY2_OK on success.
  */
-static void bhi360_update_sensor_time_offset(struct bhi360_t* dev) {
+static int8_t bhi360_try_sync_sensor_time_offset(struct bhi360_t* dev, time_t now_us) {
 	uint64_t sensor_timestamp = 0;
-	time_t rtc_timestamp_us = rtc_get_timestamp_us();
-	int8_t rslt = bhy2_hif_req_and_get_hw_timestamp(&sensor_timestamp, &dev->bhy2.hif);
+	int8_t rslt = bhy2_hif_get_hw_timestamp(&sensor_timestamp, &dev->bhy2.hif);
+
+	dev->last_time_sync_us = now_us;
+
+	if (rslt == BHY2_OK) {
+		dev->sensor_time_offset = now_us - bhy2_timestamp_to_elapsed_us(sensor_timestamp);
+	}
+	return rslt;
+}
+
+/**
+ * @brief Establish the timestamp offset at config.
+ * @details At config there may not have been a host interrupt yet, so the latched
+ *          HOST_INTR_TIME could be stale. Request a single timestamp event, let it
+ *          propagate, then read it back. This avoids bhy2_hif_req_and_get_hw_timestamp(),
+ *          whose ~50 us in-call poll for the register to change reliably misses
+ *          right after config (HOST_INTR_TIME has not updated yet, so *ts == ts_old)
+ *          and returns BHY2_E_TIMEOUT. Failure is not fatal: the offset stays unset
+ *          and the first IRQ re-syncs against its freshly latched timestamp.
+ */
+static void bhi360_init_sensor_time_offset(struct bhi360_t* dev) {
+	(void) bhy2_set_timestamp_event_req(1, &dev->bhy2);
+	k_msleep(BHI360_TIME_SYNC_INIT_DELAY_MS);
+
+	int8_t rslt = bhi360_try_sync_sensor_time_offset(dev, rtc_get_timestamp_us());
+
+	if (rslt != BHY2_OK) {
+		LOG_WRN("%s: initial time sync failed (%d); will retry on first IRQ", dev->name, rslt);
+	}
+}
+
+/**
+ * @brief Re-sync the timestamp offset only when stale, off the IRQ hot path.
+ * @details Skips the slow, timeout-prone hardware-timestamp request unless the
+ *          offset has never been established, or the last sync is older than
+ *          ::BHI360_TIME_SYNC_PERIOD_US. Called at the top of each FIFO drain.
+ */
+static void bhi360_maybe_sync_sensor_time_offset(struct bhi360_t* dev) {
+	time_t now_us = rtc_get_timestamp_us();
+
+	if (dev->sensor_time_offset != BHI360_TIME_OFFSET_UNSET &&
+		(now_us - dev->last_time_sync_us) < BHI360_TIME_SYNC_PERIOD_US) {
+		return;
+	}
+
+	int8_t rslt = bhi360_try_sync_sensor_time_offset(dev, now_us);
 
 	if (rslt != BHY2_OK) {
 		print_api_error(rslt, &dev->bhy2);
-		return;
 	}
-	dev->sensor_time_offset = rtc_timestamp_us - bhy2_timestamp_to_elapsed_us(sensor_timestamp);
 }
 
 /**
