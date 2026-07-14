@@ -199,17 +199,17 @@ static void bq25180_process_state_change(union bq25180_charger_state state,
 	if (state.bits.bPowerGood != newState.bits.bPowerGood) {
 		// power-good changed; decide how to handle it from the new state
 		if (newState.bits.bPowerGood) {
-			// VIN was just detected (power good asserted)
-			if (!newState.bits.bCharged) {
-				bq25180_enable_charging(true);
-				LOG_INF("BQ25180 VIN detected, charging enabled");
-			} else {
-				bq25180_enable_charging(false);
-				LOG_INF("BQ25180 VIN detected, battery full. Charging disabled!");
-			}
+			// VIN detected: keep charging enabled unconditionally, even when the
+			// battery already reads full. The BQ25180 terminates and auto-recharges
+			// internally, so leaving CE asserted tops the battery back up below the
+			// recharge threshold rather than overcharging.
+			bq25180_enable_charging(true);
+			LOG_INF("BQ25180 VIN detected, charging enabled");
 		} else {
-			bq25180_enable_charging(false);
-			LOG_INF("BQ25180 VIN removed, charging disabled");
+			// VIN removed: leave CE asserted so charging resumes immediately when
+			// power returns. Without input power the charger draws no charge current
+			// regardless, so this never stops charging on its own.
+			LOG_INF("BQ25180 VIN removed; charging left enabled for auto-resume");
 		}
 	}
 
@@ -325,11 +325,10 @@ static int bq25180_irq_init(void) {
 
 /** Set the kill GPIO for the BQ25180. */
 static inline void bq25180_kill(bool enable) {
-	if (enable) {
-		gpio_pin_set_dt(&bq25180.kill_gpio, GPIO_OUTPUT_LOW);
-	} else {
-		gpio_pin_set_dt(&bq25180.kill_gpio, GPIO_OUTPUT_HIGH);
-	}
+	/* kill-gpios is active-low and open-drain: logical 1 asserts PWR_KILL (pulls
+	 * the shared TS/MR line low to request shutdown), logical 0 releases it so R4
+	 * holds it high and power stays on. gpio_pin_set_dt() takes a logical level. */
+	gpio_pin_set_dt(&bq25180.kill_gpio, enable ? 1 : 0);
 }
 
 /** Initialize the kill GPIO for the BQ25180. */
@@ -341,12 +340,15 @@ static int bq25180_kill_init(void) {
 			return -ENODEV;
 		}
 
-		ret = gpio_pin_configure_dt(&bq25180.kill_gpio, GPIO_OUTPUT_ACTIVE);
+		// Initialize released (inactive): the open-drain line floats high via R4,
+		// keeping power on. Initializing active would pull PWR_KILL low and request
+		// shutdown. The DT flags (active-low, open-drain) are merged in here.
+		ret = gpio_pin_configure_dt(&bq25180.kill_gpio, GPIO_OUTPUT_INACTIVE);
 		if (ret) {
 			LOG_ERR("BQ25180 kill pin config failed (%d)", ret);
 			return ret;
 		}
-		// set the kill GPIO to inactive state
+		// reaffirm the released (power-on) state
 		bq25180_kill(false);
 		return 0;
 	}
@@ -513,7 +515,13 @@ bool bq25180_config(const struct bq25180_config_t* config) {
 
 	icCtrl.bits.bPrechargeVoltageThreshold = bq25180.config.precharge_threshold;
 	icCtrl.bits.bRechargeVoltage = bq25180.config.recharge_voltage_threshold;
-	icCtrl.bits.bSafetyFastChargeTimer = (int) bq25180_fast_charge_time_3h;
+	/* Never stop charging: disable the fast-charge safety timer so a long charge
+	 * cannot fault out, and disable the I2C watchdog so a host that never services
+	 * it cannot silently restore the default registers (which would re-arm the timer
+	 * and revert this configuration). The BQ25180 still manages CV/termination and
+	 * auto-recharge on its own. */
+	icCtrl.bits.bSafetyFastChargeTimer = (int) bq25180_fast_charge_time_Disable;
+	icCtrl.bits.bWatchdogSelection = (int) bq25180_watchdog_selection_Disable;
 	icCtrl.bits.bTSAutoFunctionEnable = 0;
 	tmrIlim.bits.bInputCurrentLimit = bq25180.config.input_current;
 	tmrIlim.bits.bLongPressDuration = bq25180.config.long_press_duration;

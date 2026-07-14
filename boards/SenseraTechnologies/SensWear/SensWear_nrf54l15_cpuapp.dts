@@ -248,7 +248,12 @@ sys_i2c_peripheral: &i2c21 {
 		compatible = "sensewear,bq25180";
 		reg = <0x6a>;
 		int-gpios = <&gpio1 5 GPIO_ACTIVE_LOW>;   /* P1.05 CHG_IRQ */
-		kill-gpios = <&gpio1 8 GPIO_ACTIVE_LOW>; /* P1.08 PWR_KILL */
+		/* P1.08 PWR_KILL shares the BQ25180 TS/MR pin, which has no NTC and is
+		 * pulled to V_BAT by R4 (100k). Drive it open-drain so the host only ever
+		 * pulls it low to request shutdown and otherwise releases it (high via R4);
+		 * a push-pull high would source into the TS/MR node and corrupt the TS
+		 * reading / trigger spurious MR-wake events. */
+		kill-gpios = <&gpio1 8 (GPIO_ACTIVE_LOW | GPIO_OPEN_DRAIN)>; /* P1.08 PWR_KILL */
 		status = "okay";
 	};
 };
@@ -267,15 +272,18 @@ sys_i2c_peripheral: &i2c21 {
 	};
 
 	/*
-	 * PWR_KILL (P1.08) must be HIGH from the earliest boot so power is held on
-	 * before any driver runs. The hog guarantees that power-on default; the
-	 * bq25180 node also exposes the line as kill-gpios so the driver can take it
-	 * over at runtime (configure it GPIO_OUTPUT_INIT_HIGH and drop this hog once
-	 * the driver owns it).
+	 * PWR_KILL (P1.08) must be released HIGH from the earliest boot so power is
+	 * held on before any driver runs. It shares the BQ25180 TS/MR pin (no NTC,
+	 * pulled to V_BAT by R4), so it is driven open-drain: output-high releases the
+	 * pin and lets R4 hold it high, rather than actively sourcing into the TS/MR
+	 * node (which corrupts the TS reading and triggers spurious MR-wake events).
+	 * The hog guarantees this power-on default; the bq25180 node also exposes the
+	 * line as kill-gpios so the driver can take it over at runtime (open-drain,
+	 * released high) and drop this hog once the driver owns it.
 	 */
 	bq25180_pwr_kill_hog: bq25180_pwr_kill_hog {
 		gpio-hog;
-		gpios = <8 GPIO_ACTIVE_HIGH>;
+		gpios = <8 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
 		output-high;
 		line-name = "PWR_KILL";
 	};
