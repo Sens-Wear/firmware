@@ -82,25 +82,26 @@ enum bq27427_extended_command_t {
  *          command (0x00) to read device status or trigger a device action.
  */
 enum bq27427_control_subcommand_type {
-	bq27427_control_subcommand_ControlStatus = 0x0000,			/**< Read CONTROL_STATUS register. */
-	bq27427_control_subcommand_DeviceType = 0x0001,				/**< Read device type (0x0427). */
-	bq27427_control_subcommand_FWVersion = 0x0002,				/**< Read firmware version. */
-	bq27427_control_subcommand_DataMemoryCode = 0x0004,			/**< Read data-memory version code. */
+	bq27427_control_subcommand_ControlStatus = 0x0000,	/**< Read CONTROL_STATUS register. */
+	bq27427_control_subcommand_DeviceType = 0x0001,		/**< Read device type (0x0427). */
+	bq27427_control_subcommand_FWVersion = 0x0002,		/**< Read firmware version. */
+	bq27427_control_subcommand_DataMemoryCode = 0x0004, /**< Read data-memory version code. */
 	bq27427_control_subcommand_PreviousMACCommandCode = 0x0007, /**< Read prior MAC command code. */
 	bq27427_control_subcommand_ChemistryIdentifier = 0x0008,	/**< Read active chemistry ID. */
-	bq27427_control_subcommand_BatteryInsert = 0x000C,			/**< Force battery-insert detection. */
-	bq27427_control_subcommand_BatteryRemove = 0x000D,			/**< Force battery-remove detection. */
-	bq27427_control_subcommand_SetConfigurationUpdate = 0x0013, /**< Enter configuration-update mode. */
-	bq27427_control_subcommand_SmoothSynchronize = 0x0019,		/**< Synchronize the smoothing engine. */
-	bq27427_control_subcommand_ShutdownEnable = 0x001B,			/**< Arm the shutdown sequence. */
-	bq27427_control_subcommand_Shutdown = 0x001C,				/**< Enter SHUTDOWN low-power state. */
-	bq27427_control_subcommand_Sealed = 0x0020,					/**< Re-seal the device. */
-	bq27427_control_subcommand_PulseGPIOPin = 0x023,			/**< Pulse the GPOUT pin. */
-	bq27427_control_subcommand_Chemistry_A = 0x0030,			/**< Select chemistry A (4.35 V). */
-	bq27427_control_subcommand_Chemistry_B = 0x0031,			/**< Select chemistry B (4.20 V). */
-	bq27427_control_subcommand_Chemistry_C = 0x0032,			/**< Select chemistry C (4.40 V). */
-	bq27427_control_subcommand_Reset = 0x0041,					/**< Full device reset. */
-	bq27427_control_subcommand_SoftReset = 0x0042				/**< Exit configuration-update mode. */
+	bq27427_control_subcommand_BatteryInsert = 0x000C, /**< Force battery-insert detection. */
+	bq27427_control_subcommand_BatteryRemove = 0x000D, /**< Force battery-remove detection. */
+	bq27427_control_subcommand_SetConfigurationUpdate =
+		0x0013,											   /**< Enter configuration-update mode. */
+	bq27427_control_subcommand_SmoothSynchronize = 0x0019, /**< Synchronize the smoothing engine. */
+	bq27427_control_subcommand_ShutdownEnable = 0x001B,	   /**< Arm the shutdown sequence. */
+	bq27427_control_subcommand_Shutdown = 0x001C,		   /**< Enter SHUTDOWN low-power state. */
+	bq27427_control_subcommand_Sealed = 0x0020,			   /**< Re-seal the device. */
+	bq27427_control_subcommand_PulseGPIOPin = 0x023,	   /**< Pulse the GPOUT pin. */
+	bq27427_control_subcommand_Chemistry_A = 0x0030,	   /**< Select chemistry A (4.35 V). */
+	bq27427_control_subcommand_Chemistry_B = 0x0031,	   /**< Select chemistry B (4.20 V). */
+	bq27427_control_subcommand_Chemistry_C = 0x0032,	   /**< Select chemistry C (4.40 V). */
+	bq27427_control_subcommand_Reset = 0x0041,			   /**< Full device reset. */
+	bq27427_control_subcommand_SoftReset = 0x0042		   /**< Exit configuration-update mode. */
 };
 
 /**
@@ -162,19 +163,19 @@ union bq27427_flags_register_t {
 	 * @details Maps fields from bit 0 through bit 15.
 	 */
 	struct bq27427_flags_bits {
-		unsigned int bDischargeDetected : 1;	/**< Discharge has been detected. */
-		unsigned int bStateOfChargeFull : 1;	/**< Full-charge state reached. */
-		unsigned int bStateOfCharge1 : 1;		/**< SOC at or below SOC1 threshold. */
-		unsigned int bBatteryDetected : 1;		/**< Battery is present. */
-		unsigned int bConfigUpdateMode : 1;		/**< Configuration-update mode active. */
-		unsigned int bPOROrReset : 1;			/**< Power-on or reset occurred. */
-		unsigned int bDOCCorrection : 1;		/**< Discharge-overcurrent correction. */
-		unsigned int bOCVTaken : 1;				/**< Open-circuit voltage measurement taken. */
-		unsigned int bFastChargingAllowed : 1;	/**< Fast charging is permitted. */
-		unsigned int bFullCharge : 1;			/**< Full-charge condition detected. */
-		unsigned int : 4;						/**< Reserved. */
-		unsigned int bUnderTemperature : 1;		/**< Under-temperature condition. */
-		unsigned int bOverTemperature : 1;		/**< Over-temperature condition. */
+		unsigned int bDischargeDetected : 1;   /**< Discharge has been detected. */
+		unsigned int bStateOfChargeFull : 1;   /**< Full-charge state reached. */
+		unsigned int bStateOfCharge1 : 1;	   /**< SOC at or below SOC1 threshold. */
+		unsigned int bBatteryDetected : 1;	   /**< Battery is present. */
+		unsigned int bConfigUpdateMode : 1;	   /**< Configuration-update mode active. */
+		unsigned int bPOROrReset : 1;		   /**< Power-on or reset occurred. */
+		unsigned int bDOCCorrection : 1;	   /**< Discharge-overcurrent correction. */
+		unsigned int bOCVTaken : 1;			   /**< Open-circuit voltage measurement taken. */
+		unsigned int bFastChargingAllowed : 1; /**< Fast charging is permitted. */
+		unsigned int bFullCharge : 1;		   /**< Full-charge condition detected. */
+		unsigned int : 4;					   /**< Reserved. */
+		unsigned int bUnderTemperature : 1;	   /**< Under-temperature condition. */
+		unsigned int bOverTemperature : 1;	   /**< Over-temperature condition. */
 	} bits;
 };
 
@@ -243,11 +244,11 @@ union bq27427_op_config_register_t {
 /** @brief SenseWear default battery chemistry (LiPo, 4.20 V max). */
 #define BQ27427_DEFAULT_BATTERY_TYPE (bq27427_chemistry_LiPo4V20)
 /** @brief SenseWear default DesignCapacity in mAh. */
-#define BQ27427_DEFAULT_BATTERY_CAPACITY (450u)
+#define BQ27427_DEFAULT_BATTERY_CAPACITY (23u)
 /** @brief SenseWear default DesignEnergy in mWh. */
-#define BQ27427_DEFAULT_BATTERY_ENERGY (1665u)
+#define BQ27427_DEFAULT_BATTERY_ENERGY (851u)
 /** @brief SenseWear default TerminateVoltage in mV. */
-#define BQ27427_DEFAULT_BATTERY_TERMINATION_VOLTAGE (3200u)
+#define BQ27427_DEFAULT_BATTERY_TERMINATION_VOLTAGE (3400u)
 /** @brief SenseWear default TaperRate (charge-current divisor). */
 #define BQ27427_DEFAULT_TAPER_RATE (110u)
 /** @brief SenseWear default SleepCurrent threshold in mA. */
@@ -265,7 +266,7 @@ union bq27427_op_config_register_t {
 #define BQ27427_DEFAULT_TAPER_VOLTAGE (4170u)
 
 /** @brief SenseWear default Ra-table seed values. */
-#define BQ27427_DEFAULT_RA_VALUES_                                                                  \
+#define BQ27427_DEFAULT_RA_VALUES_ \
 	{97, 107, 121, 136, 103, 102, 101, 100, 101, 104, 108, 122, 161, 501, 122}
 /** @brief Number of entries in the Ra table. */
 #define BQ27427_RAM_TABLE_SIZE_ (15)
