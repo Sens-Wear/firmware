@@ -1279,8 +1279,12 @@ static void device_manager_handle_rtc(const struct device_driver_event_t* ev) {
 		++device_manager_gauge_minutes >= device_manager_config_state.gauge.update_period_min) {
 		device_manager_gauge_minutes = 0;
 		(void) bq27427_update_state(NULL);
+#if defined(CONFIG_SENSEWEAR_BQ25180_DRIVER)
+		(void) bq25180_update_state(NULL);
+#endif
 	}
 #endif
+
 #if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
 	/* NOTE: max30208_get_samples() triggers a one-shot conversion but requires
 	 * the driver to already be in the sampling state (max30208_start()); wiring
