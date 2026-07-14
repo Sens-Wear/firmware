@@ -1,222 +1,273 @@
-#include <zephyr/types.h>
-#include <stddef.h>
-#include <string.h>
-#include <errno.h>
-#include <zephyr/sys/printk.h>
-#include <zephyr/sys/byteorder.h>
+#include <stdint.h>
+
+#include <zephyr/bluetooth/gatt.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/bluetooth/bluetooth.h>
-#include <zephyr/bluetooth/hci.h>
-#include <zephyr/bluetooth/conn.h>
-#include <zephyr/bluetooth/uuid.h>
-#include <zephyr/bluetooth/gatt.h>
+#include <zephyr/zbus/zbus.h>
 
+#include "device_manager.h"
 #include "touch_lbs.h"
 
 LOG_MODULE_REGISTER(SENS_WEAR_TOUCH_SENSOR_BLUETOOTH_LOGGER);
 
+static struct bt_conn* touch_lbs_conn;
+
 static bool notify_touch_state_enabled;
 static bool notify_gesture_state_enabled;
 static bool notify_raw_data_enabled;
-static struct bt_conn *touch_lbs_conn;
+static bool touch_listener_registered;
+static bool gesture_listener_registered;
+static bool touch_sampling_enabled;
 
-static void (*touch_state_callback)(bool enabled) = NULL;
-static void (*gesture_state_callback)(bool enabled) = NULL;
-static void (*raw_data_callback)(bool enabled) = NULL;
-static void (*update_sampling_rate_callback)(uint16_t new_sampling_rate) = NULL;
-static void (*update_transfer_interval_callback)(uint16_t transfer_interval) = NULL;
+static struct touch_lbs_touch_state touch_state_cache;
+static struct touch_lbs_gesture_state gesture_state_cache;
+static struct touch_msg_t raw_touch_cache;
 
-static void touch_state_notification_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
-{
-  notify_touch_state_enabled = (value == BT_GATT_CCC_NOTIFY);
-  // Notify registered callback
-  if (touch_state_callback)
-  {
-    touch_state_callback(notify_touch_state_enabled);
-  }
+static void touch_state_notification_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
+	ARG_UNUSED(attr);
+	notify_touch_state_enabled = (value == BT_GATT_CCC_NOTIFY);
 }
 
-static void gesture_state_notification_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
-{
-  notify_gesture_state_enabled = (value == BT_GATT_CCC_NOTIFY);
-  // Notify registered callback
-  if (gesture_state_callback)
-  {
-    gesture_state_callback(notify_gesture_state_enabled);
-  }
+static void gesture_state_notification_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
+	ARG_UNUSED(attr);
+	notify_gesture_state_enabled = (value == BT_GATT_CCC_NOTIFY);
 }
 
-static void raw_data_notification_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
-{
-  notify_raw_data_enabled = (value == BT_GATT_CCC_NOTIFY);
-  // Notify registered callback
-  if (raw_data_callback)
-  {
-    raw_data_callback(notify_raw_data_enabled);
-  }
+static void raw_data_notification_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
+	ARG_UNUSED(attr);
+	notify_raw_data_enabled = (value == BT_GATT_CCC_NOTIFY);
 }
 
-static ssize_t update_sampling_rate(struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, uint16_t len, uint16_t offset, uint8_t flags)
-{
-  LOG_DBG("Attribute write, handle: %u, conn: %p", attr->handle, (void *)conn);
-
-  if (len != 1U)
-  {
-    LOG_ERR("Sampling frequency: Incorrect data length");
-    return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
-  }
-
-  if (offset != 0)
-  {
-    LOG_ERR("Sampling frequency: Incorrect data offset");
-    return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
-  }
-
-  if (update_sampling_rate_callback)
-  {
-    uint16_t val = *((uint16_t *)buf);
-    if (val > 0x00)
-    {
-      update_sampling_rate_callback(val);
-    }
-    else
-    {
-      LOG_ERR("The sampling frequency is wrong.");
-      return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
-    }
-  }
-  return len;
+static ssize_t read_touch_state(struct bt_conn* conn,
+				const struct bt_gatt_attr* attr,
+				void* buf,
+				uint16_t len,
+				uint16_t offset) {
+	return bt_gatt_attr_read(conn,
+				 attr,
+				 buf,
+				 len,
+				 offset,
+				 &touch_state_cache,
+				 sizeof(touch_state_cache));
 }
 
-static ssize_t update_transfer_interval(struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, uint16_t len, uint16_t offset, uint8_t flags)
-{
-  LOG_DBG("Attribute write, handle: %u, conn: %p", attr->handle, (void *)conn);
-
-  if (len != 1U)
-  {
-    LOG_ERR("Transfer_interval: Incorrect data length");
-    return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
-  }
-
-  if (offset != 0)
-  {
-    LOG_ERR("Transfer_interval: Incorrect data offset");
-    return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
-  }
-
-  if (update_transfer_interval_callback)
-  {
-    uint16_t val = *((uint16_t *)buf);
-    if (val > 0x00)
-    {
-      update_transfer_interval_callback(val);
-    }
-    else
-    {
-      LOG_ERR("The transfer_interval is wrong.");
-      return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
-    }
-  }
-  return len;
+static ssize_t read_gesture_state(struct bt_conn* conn,
+				  const struct bt_gatt_attr* attr,
+				  void* buf,
+				  uint16_t len,
+				  uint16_t offset) {
+	return bt_gatt_attr_read(conn,
+				 attr,
+				 buf,
+				 len,
+				 offset,
+				 &gesture_state_cache,
+				 sizeof(gesture_state_cache));
 }
 
-/* LED Button Service Declaration */
+static ssize_t read_raw_data(struct bt_conn* conn,
+			     const struct bt_gatt_attr* attr,
+			     void* buf,
+			     uint16_t len,
+			     uint16_t offset) {
+	return bt_gatt_attr_read(conn, attr, buf, len, offset, &raw_touch_cache, sizeof(raw_touch_cache));
+}
+
+static ssize_t read_sampling_enable(struct bt_conn* conn,
+				    const struct bt_gatt_attr* attr,
+				    void* buf,
+				    uint16_t len,
+				    uint16_t offset) {
+	uint8_t enabled = touch_sampling_enabled ? 1U : 0U;
+
+	return bt_gatt_attr_read(conn, attr, buf, len, offset, &enabled, sizeof(enabled));
+}
+
+static ssize_t write_sampling_enable(struct bt_conn* conn,
+				     const struct bt_gatt_attr* attr,
+				     const void* buf,
+				     uint16_t len,
+				     uint16_t offset,
+				     uint8_t flags) {
+	ARG_UNUSED(conn);
+	ARG_UNUSED(attr);
+	ARG_UNUSED(flags);
+
+	if (offset != 0U) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
+	}
+	if (len != sizeof(uint8_t)) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
+	}
+
+	uint8_t enabled = *(const uint8_t*) buf;
+
+	if (enabled > 1U) {
+		return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
+	}
+
+	bool requested_enabled = (enabled != 0U);
+
+	if (requested_enabled == touch_sampling_enabled) {
+		return len;
+	}
+
+	int ret = device_manager_set_touch_sampling_enabled(requested_enabled);
+
+	if (ret != 0) {
+		LOG_WRN("Touch sampling update failed: %d", ret);
+		return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
+	}
+
+	touch_sampling_enabled = requested_enabled;
+	return len;
+}
+
 BT_GATT_SERVICE_DEFINE(
-    touch_lbs_svc, BT_GATT_PRIMARY_SERVICE(BT_UUID_LBS_TOUCH_SERVICE),
-    BT_GATT_CHARACTERISTIC(BT_UUID_LBS_TOUCH_SAMPLING_RATE_CONF, BT_GATT_CHRC_WRITE, BT_GATT_PERM_WRITE, NULL, update_sampling_rate, NULL),
-    BT_GATT_CHARACTERISTIC(BT_UUID_LBS_TOUCH_TRANSFER_INTERVAL_CONF, BT_GATT_CHRC_WRITE, BT_GATT_PERM_WRITE, NULL, update_transfer_interval, NULL),
-    BT_GATT_CHARACTERISTIC(BT_UUID_LBS_TOUCH_STATE, BT_GATT_CHRC_NOTIFY, BT_GATT_PERM_NONE, NULL, NULL, NULL),
-    BT_GATT_CCC(touch_state_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
-    BT_GATT_CHARACTERISTIC(BT_UUID_LBS_GESTURE_STATE, BT_GATT_CHRC_NOTIFY, BT_GATT_PERM_NONE, NULL, NULL, NULL),
-    BT_GATT_CCC(gesture_state_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
-    BT_GATT_CHARACTERISTIC(BT_UUID_LBS_RAW_DATA, BT_GATT_CHRC_NOTIFY, BT_GATT_PERM_NONE, NULL, NULL, NULL),
-    BT_GATT_CCC(raw_data_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE));
+	touch_lbs_svc,
+	BT_GATT_PRIMARY_SERVICE(BT_UUID_LBS_TOUCH_SERVICE),
+	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_TOUCH_STATE,
+			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+			       BT_GATT_PERM_READ,
+			       read_touch_state,
+			       NULL,
+			       &touch_state_cache),
+	BT_GATT_CCC(touch_state_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_GESTURE_STATE,
+			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+			       BT_GATT_PERM_READ,
+			       read_gesture_state,
+			       NULL,
+			       &gesture_state_cache),
+	BT_GATT_CCC(gesture_state_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_RAW_DATA,
+			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+			       BT_GATT_PERM_READ,
+			       read_raw_data,
+			       NULL,
+			       &raw_touch_cache),
+	BT_GATT_CCC(raw_data_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE));
 
-int touch_lbs_send_touch_state_notify(uint8_t *sensor_value, size_t size)
-{
-  if (!notify_touch_state_enabled)
-  {
-    return -EACCES;
-  }
-  if (touch_lbs_conn == NULL)
-  {
-    return -ENOTCONN;
-  }
-  LOG_INF("Touch state sent over BLE!.");
-  return bt_gatt_notify(touch_lbs_conn, &touch_lbs_svc.attrs[5], sensor_value, size);
+BT_GATT_SERVICE_DEFINE(
+	touch_lbs_config_svc,
+	BT_GATT_PRIMARY_SERVICE(BT_UUID_LBS_TOUCH_CONFIG_SERVICE),
+	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_TOUCH_CONFIG_SAMPLING_ENABLE,
+			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
+			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
+			       read_sampling_enable,
+			       write_sampling_enable,
+			       NULL));
+
+void touch_lbs_set_conn(struct bt_conn* conn) {
+	if (conn == NULL) {
+		return;
+	}
+
+	if (touch_lbs_conn != NULL) {
+		bt_conn_unref(touch_lbs_conn);
+	}
+
+	touch_lbs_conn = bt_conn_ref(conn);
 }
 
-int touch_lbs_send_gesture_state_notify(uint8_t *sensor_value, size_t size)
-{
-  if (!notify_gesture_state_enabled)
-  {
-    return -EACCES;
-  }
-  if (touch_lbs_conn == NULL)
-  {
-    return -ENOTCONN;
-  }
-  LOG_INF("Gesture state sent over BLE!.");
-  return bt_gatt_notify(touch_lbs_conn, &touch_lbs_svc.attrs[8], sensor_value, size);
+void touch_lbs_clear_conn(void) {
+	if (touch_lbs_conn != NULL) {
+		bt_conn_unref(touch_lbs_conn);
+		touch_lbs_conn = NULL;
+	}
 }
 
-int touch_lbs_send_raw_data_notify(uint8_t *sensor_value, size_t size)
-{
-  if (!notify_raw_data_enabled)
-  {
-    return -EACCES;
-  }
-  if (touch_lbs_conn == NULL)
-  {
-    return -ENOTCONN;
-  }
-  LOG_INF("Touch raw data sent over BLE!.");
-  return bt_gatt_notify(touch_lbs_conn, &touch_lbs_svc.attrs[11], sensor_value, size);
+static void touch_lbs_handle_touch(const struct zbus_channel* chan) {
+	const struct touch_msg_t* msg = zbus_chan_const_msg(chan);
+
+	if (msg == NULL) {
+		return;
+	}
+
+	raw_touch_cache = *msg;
+	touch_state_cache.timestamp = msg->timestamp;
+	touch_state_cache.touched = msg->touched;
+	touch_state_cache.x = msg->x;
+	touch_state_cache.y = msg->y;
+
+	if (touch_lbs_conn == NULL) {
+		return;
+	}
+
+	if (notify_touch_state_enabled) {
+		(void) bt_gatt_notify(touch_lbs_conn,
+				      &touch_lbs_svc.attrs[2],
+				      &touch_state_cache,
+				      sizeof(touch_state_cache));
+	}
+	if (notify_raw_data_enabled) {
+		(void) bt_gatt_notify(touch_lbs_conn,
+				      &touch_lbs_svc.attrs[8],
+				      &raw_touch_cache,
+				      sizeof(raw_touch_cache));
+	}
 }
 
-void register_touch_touch_state_callback(void (*callback)(bool))
-{
-  touch_state_callback = callback;
+static void touch_lbs_handle_gesture(const struct zbus_channel* chan) {
+	const struct touch_gesture_msg_t* msg = zbus_chan_const_msg(chan);
+
+	if (msg == NULL) {
+		return;
+	}
+
+	gesture_state_cache.timestamp = msg->timestamp;
+	gesture_state_cache.gesture = (uint8_t) msg->gesture;
+	gesture_state_cache.gesture_state = msg->gesture_state;
+
+	if (notify_gesture_state_enabled && touch_lbs_conn != NULL) {
+		(void) bt_gatt_notify(touch_lbs_conn,
+				      &touch_lbs_svc.attrs[5],
+				      &gesture_state_cache,
+				      sizeof(gesture_state_cache));
+	}
 }
 
-void register_touch_gesture_state_callback(void (*callback)(bool))
-{
-  gesture_state_callback = callback;
+static void touch_lbs_listener_cb(const struct zbus_channel* chan) {
+	switch (device_manager_stream_from_channel(chan)) {
+	case device_manager_stream_Touch:
+		touch_lbs_handle_touch(chan);
+		break;
+	case device_manager_stream_TouchGesture:
+		touch_lbs_handle_gesture(chan);
+		break;
+	default:
+		break;
+	}
 }
 
-void register_touch_raw_data_callback(void (*callback)(bool))
-{
-  raw_data_callback = callback;
+ZBUS_LISTENER_DEFINE(touch_lbs_listener, touch_lbs_listener_cb);
+
+bool touch_lbs_streams_ready(void) {
+	return device_manager_stream_ready(device_manager_stream_Touch) &&
+	       device_manager_stream_ready(device_manager_stream_TouchGesture);
 }
 
-void register_touch_sampling_rate_callback(void (*callback)(uint16_t))
-{
-  update_sampling_rate_callback = callback;
+static int touch_lbs_register_stream(enum device_manager_stream_type stream, bool* registered) {
+	if (*registered) {
+		return 0;
+	}
+
+	int ret = device_manager_stream_register(stream, &touch_lbs_listener, K_MSEC(100));
+
+	if (ret == 0) {
+		*registered = true;
+	}
+
+	return ret;
 }
 
-void register_touch_transfer_interval_callback(void (*callback)(uint16_t))
-{
-  update_transfer_interval_callback = callback;
-}
+int touch_lbs_register_streams(void) {
+	int ret = touch_lbs_register_stream(device_manager_stream_Touch, &touch_listener_registered);
 
-void touch_lbs_set_conn(struct bt_conn *conn)
-{
-  if (conn == NULL) {
-    return;
-  }
+	if (ret != 0) {
+		return ret;
+	}
 
-  if (touch_lbs_conn != NULL) {
-    bt_conn_unref(touch_lbs_conn);
-  }
-
-  touch_lbs_conn = bt_conn_ref(conn);
-}
-
-void touch_lbs_clear_conn(void)
-{
-  if (touch_lbs_conn != NULL) {
-    bt_conn_unref(touch_lbs_conn);
-    touch_lbs_conn = NULL;
-  }
+	return touch_lbs_register_stream(device_manager_stream_TouchGesture, &gesture_listener_registered);
 }

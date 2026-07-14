@@ -2,7 +2,6 @@
 #include <zephyr/logging/log.h>
 
 #include "fdc1004.h"
-#include "../../../bluetooth/services/pressure/pressure_lbs.h"
 
 LOG_MODULE_REGISTER(SENSE_WEAR_PRESSURE_SENSOR_LOGGER);
 
@@ -70,12 +69,6 @@ static void sensor_data_work_handler(struct k_work *work) {
     raw_data_buffer[buffer_index] = measurement;
     buffer_index++;
     LOG_INF("FDCA1004 pressure measurment: %d", measurement);
-    // Calculate how many readings to send per BLE update
-    int samples_per_ble = sampling_rate * transfer_interval;
-    if (buffer_index >= samples_per_ble) {
-        pressure_lbs_send_sensor_notify(raw_data_buffer, base_buffer_size);
-        buffer_index = 0;  // Reset buffer
-    }    
 }
 
 K_WORK_DEFINE(pressure_sensor_data_work, sensor_data_work_handler);

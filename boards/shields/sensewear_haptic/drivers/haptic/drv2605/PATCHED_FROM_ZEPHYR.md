@@ -27,10 +27,6 @@ Current integration state:
   binding, and `HAPTICS_DRV2605` Kconfig symbol. With no `ti,drv2605` node the
   upstream `DT_HAS_TI_DRV2605_ENABLED` is false and the upstream driver is not
   built.
-- The previous `haptic_drv2605.*` wrapper has been retired and removed. The
-  application drives the device through the Zephyr haptics API
-  (`haptics_start_output` / `haptics_stop_output`) plus `drv2605_haptic_config`;
-  see `src/app/haptic_ble_bridge.c`.
 
 Build wiring:
 

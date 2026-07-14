@@ -10,59 +10,26 @@
 
 set(APP_SRC_DIR ${CMAKE_CURRENT_LIST_DIR})
 
+# Bluetooth GATT services (ble_services INTERFACE library).
+include(${APP_SRC_DIR}/bluetooth/services/services.cmake)
+
 add_library(app_src INTERFACE)
 
-# Core application sources (always built).
+# Core application sources (always built). There is no main.c: the out-of-box
+# monitor thread in oob_main.c owns the application bring-up and Zephyr's weak
+# default main() is used. The LED actuator driver (src/drivers/actuators/led)
+# is not compiled for now; it will be placed appropriately later.
 target_sources(app_src INTERFACE
-    ${APP_SRC_DIR}/main.c
-    ${APP_SRC_DIR}/app/led_ble_bridge.c
-    ${APP_SRC_DIR}/app/imu_ble_bridge.c
-    ${APP_SRC_DIR}/app/daughter_board_manager.c
-    ${APP_SRC_DIR}/app/power_ble_bridge.c
-    ${APP_SRC_DIR}/bluetooth/services/led/led_lbs.c
-    ${APP_SRC_DIR}/bluetooth/services/imu/imu_lbs.c
-    ${APP_SRC_DIR}/bluetooth/services/power/power_lbs.c
-    ${APP_SRC_DIR}/bluetooth/services/pressure/pressure_lbs.c
-    ${APP_SRC_DIR}/drivers/actuators/led/led_controller.c
+    ${APP_SRC_DIR}/app/oob_main.c
 )
-
-# Daughter-board sources, selected by the active SENSEWEAR_DAUGHTER_* choice.
-if(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
-    target_sources(app_src INTERFACE
-        ${APP_SRC_DIR}/app/haptic_ble_bridge.c
-        ${APP_SRC_DIR}/bluetooth/services/haptic/haptic_lbs.c
-    )
-endif()
-
-if(CONFIG_SENSEWEAR_DAUGHTER_PPG)
-    target_sources(app_src INTERFACE
-        ${APP_SRC_DIR}/app/ppg_ble_bridge.c
-        ${APP_SRC_DIR}/bluetooth/services/ppg/ppg_lbs.c
-    )
-endif()
-
-if(CONFIG_SENSEWEAR_DAUGHTER_TEMPERATURE)
-    target_sources(app_src INTERFACE
-        ${APP_SRC_DIR}/app/temperature_ble_bridge.c
-        ${APP_SRC_DIR}/bluetooth/services/temperature/temperature_lbs.c
-    )
-endif()
-
-if(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
-    target_sources(app_src INTERFACE
-        ${APP_SRC_DIR}/app/touch_ble_bridge.c
-        ${APP_SRC_DIR}/bluetooth/services/touch/touch_lbs.c
-    )
-endif()
 
 target_include_directories(app_src INTERFACE
     ${APP_SRC_DIR}
-    ${APP_SRC_DIR}/drivers/actuators/led
-    ${CMAKE_SOURCE_DIR}/boards/SenseraTechnologies/SensWear
-    ${CMAKE_SOURCE_DIR}/boards/SenseraTechnologies/SensWear/drivers/bus
-    ${CMAKE_SOURCE_DIR}/boards/common
 )
 
-# The application uses the BHY2 sensor API; link the libs aggregate so the
-# include directory and define propagate to app_src sources.
-target_link_libraries(app_src INTERFACE libs)
+# ble_services carries the GATT service sources, their include directory, and
+# common_drivers (device_manager.h). Device driver headers (bq27427.h,
+# max30101.h, ...) come from the board/shield driver aggregates that the
+# top-level CMakeLists links into `app`; app_src sources compile as part of
+# `app`, so those include directories already apply.
+target_link_libraries(app_src INTERFACE ble_services)

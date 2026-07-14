@@ -721,6 +721,66 @@ int device_manager_config(const struct device_manager_config_t* config) {
 	return 0;
 }
 
+int device_manager_set_imu_phy_streams_enabled(bool enabled, uint32_t drain_period_ms) {
+#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+	if (!bhi360_is_ready()) {
+		LOG_ERR("device manager: IMU not ready");
+		return -ENODEV;
+	}
+
+	device_manager_config_state.imu.phy_streams_enabled = enabled;
+	device_manager_config_state.imu.drain_period_ms = drain_period_ms;
+
+	if (enabled) {
+		(void) bhi360_stop_periodic_timer();
+		return bhi360_start_phy_sensor_streams(drain_period_ms);
+	}
+
+	(void) bhi360_stop_phy_sensor_streams();
+	return 0;
+#else
+	ARG_UNUSED(enabled);
+	ARG_UNUSED(drain_period_ms);
+	return -ENOTSUP;
+#endif
+}
+
+int device_manager_set_ppg_sampling_enabled(bool enabled, bool per_sample_irq) {
+#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+	if (enabled) {
+		if (!max30101_is_ready()) {
+			int config_ret = max30101_config(NULL);
+
+			if (config_ret != 0) {
+				LOG_ERR("device manager: PPG config failed (%d)", config_ret);
+				return config_ret;
+			}
+		}
+		return max30101_enable_wrist_hr_sampling(per_sample_irq);
+	}
+
+	return max30101_disable_sampling();
+#else
+	ARG_UNUSED(enabled);
+	ARG_UNUSED(per_sample_irq);
+	return -ENOTSUP;
+#endif
+}
+
+int device_manager_set_touch_sampling_enabled(bool enabled) {
+#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH)
+	if (enabled) {
+		return mtch6102_start();
+	}
+
+	mtch6102_stop();
+	return 0;
+#else
+	ARG_UNUSED(enabled);
+	return -ENOTSUP;
+#endif
+}
+
 int device_manager_set_imu_drain_period(uint32_t period_ms) {
 #if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
 	if (!bhi360_is_ready()) {

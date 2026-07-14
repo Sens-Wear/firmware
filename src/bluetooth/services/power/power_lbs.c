@@ -1,141 +1,127 @@
-#include <zephyr/types.h>
-#include <stddef.h>
-#include <string.h>
-#include <errno.h>
+#include <stdint.h>
+
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/gatt.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/bluetooth/bluetooth.h>
-#include <zephyr/bluetooth/conn.h>
-#include <zephyr/bluetooth/uuid.h>
-#include <zephyr/bluetooth/gatt.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/zbus/zbus.h>
 
+#include "device_manager.h"
 #include "power_lbs.h"
 
 LOG_MODULE_REGISTER(SENSE_WEAR_POWER_SENSOR_BLUETOOTH_LOGGER);
 
-static struct power_lbs_charger_state charger_state_cache;
-static struct power_lbs_gauge_state gauge_state_cache;
-static struct power_lbs_daughter_state daughter_state_cache;
-static const struct power_lbs_ops *power_ops;
-static struct bt_conn *power_lbs_conn;
+#define POWER_LBS_BLS_FLAG_BATTERY_LEVEL_PRESENT BIT(1)
 
-static bool notify_charger_enabled;
-static bool notify_gauge_enabled;
-static bool notify_daughter_enabled;
-static power_lbs_notify_state_cb_t charger_notify_cb;
-static void *charger_notify_user_data;
-static power_lbs_notify_state_cb_t gauge_notify_cb;
-static void *gauge_notify_user_data;
-static power_lbs_notify_state_cb_t daughter_notify_cb;
-static void *daughter_notify_user_data;
+#define POWER_LBS_BLS_BATTERY_PRESENT_SHIFT 0
+#define POWER_LBS_BLS_WIRED_POWER_SHIFT 1
+#define POWER_LBS_BLS_WIRELESS_POWER_SHIFT 3
+#define POWER_LBS_BLS_CHARGE_STATE_SHIFT 5
+#define POWER_LBS_BLS_CHARGE_LEVEL_SHIFT 7
+#define POWER_LBS_BLS_CHARGE_TYPE_SHIFT 9
+#define POWER_LBS_BLS_CHARGING_FAULT_REASON_SHIFT 12
 
-static void charger_notify_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
-{
-	notify_charger_enabled = (value == BT_GATT_CCC_NOTIFY);
-	if (charger_notify_cb) {
-		charger_notify_cb(notify_charger_enabled, charger_notify_user_data);
-	}
+#define POWER_LBS_BLS_BATTERY_PRESENT_YES 1U
+#define POWER_LBS_BLS_WIRED_POWER_NOT_CONNECTED 0U
+#define POWER_LBS_BLS_WIRED_POWER_CONNECTED 1U
+#define POWER_LBS_BLS_WIRED_POWER_UNKNOWN 2U
+#define POWER_LBS_BLS_WIRELESS_POWER_NOT_CONNECTED 0U
+#define POWER_LBS_BLS_CHARGE_STATE_UNKNOWN 0U
+#define POWER_LBS_BLS_CHARGE_STATE_CHARGING 1U
+#define POWER_LBS_BLS_CHARGE_STATE_DISCHARGING_ACTIVE 2U
+#define POWER_LBS_BLS_CHARGE_STATE_DISCHARGING_INACTIVE 3U
+#define POWER_LBS_BLS_CHARGE_LEVEL_UNKNOWN 0U
+#define POWER_LBS_BLS_CHARGE_LEVEL_GOOD 1U
+#define POWER_LBS_BLS_CHARGE_LEVEL_LOW 2U
+#define POWER_LBS_BLS_CHARGE_LEVEL_CRITICAL 3U
+#define POWER_LBS_BLS_CHARGE_TYPE_UNKNOWN 0U
+#define POWER_LBS_BLS_CHARGING_FAULT_REASON_NONE 0U
+#define POWER_LBS_BLS_CHARGING_FAULT_REASON_OTHER BIT(2)
+
+struct power_lbs_battery_level_status {
+	uint8_t flags;
+	uint16_t power_state;
+	uint8_t battery_level;
+} __packed;
+
+static struct bt_conn* power_lbs_conn;
+static bool notify_battery_level_enabled;
+static bool notify_battery_level_status_enabled;
+static uint8_t battery_level_cache;
+static bool battery_listener_registered;
+static bool charger_listener_registered;
+static struct power_lbs_battery_level_status battery_level_status_cache = {
+	.flags = POWER_LBS_BLS_FLAG_BATTERY_LEVEL_PRESENT,
+	.power_state = sys_cpu_to_le16((POWER_LBS_BLS_BATTERY_PRESENT_YES
+					<< POWER_LBS_BLS_BATTERY_PRESENT_SHIFT) |
+				       (POWER_LBS_BLS_WIRED_POWER_UNKNOWN
+					<< POWER_LBS_BLS_WIRED_POWER_SHIFT) |
+				       (POWER_LBS_BLS_WIRELESS_POWER_NOT_CONNECTED
+					<< POWER_LBS_BLS_WIRELESS_POWER_SHIFT) |
+				       (POWER_LBS_BLS_CHARGE_STATE_UNKNOWN
+					<< POWER_LBS_BLS_CHARGE_STATE_SHIFT) |
+				       (POWER_LBS_BLS_CHARGE_LEVEL_UNKNOWN
+					<< POWER_LBS_BLS_CHARGE_LEVEL_SHIFT) |
+				       (POWER_LBS_BLS_CHARGE_TYPE_UNKNOWN
+					<< POWER_LBS_BLS_CHARGE_TYPE_SHIFT) |
+				       (POWER_LBS_BLS_CHARGING_FAULT_REASON_NONE
+					<< POWER_LBS_BLS_CHARGING_FAULT_REASON_SHIFT)),
+	.battery_level = 0U,
+};
+
+static void battery_level_notify_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
+	ARG_UNUSED(attr);
+	notify_battery_level_enabled = (value == BT_GATT_CCC_NOTIFY);
 }
 
-static void gauge_notify_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
-{
-	notify_gauge_enabled = (value == BT_GATT_CCC_NOTIFY);
-	if (gauge_notify_cb) {
-		gauge_notify_cb(notify_gauge_enabled, gauge_notify_user_data);
-	}
+static void battery_level_status_notify_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
+	ARG_UNUSED(attr);
+	notify_battery_level_status_enabled = (value == BT_GATT_CCC_NOTIFY);
 }
 
-static void daughter_notify_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
-{
-	notify_daughter_enabled = (value == BT_GATT_CCC_NOTIFY);
-	if (daughter_notify_cb) {
-		daughter_notify_cb(notify_daughter_enabled, daughter_notify_user_data);
-	}
+static ssize_t read_battery_level(struct bt_conn* conn,
+				  const struct bt_gatt_attr* attr,
+				  void* buf,
+				  uint16_t len,
+				  uint16_t offset) {
+	return bt_gatt_attr_read(conn, attr, buf, len, offset, &battery_level_cache, sizeof(battery_level_cache));
 }
 
-static ssize_t read_charger_state(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-				  void *buf, uint16_t len, uint16_t offset)
-{
-	if (power_ops && power_ops->get_charger_state) {
-		struct power_lbs_charger_state current;
-		if (power_ops->get_charger_state(&current) == 0) {
-			charger_state_cache = current;
-		}
-	}
-
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, &charger_state_cache,
-				 sizeof(charger_state_cache));
-}
-
-static ssize_t read_gauge_state(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-				void *buf, uint16_t len, uint16_t offset)
-{
-	if (power_ops && power_ops->get_gauge_state) {
-		struct power_lbs_gauge_state current;
-		if (power_ops->get_gauge_state(&current) == 0) {
-			gauge_state_cache = current;
-		}
-	}
-
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, &gauge_state_cache,
-				 sizeof(gauge_state_cache));
-}
-
-static ssize_t read_daughter_state(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-				   void *buf, uint16_t len, uint16_t offset)
-{
-	if (power_ops && power_ops->get_daughter_state) {
-		struct power_lbs_daughter_state current;
-		if (power_ops->get_daughter_state(&current) == 0) {
-			daughter_state_cache = current;
-		}
-	}
-
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, &daughter_state_cache,
-				 sizeof(daughter_state_cache));
+static ssize_t read_battery_level_status(struct bt_conn* conn,
+					 const struct bt_gatt_attr* attr,
+					 void* buf,
+					 uint16_t len,
+					 uint16_t offset) {
+	return bt_gatt_attr_read(conn,
+				 attr,
+				 buf,
+				 len,
+				 offset,
+				 &battery_level_status_cache,
+				 sizeof(battery_level_status_cache));
 }
 
 BT_GATT_SERVICE_DEFINE(
 	power_lbs_svc,
-	BT_GATT_PRIMARY_SERVICE(BT_UUID_LBS_POWER_SERVICE),
-	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_POWER_CHARGER_STATE,
+	BT_GATT_PRIMARY_SERVICE(BT_UUID_BAS),
+	BT_GATT_CHARACTERISTIC(BT_UUID_BAS_BATTERY_LEVEL,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-			       BT_GATT_PERM_READ, read_charger_state, NULL, NULL),
-	BT_GATT_CCC(charger_notify_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
-	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_POWER_GAUGE_STATE,
+			       BT_GATT_PERM_READ,
+			       read_battery_level,
+			       NULL,
+			       &battery_level_cache),
+	BT_GATT_CCC(battery_level_notify_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+	BT_GATT_CHARACTERISTIC(BT_UUID_BAS_BATTERY_LEVEL_STATUS,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-			       BT_GATT_PERM_READ, read_gauge_state, NULL, NULL),
-	BT_GATT_CCC(gauge_notify_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
-	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_POWER_DAUGHTER_STATE,
-			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-			       BT_GATT_PERM_READ, read_daughter_state, NULL, NULL),
-	BT_GATT_CCC(daughter_notify_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE));
+			       BT_GATT_PERM_READ,
+			       read_battery_level_status,
+			       NULL,
+			       &battery_level_status_cache),
+	BT_GATT_CCC(battery_level_status_notify_cfg_changed,
+		    BT_GATT_PERM_READ | BT_GATT_PERM_WRITE));
 
-void power_lbs_register_ops(const struct power_lbs_ops *ops)
-{
-	power_ops = ops;
-}
-
-void power_lbs_register_charger_notify_cb(power_lbs_notify_state_cb_t cb, void *user_data)
-{
-	charger_notify_cb = cb;
-	charger_notify_user_data = user_data;
-}
-
-void power_lbs_register_gauge_notify_cb(power_lbs_notify_state_cb_t cb, void *user_data)
-{
-	gauge_notify_cb = cb;
-	gauge_notify_user_data = user_data;
-}
-
-void power_lbs_register_daughter_notify_cb(power_lbs_notify_state_cb_t cb, void *user_data)
-{
-	daughter_notify_cb = cb;
-	daughter_notify_user_data = user_data;
-}
-
-void power_lbs_set_conn(struct bt_conn *conn)
-{
+void power_lbs_set_conn(struct bt_conn* conn) {
 	if (conn == NULL) {
 		return;
 	}
@@ -147,52 +133,159 @@ void power_lbs_set_conn(struct bt_conn *conn)
 	power_lbs_conn = bt_conn_ref(conn);
 }
 
-void power_lbs_clear_conn(void)
-{
+void power_lbs_clear_conn(void) {
 	if (power_lbs_conn != NULL) {
 		bt_conn_unref(power_lbs_conn);
 		power_lbs_conn = NULL;
 	}
 }
 
-int power_lbs_notify_charger_state(const struct power_lbs_charger_state *state)
-{
-	if (!notify_charger_enabled) {
-		return -EACCES;
+static uint8_t power_lbs_soc_to_battery_level(int32_t state_of_charge_dpct) {
+	if (state_of_charge_dpct <= 0) {
+		return 0U;
+	}
+	if (state_of_charge_dpct >= 1000) {
+		return 100U;
 	}
 
-	if (power_lbs_conn == NULL) {
-		return -ENOTCONN;
-	}
-
-	return bt_gatt_notify(power_lbs_conn, &power_lbs_svc.attrs[2], state,
-			      sizeof(*state));
+	return (uint8_t) ((state_of_charge_dpct + 5) / 10);
 }
 
-int power_lbs_notify_gauge_state(const struct power_lbs_gauge_state *state)
-{
-	if (!notify_gauge_enabled) {
-		return -EACCES;
+static uint8_t power_lbs_charge_level_from_battery_level(uint8_t battery_level) {
+	if (battery_level <= 5U) {
+		return POWER_LBS_BLS_CHARGE_LEVEL_CRITICAL;
+	}
+	if (battery_level <= 20U) {
+		return POWER_LBS_BLS_CHARGE_LEVEL_LOW;
 	}
 
-	if (power_lbs_conn == NULL) {
-		return -ENOTCONN;
-	}
-
-	return bt_gatt_notify(power_lbs_conn, &power_lbs_svc.attrs[5], state,
-			      sizeof(*state));
+	return POWER_LBS_BLS_CHARGE_LEVEL_GOOD;
 }
 
-int power_lbs_notify_daughter_state(const struct power_lbs_daughter_state *state)
-{
-	if (!notify_daughter_enabled) {
-		return -EACCES;
+static void power_lbs_set_level_status_power_state(uint8_t wired_power,
+						   uint8_t charge_state,
+						   uint8_t charge_level,
+						   uint8_t charge_type,
+						   uint8_t fault_reason) {
+	uint16_t power_state =
+		(POWER_LBS_BLS_BATTERY_PRESENT_YES << POWER_LBS_BLS_BATTERY_PRESENT_SHIFT) |
+		(wired_power << POWER_LBS_BLS_WIRED_POWER_SHIFT) |
+		(POWER_LBS_BLS_WIRELESS_POWER_NOT_CONNECTED << POWER_LBS_BLS_WIRELESS_POWER_SHIFT) |
+		(charge_state << POWER_LBS_BLS_CHARGE_STATE_SHIFT) |
+		(charge_level << POWER_LBS_BLS_CHARGE_LEVEL_SHIFT) |
+		(charge_type << POWER_LBS_BLS_CHARGE_TYPE_SHIFT) |
+		(fault_reason << POWER_LBS_BLS_CHARGING_FAULT_REASON_SHIFT);
+
+	battery_level_status_cache.power_state = sys_cpu_to_le16(power_state);
+}
+
+static void power_lbs_notify_battery_level(void) {
+	if (notify_battery_level_enabled && power_lbs_conn != NULL) {
+		(void) bt_gatt_notify(power_lbs_conn,
+				      &power_lbs_svc.attrs[2],
+				      &battery_level_cache,
+				      sizeof(battery_level_cache));
+	}
+}
+
+static void power_lbs_notify_battery_level_status(void) {
+	if (notify_battery_level_status_enabled && power_lbs_conn != NULL) {
+		(void) bt_gatt_notify(power_lbs_conn,
+				      &power_lbs_svc.attrs[5],
+				      &battery_level_status_cache,
+				      sizeof(battery_level_status_cache));
+	}
+}
+
+static void power_lbs_handle_battery(const struct zbus_channel* chan) {
+	const struct battery_msg_t* msg = zbus_chan_const_msg(chan);
+
+	if (msg == NULL) {
+		return;
 	}
 
-	if (power_lbs_conn == NULL) {
-		return -ENOTCONN;
+	battery_level_cache = power_lbs_soc_to_battery_level(msg->state_of_charge_dpct);
+	battery_level_status_cache.battery_level = battery_level_cache;
+
+	uint16_t power_state = sys_le16_to_cpu(battery_level_status_cache.power_state);
+
+	power_state &= ~(BIT_MASK(2) << POWER_LBS_BLS_CHARGE_LEVEL_SHIFT);
+	power_state |= power_lbs_charge_level_from_battery_level(battery_level_cache)
+		       << POWER_LBS_BLS_CHARGE_LEVEL_SHIFT;
+	battery_level_status_cache.power_state = sys_cpu_to_le16(power_state);
+
+	power_lbs_notify_battery_level();
+	power_lbs_notify_battery_level_status();
+}
+
+static void power_lbs_handle_charger(const struct zbus_channel* chan) {
+	const struct charger_msg_t* msg = zbus_chan_const_msg(chan);
+
+	if (msg == NULL) {
+		return;
 	}
 
-	return bt_gatt_notify(power_lbs_conn, &power_lbs_svc.attrs[8], state,
-			      sizeof(*state));
+	uint8_t wired_power = msg->power_good ? POWER_LBS_BLS_WIRED_POWER_CONNECTED :
+						POWER_LBS_BLS_WIRED_POWER_NOT_CONNECTED;
+	uint8_t charge_state = POWER_LBS_BLS_CHARGE_STATE_DISCHARGING_ACTIVE;
+
+	if (msg->charging) {
+		charge_state = POWER_LBS_BLS_CHARGE_STATE_CHARGING;
+	} else if (msg->charged) {
+		charge_state = POWER_LBS_BLS_CHARGE_STATE_DISCHARGING_INACTIVE;
+	}
+
+	power_lbs_set_level_status_power_state(
+		wired_power,
+		charge_state,
+		power_lbs_charge_level_from_battery_level(battery_level_cache),
+		POWER_LBS_BLS_CHARGE_TYPE_UNKNOWN,
+		msg->fault ? POWER_LBS_BLS_CHARGING_FAULT_REASON_OTHER :
+			     POWER_LBS_BLS_CHARGING_FAULT_REASON_NONE);
+	power_lbs_notify_battery_level_status();
+}
+
+static void power_lbs_listener_cb(const struct zbus_channel* chan) {
+	switch (device_manager_stream_from_channel(chan)) {
+	case device_manager_stream_Battery:
+		power_lbs_handle_battery(chan);
+		break;
+	case device_manager_stream_Charger:
+		power_lbs_handle_charger(chan);
+		break;
+	default:
+		break;
+	}
+}
+
+ZBUS_LISTENER_DEFINE(power_lbs_listener, power_lbs_listener_cb);
+
+bool power_lbs_streams_ready(void) {
+	return device_manager_stream_ready(device_manager_stream_Battery) &&
+	       device_manager_stream_ready(device_manager_stream_Charger);
+}
+
+int power_lbs_register_streams(void) {
+	int ret = 0;
+
+	if (!battery_listener_registered) {
+		ret = device_manager_stream_register(device_manager_stream_Battery,
+						     &power_lbs_listener,
+						     K_MSEC(100));
+		if (ret == 0) {
+			battery_listener_registered = true;
+		}
+	}
+	if (!charger_listener_registered) {
+		int charger_ret = device_manager_stream_register(device_manager_stream_Charger,
+								 &power_lbs_listener,
+								 K_MSEC(100));
+		if (charger_ret == 0) {
+			charger_listener_registered = true;
+		} else if (ret == 0) {
+			ret = charger_ret;
+		}
+	}
+
+	return ret;
 }

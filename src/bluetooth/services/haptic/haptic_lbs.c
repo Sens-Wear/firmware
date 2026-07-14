@@ -7,6 +7,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/byteorder.h>
 
+#include "device_manager.h"
 #include "haptic_lbs.h"
 
 LOG_MODULE_REGISTER(SENSE_WEAR_HAPTIC_BLUETOOTH_LOGGER);
@@ -14,14 +15,17 @@ LOG_MODULE_REGISTER(SENSE_WEAR_HAPTIC_BLUETOOTH_LOGGER);
 #define HAPTIC_LBS_PATTERN_HEADER_SIZE 4U
 #define HAPTIC_LBS_PATTERN_FRAME_SIZE 3U
 
-static const struct haptic_lbs_ops *haptic_ops;
-static struct bt_conn *haptic_lbs_conn;
+static struct bt_conn* haptic_lbs_conn;
 
-static ssize_t update_pattern(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			      const void *buf, uint16_t len, uint16_t offset, uint8_t flags)
-{
-	struct haptic_lbs_frame frames[HAPTIC_LBS_MAX_FRAMES];
-	const uint8_t *data = buf;
+static ssize_t update_pattern(struct bt_conn* conn,
+			      const struct bt_gatt_attr* attr,
+			      const void* buf,
+			      uint16_t len,
+			      uint16_t offset,
+			      uint8_t flags) {
+	uint8_t amplitudes[HAPTIC_LBS_MAX_FRAMES];
+	uint32_t hold_us[HAPTIC_LBS_MAX_FRAMES];
+	const uint8_t* data = buf;
 	uint16_t frame_count;
 	size_t expected_len;
 	int rc;
@@ -51,30 +55,30 @@ static ssize_t update_pattern(struct bt_conn *conn, const struct bt_gatt_attr *a
 		return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
 	}
 
-	expected_len = HAPTIC_LBS_PATTERN_HEADER_SIZE +
-		       ((size_t)frame_count * HAPTIC_LBS_PATTERN_FRAME_SIZE);
+	expected_len =
+		HAPTIC_LBS_PATTERN_HEADER_SIZE + ((size_t) frame_count * HAPTIC_LBS_PATTERN_FRAME_SIZE);
 	if (len != expected_len) {
 		return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
 	}
 
 	for (uint16_t i = 0; i < frame_count; i++) {
-		size_t frame_offset = HAPTIC_LBS_PATTERN_HEADER_SIZE +
-				     ((size_t)i * HAPTIC_LBS_PATTERN_FRAME_SIZE);
+		size_t frame_offset =
+			HAPTIC_LBS_PATTERN_HEADER_SIZE + ((size_t) i * HAPTIC_LBS_PATTERN_FRAME_SIZE);
+		uint16_t duration_ms = sys_get_le16(&data[frame_offset]);
 
-		frames[i].duration_ms = sys_get_le16(&data[frame_offset]);
-		frames[i].intensity = data[frame_offset + 2U];
-
-		if (frames[i].duration_ms == 0U) {
+		if (duration_ms == 0U) {
 			return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
 		}
+
+		hold_us[i] = (uint32_t) duration_ms * 1000U;
+		amplitudes[i] = data[frame_offset + 2U];
 	}
 
-	if (haptic_ops == NULL || haptic_ops->run_pattern == NULL) {
-		LOG_ERR("No haptic BLE handler registered");
-		return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
-	}
-
-	rc = haptic_ops->run_pattern(frames, frame_count);
+#if defined(CONFIG_SHIELD_SENSEWEAR_HAPTIC)
+	rc = device_manager_haptic_start_rtp(amplitudes, hold_us, frame_count);
+#else
+	rc = -ENOTSUP;
+#endif
 	if (rc != 0) {
 		LOG_WRN("Haptic pattern rejected: %d", rc);
 		return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
@@ -87,16 +91,13 @@ BT_GATT_SERVICE_DEFINE(
 	haptic_lbs_svc,
 	BT_GATT_PRIMARY_SERVICE(BT_UUID_LBS_HAPTIC_SERVICE),
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_HAPTIC_PATTERN_CONF,
-			       BT_GATT_CHRC_WRITE, BT_GATT_PERM_WRITE, NULL,
-			       update_pattern, NULL));
+			       BT_GATT_CHRC_WRITE,
+			       BT_GATT_PERM_WRITE,
+			       NULL,
+			       update_pattern,
+			       NULL));
 
-void haptic_lbs_register_ops(const struct haptic_lbs_ops *ops)
-{
-	haptic_ops = ops;
-}
-
-void haptic_lbs_set_conn(struct bt_conn *conn)
-{
+void haptic_lbs_set_conn(struct bt_conn* conn) {
 	if (conn == NULL) {
 		return;
 	}
@@ -108,8 +109,7 @@ void haptic_lbs_set_conn(struct bt_conn *conn)
 	haptic_lbs_conn = bt_conn_ref(conn);
 }
 
-void haptic_lbs_clear_conn(void)
-{
+void haptic_lbs_clear_conn(void) {
 	if (haptic_lbs_conn != NULL) {
 		bt_conn_unref(haptic_lbs_conn);
 		haptic_lbs_conn = NULL;

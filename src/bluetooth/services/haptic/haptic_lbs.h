@@ -5,11 +5,12 @@
 extern "C" {
 #endif
 
-#include <stddef.h>
 #include <stdint.h>
 
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/uuid.h>
+
+#include "device_manager.h"
 
 #define BT_UUID_LBS_HAPTIC_SERVICE_VAL BT_UUID_128_ENCODE(0xdaa05e91, 0xf514, 0x4a4e, 0x8fc5, 0xd1b80f25f24d)
 #define BT_UUID_LBS_HAPTIC_PATTERN_VAL BT_UUID_128_ENCODE(0xdaa05e92, 0xf514, 0x4a4e, 0x8fc5, 0xd1b80f25f24d)
@@ -17,28 +18,14 @@ extern "C" {
 #define BT_UUID_LBS_HAPTIC_PATTERN_CONF BT_UUID_DECLARE_128(BT_UUID_LBS_HAPTIC_PATTERN_VAL)
 
 #define HAPTIC_LBS_PATTERN_VERSION 1U
-#define HAPTIC_LBS_MAX_FRAMES 64U
 
-/*
- * BLE payload layout:
- * byte 0: protocol version (currently 1)
- * byte 1: flags (reserved, send 0)
- * byte 2-3: frame count, little-endian
- * repeated frame payload:
- *   byte 0-1: frame duration in milliseconds, little-endian
- *   byte 2: intensity from 0-255
- */
-struct haptic_lbs_frame {
-	uint16_t duration_ms;
-	uint8_t intensity;
-};
+#if defined(CONFIG_SHIELD_SENSEWEAR_HAPTIC)
+#define HAPTIC_LBS_MAX_FRAMES DEVICE_MANAGER_HAPTIC_RTP_MAX
+#else
+#define HAPTIC_LBS_MAX_FRAMES 32U
+#endif
 
-struct haptic_lbs_ops {
-	int (*run_pattern)(const struct haptic_lbs_frame *frames, size_t frame_count);
-};
-
-void haptic_lbs_register_ops(const struct haptic_lbs_ops *ops);
-void haptic_lbs_set_conn(struct bt_conn *conn);
+void haptic_lbs_set_conn(struct bt_conn* conn);
 void haptic_lbs_clear_conn(void);
 
 #ifdef __cplusplus

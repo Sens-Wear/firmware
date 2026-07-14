@@ -168,8 +168,9 @@ if(TEST_DRIVERS OR TEST_SHIELDS)
     endif()
 else()
     # Normal build: application sources / includes (app_src INTERFACE library).
-    # include(${CMAKE_CURRENT_SOURCE_DIR}/src/app.cmake)
-    # target_link_libraries(app PRIVATE app_src)
+    # The Bluetooth GATT services (ble_services) are managed by app.cmake.
+    include(${CMAKE_CURRENT_SOURCE_DIR}/src/app.cmake)
+    target_link_libraries(app PRIVATE app_src)
 endif()
 
 if(TEST_DRIVERS)

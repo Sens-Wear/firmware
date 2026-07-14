@@ -295,6 +295,47 @@ int device_manager_stream_unregister(enum device_manager_stream_type stream,
 									 k_timeout_t timeout);
 
 /**
+ * @brief Enable or disable IMU physical streams at run time.
+ * @details Controls the high-rate BHI360 physical streams without changing the
+ *          rest of the device-manager configuration.
+ *
+ * @param enabled True to enable quaternion/accel/gyro streams, false to stop them.
+ * @param drain_period_ms FIFO drain period to use when enabling streams.
+ * @retval 0 The physical-stream state was updated.
+ * @retval -ENODEV The IMU is not ready.
+ * @retval -ENOTSUP The IMU driver is not built.
+ * @return A negative errno propagated from the IMU driver.
+ */
+int device_manager_set_imu_phy_streams_enabled(bool enabled, uint32_t drain_period_ms);
+
+/**
+ * @brief Enable or disable PPG sampling at run time.
+ * @details Controls MAX30101 acquisition through the device manager. Enabling
+ *          uses the driver's wrist-HR sampling mode and default configuration
+ *          when the sensor has not already been configured.
+ *
+ * @param enabled True to enable PPG sampling, false to stop sampling.
+ * @param per_sample_irq True for one interrupt per sample, false for FIFO batch interrupts.
+ * @retval 0 The sampling state was updated.
+ * @retval -ENODEV The PPG sensor is not initialized or present.
+ * @retval -ENOTSUP The PPG shield driver is not built.
+ * @return A negative errno propagated from the PPG driver.
+ */
+int device_manager_set_ppg_sampling_enabled(bool enabled, bool per_sample_irq);
+
+/**
+ * @brief Enable or disable touch-controller acquisition at run time.
+ * @details Controls MTCH6102 acquisition through the device manager. Enabling
+ *          starts interrupt-driven touch acquisition; disabling stops it.
+ *
+ * @param enabled True to enable touch acquisition, false to stop acquisition.
+ * @retval 0 The acquisition state was updated.
+ * @retval -ENOTSUP The touch shield driver is not built.
+ * @return A negative errno propagated from the touch driver.
+ */
+int device_manager_set_touch_sampling_enabled(bool enabled);
+
+/**
  * @brief Update the IMU FIFO-drain timer period at run time.
  * @param period_ms New drain-timer period in milliseconds.
  * @retval 0 The period was updated.
