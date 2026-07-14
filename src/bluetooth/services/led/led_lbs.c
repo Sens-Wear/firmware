@@ -27,6 +27,7 @@ static ssize_t update_color(struct bt_conn* conn,
 	}
 
 	led_color_state = sys_get_le32(buf);
+	LOG_INF("LED color set to 0x%08x", led_color_state);
 	return len;
 }
 
@@ -46,7 +47,8 @@ BT_GATT_SERVICE_DEFINE(
 			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
 			       read_color,
 			       update_color,
-			       &led_color_state));
+			       &led_color_state),
+	BT_GATT_CUD("LED Color", BT_GATT_PERM_READ));
 
 void led_lbs_set_conn(struct bt_conn* conn) {
 	if (conn == NULL) {
@@ -58,11 +60,13 @@ void led_lbs_set_conn(struct bt_conn* conn) {
 	}
 
 	led_lbs_conn = bt_conn_ref(conn);
+	LOG_INF("LED BLE connection attached");
 }
 
 void led_lbs_clear_conn(void) {
 	if (led_lbs_conn != NULL) {
 		bt_conn_unref(led_lbs_conn);
 		led_lbs_conn = NULL;
+		LOG_INF("LED BLE connection cleared");
 	}
 }

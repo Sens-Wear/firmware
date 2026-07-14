@@ -39,26 +39,31 @@ static struct imu_lbs_activity activity_cache;
 static void quat_notify_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
 	ARG_UNUSED(attr);
 	notify_quat_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("IMU quaternion notifications %s", notify_quat_enabled ? "enabled" : "disabled");
 }
 
 static void lacc_notify_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
 	ARG_UNUSED(attr);
 	notify_lacc_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("IMU linear acceleration notifications %s", notify_lacc_enabled ? "enabled" : "disabled");
 }
 
 static void gyro_notify_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
 	ARG_UNUSED(attr);
 	notify_gyro_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("IMU gyro notifications %s", notify_gyro_enabled ? "enabled" : "disabled");
 }
 
 static void gesture_notify_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
 	ARG_UNUSED(attr);
 	notify_gesture_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("IMU gesture notifications %s", notify_gesture_enabled ? "enabled" : "disabled");
 }
 
 static void activity_notify_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
 	ARG_UNUSED(attr);
 	notify_activity_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("IMU activity notifications %s", notify_activity_enabled ? "enabled" : "disabled");
 }
 
 static ssize_t read_quat(struct bt_conn* conn,
@@ -142,6 +147,9 @@ static ssize_t write_phy_enable(struct bt_conn* conn,
 	}
 
 	phy_streams_enabled = (enabled != 0U);
+	LOG_INF("IMU physical streams %s at %u ms",
+		phy_streams_enabled ? "enabled" : "disabled",
+		drain_period_ms);
 	return len;
 }
 
@@ -188,6 +196,9 @@ static ssize_t write_drain_period(struct bt_conn* conn,
 	}
 
 	drain_period_ms = period;
+	LOG_INF("IMU drain period set to %u ms%s",
+		drain_period_ms,
+		phy_streams_enabled ? " and applied" : "");
 	return len;
 }
 
@@ -200,6 +211,7 @@ BT_GATT_SERVICE_DEFINE(
 			       read_quat,
 			       NULL,
 			       &quat_cache),
+	BT_GATT_CUD("IMU Quaternion", BT_GATT_PERM_READ),
 	BT_GATT_CCC(quat_notify_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_IMU_LACC,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
@@ -207,6 +219,7 @@ BT_GATT_SERVICE_DEFINE(
 			       read_lacc,
 			       NULL,
 			       &lacc_cache),
+	BT_GATT_CUD("IMU Linear Acceleration", BT_GATT_PERM_READ),
 	BT_GATT_CCC(lacc_notify_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_IMU_GYRO,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
@@ -214,6 +227,7 @@ BT_GATT_SERVICE_DEFINE(
 			       read_gyro,
 			       NULL,
 			       &gyro_cache),
+	BT_GATT_CUD("IMU Gyroscope", BT_GATT_PERM_READ),
 	BT_GATT_CCC(gyro_notify_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_IMU_GESTURE,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
@@ -221,6 +235,7 @@ BT_GATT_SERVICE_DEFINE(
 			       read_gesture,
 			       NULL,
 			       &gesture_cache),
+	BT_GATT_CUD("IMU Gesture", BT_GATT_PERM_READ),
 	BT_GATT_CCC(gesture_notify_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_IMU_ACTIVITY,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
@@ -228,6 +243,7 @@ BT_GATT_SERVICE_DEFINE(
 			       read_activity,
 			       NULL,
 			       &activity_cache),
+	BT_GATT_CUD("IMU Activity", BT_GATT_PERM_READ),
 	BT_GATT_CCC(activity_notify_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE));
 
 BT_GATT_SERVICE_DEFINE(
@@ -239,12 +255,14 @@ BT_GATT_SERVICE_DEFINE(
 			       read_phy_enable,
 			       write_phy_enable,
 			       NULL),
+	BT_GATT_CUD("IMU Physical Streams Enable", BT_GATT_PERM_READ),
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_IMU_CONFIG_DRAIN_PERIOD,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
 			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
 			       read_drain_period,
 			       write_drain_period,
-			       NULL));
+			       NULL),
+	BT_GATT_CUD("IMU FIFO Drain Period", BT_GATT_PERM_READ));
 
 void imu_lbs_set_conn(struct bt_conn* conn) {
 	if (conn == NULL) {
@@ -256,12 +274,14 @@ void imu_lbs_set_conn(struct bt_conn* conn) {
 	}
 
 	imu_lbs_conn = bt_conn_ref(conn);
+	LOG_INF("IMU BLE connection attached");
 }
 
 void imu_lbs_clear_conn(void) {
 	if (imu_lbs_conn != NULL) {
 		bt_conn_unref(imu_lbs_conn);
 		imu_lbs_conn = NULL;
+		LOG_INF("IMU BLE connection cleared");
 	}
 }
 
@@ -297,7 +317,7 @@ static void imu_lbs_handle_lacc(const struct zbus_channel* chan) {
 	lacc_cache.z = msg->z;
 
 	if (notify_lacc_enabled && imu_lbs_conn != NULL) {
-		(void) bt_gatt_notify(imu_lbs_conn, &imu_lbs_svc.attrs[5], &lacc_cache, sizeof(lacc_cache));
+		(void) bt_gatt_notify(imu_lbs_conn, &imu_lbs_svc.attrs[6], &lacc_cache, sizeof(lacc_cache));
 	}
 }
 
@@ -314,7 +334,7 @@ static void imu_lbs_handle_gyro(const struct zbus_channel* chan) {
 	gyro_cache.z = msg->z;
 
 	if (notify_gyro_enabled && imu_lbs_conn != NULL) {
-		(void) bt_gatt_notify(imu_lbs_conn, &imu_lbs_svc.attrs[8], &gyro_cache, sizeof(gyro_cache));
+		(void) bt_gatt_notify(imu_lbs_conn, &imu_lbs_svc.attrs[10], &gyro_cache, sizeof(gyro_cache));
 	}
 }
 
@@ -331,7 +351,7 @@ static void imu_lbs_handle_gesture(const struct zbus_channel* chan) {
 
 	if (notify_gesture_enabled && imu_lbs_conn != NULL) {
 		(void) bt_gatt_notify(imu_lbs_conn,
-				      &imu_lbs_svc.attrs[11],
+				      &imu_lbs_svc.attrs[14],
 				      &gesture_cache,
 				      sizeof(gesture_cache));
 	}
@@ -351,7 +371,7 @@ static void imu_lbs_handle_activity(const struct zbus_channel* chan) {
 
 	if (notify_activity_enabled && imu_lbs_conn != NULL) {
 		(void) bt_gatt_notify(imu_lbs_conn,
-				      &imu_lbs_svc.attrs[14],
+				      &imu_lbs_svc.attrs[18],
 				      &activity_cache,
 				      sizeof(activity_cache));
 	}
@@ -391,6 +411,7 @@ bool imu_lbs_streams_ready(void) {
 
 static int imu_lbs_register_stream(enum device_manager_stream_type stream, bool* registered) {
 	if (*registered) {
+		LOG_INF("IMU stream %d already registered", stream);
 		return 0;
 	}
 
@@ -398,6 +419,9 @@ static int imu_lbs_register_stream(enum device_manager_stream_type stream, bool*
 
 	if (ret == 0) {
 		*registered = true;
+		LOG_INF("IMU stream %d registered", stream);
+	} else {
+		LOG_INF("IMU stream %d registration failed: %d", stream, ret);
 	}
 
 	return ret;

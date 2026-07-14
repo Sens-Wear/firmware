@@ -27,16 +27,19 @@ static struct ppg_sample_notification_t ppg_green_state;
 static void red_notification_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
 	ARG_UNUSED(attr);
 	notify_red_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("PPG red notifications %s", notify_red_enabled ? "enabled" : "disabled");
 }
 
 static void ir_notification_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
 	ARG_UNUSED(attr);
 	notify_ir_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("PPG IR notifications %s", notify_ir_enabled ? "enabled" : "disabled");
 }
 
 static void green_notification_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
 	ARG_UNUSED(attr);
 	notify_green_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("PPG green notifications %s", notify_green_enabled ? "enabled" : "disabled");
 }
 
 static ssize_t read_red(struct bt_conn* conn,
@@ -99,6 +102,7 @@ static ssize_t write_sampling_enable(struct bt_conn* conn,
 	bool requested_enabled = (enabled != 0U);
 
 	if (requested_enabled == ppg_sampling_enabled) {
+		LOG_INF("PPG sampling already %s", ppg_sampling_enabled ? "enabled" : "disabled");
 		return len;
 	}
 
@@ -110,6 +114,9 @@ static ssize_t write_sampling_enable(struct bt_conn* conn,
 	}
 
 	ppg_sampling_enabled = requested_enabled;
+	LOG_INF("PPG sampling %s, IRQ cadence=%s",
+		ppg_sampling_enabled ? "enabled" : "disabled",
+		ppg_per_sample_irq ? "per-sample" : "batch");
 	return len;
 }
 
@@ -151,6 +158,7 @@ static ssize_t write_per_sample_irq(struct bt_conn* conn,
 	}
 
 	ppg_per_sample_irq = (enabled != 0U);
+	LOG_INF("PPG IRQ cadence set to %s", ppg_per_sample_irq ? "per-sample" : "batch");
 	return len;
 }
 
@@ -163,6 +171,7 @@ BT_GATT_SERVICE_DEFINE(
 			       read_red,
 			       NULL,
 			       &ppg_red_state),
+	BT_GATT_CUD("PPG Red", BT_GATT_PERM_READ),
 	BT_GATT_CCC(red_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_PPG_IR,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
@@ -170,6 +179,7 @@ BT_GATT_SERVICE_DEFINE(
 			       read_ir,
 			       NULL,
 			       &ppg_ir_state),
+	BT_GATT_CUD("PPG Infrared", BT_GATT_PERM_READ),
 	BT_GATT_CCC(ir_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_PPG_GREEN,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
@@ -177,6 +187,7 @@ BT_GATT_SERVICE_DEFINE(
 			       read_green,
 			       NULL,
 			       &ppg_green_state),
+	BT_GATT_CUD("PPG Green", BT_GATT_PERM_READ),
 	BT_GATT_CCC(green_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE));
 
 BT_GATT_SERVICE_DEFINE(
@@ -188,12 +199,14 @@ BT_GATT_SERVICE_DEFINE(
 			       read_sampling_enable,
 			       write_sampling_enable,
 			       NULL),
+	BT_GATT_CUD("PPG Sampling Enable", BT_GATT_PERM_READ),
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_PPG_CONFIG_PER_SAMPLE_IRQ,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
 			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
 			       read_per_sample_irq,
 			       write_per_sample_irq,
-			       NULL));
+			       NULL),
+	BT_GATT_CUD("PPG Per-Sample IRQ", BT_GATT_PERM_READ));
 
 void ppg_lbs_set_conn(struct bt_conn* conn) {
 	if (conn == NULL) {
@@ -205,12 +218,14 @@ void ppg_lbs_set_conn(struct bt_conn* conn) {
 	}
 
 	ppg_lbs_conn = bt_conn_ref(conn);
+	LOG_INF("PPG BLE connection attached");
 }
 
 void ppg_lbs_clear_conn(void) {
 	if (ppg_lbs_conn != NULL) {
 		bt_conn_unref(ppg_lbs_conn);
 		ppg_lbs_conn = NULL;
+		LOG_INF("PPG BLE connection cleared");
 	}
 }
 
@@ -234,11 +249,11 @@ static void ppg_lbs_notify_cache(void) {
 		(void) bt_gatt_notify(ppg_lbs_conn, &ppg_lbs_svc.attrs[2], &ppg_red_state, sizeof(ppg_red_state));
 	}
 	if (notify_ir_enabled) {
-		(void) bt_gatt_notify(ppg_lbs_conn, &ppg_lbs_svc.attrs[5], &ppg_ir_state, sizeof(ppg_ir_state));
+		(void) bt_gatt_notify(ppg_lbs_conn, &ppg_lbs_svc.attrs[6], &ppg_ir_state, sizeof(ppg_ir_state));
 	}
 	if (notify_green_enabled) {
 		(void) bt_gatt_notify(ppg_lbs_conn,
-				      &ppg_lbs_svc.attrs[8],
+				      &ppg_lbs_svc.attrs[10],
 				      &ppg_green_state,
 				      sizeof(ppg_green_state));
 	}
@@ -267,6 +282,7 @@ bool ppg_lbs_stream_ready(void) {
 
 int ppg_lbs_register_stream(void) {
 	if (ppg_listener_registered) {
+		LOG_INF("PPG stream already registered");
 		return 0;
 	}
 
@@ -274,6 +290,9 @@ int ppg_lbs_register_stream(void) {
 
 	if (ret == 0) {
 		ppg_listener_registered = true;
+		LOG_INF("PPG stream registered");
+	} else {
+		LOG_INF("PPG stream registration failed: %d", ret);
 	}
 
 	return ret;

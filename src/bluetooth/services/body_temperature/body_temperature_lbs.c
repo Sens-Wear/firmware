@@ -89,11 +89,15 @@ static void body_temperature_measurement_ccc_changed(const struct bt_gatt_attr* 
 						     uint16_t value) {
 	ARG_UNUSED(attr);
 	indicate_temperature_enabled = (value == BT_GATT_CCC_INDICATE);
+	LOG_INF("Body temperature measurement indications %s",
+		indicate_temperature_enabled ? "enabled" : "disabled");
 }
 
 static void body_temperature_interval_ccc_changed(const struct bt_gatt_attr* attr, uint16_t value) {
 	ARG_UNUSED(attr);
 	indicate_interval_enabled = (value == BT_GATT_CCC_INDICATE);
+	LOG_INF("Body temperature interval indications %s",
+		indicate_interval_enabled ? "enabled" : "disabled");
 }
 
 static ssize_t read_temperature_type(struct bt_conn* conn,
@@ -149,6 +153,7 @@ static ssize_t write_measurement_interval(struct bt_conn* conn,
 	measurement_interval_sec = (minutes == BODY_TEMPERATURE_INTERVAL_DISABLED) ?
 					   BODY_TEMPERATURE_INTERVAL_DISABLED :
 					   (uint16_t) (minutes * BODY_TEMPERATURE_SECONDS_PER_MINUTE);
+	LOG_INF("Body temperature measurement interval set to %u sec", measurement_interval_sec);
 	body_temperature_interval_indicate();
 
 	return len;
@@ -230,12 +235,14 @@ void body_temperature_lbs_set_conn(struct bt_conn* conn) {
 	}
 
 	body_temperature_lbs_conn = bt_conn_ref(conn);
+	LOG_INF("Body temperature BLE connection attached");
 }
 
 void body_temperature_lbs_clear_conn(void) {
 	if (body_temperature_lbs_conn != NULL) {
 		bt_conn_unref(body_temperature_lbs_conn);
 		body_temperature_lbs_conn = NULL;
+		LOG_INF("Body temperature BLE connection cleared");
 	}
 
 	indication_in_flight = false;
@@ -251,6 +258,7 @@ static void body_temperature_handle_sample(const struct zbus_channel* chan) {
 	measurement_cache.temperature_celsius =
 		sys_cpu_to_le32(body_temperature_ieee11073_float_from_mdeg_c(msg->temperature_mdeg_c));
 	body_temperature_date_time_from_unix((time_t) (msg->timestamp / 1000000), &measurement_cache.timestamp);
+	LOG_INF("Body temperature updated: %d mdeg C", msg->temperature_mdeg_c);
 	body_temperature_indicate_measurement();
 }
 
@@ -268,6 +276,7 @@ bool body_temperature_lbs_stream_ready(void) {
 
 int body_temperature_lbs_register_stream(void) {
 	if (temperature_listener_registered) {
+		LOG_INF("Body temperature stream already registered");
 		return 0;
 	}
 
@@ -277,6 +286,9 @@ int body_temperature_lbs_register_stream(void) {
 
 	if (ret == 0) {
 		temperature_listener_registered = true;
+		LOG_INF("Body temperature stream registered");
+	} else {
+		LOG_INF("Body temperature stream registration failed: %d", ret);
 	}
 
 	return ret;

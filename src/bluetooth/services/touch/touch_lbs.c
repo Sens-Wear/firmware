@@ -26,16 +26,19 @@ static struct touch_msg_t raw_touch_cache;
 static void touch_state_notification_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
 	ARG_UNUSED(attr);
 	notify_touch_state_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("Touch state notifications %s", notify_touch_state_enabled ? "enabled" : "disabled");
 }
 
 static void gesture_state_notification_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
 	ARG_UNUSED(attr);
 	notify_gesture_state_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("Touch gesture notifications %s", notify_gesture_state_enabled ? "enabled" : "disabled");
 }
 
 static void raw_data_notification_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
 	ARG_UNUSED(attr);
 	notify_raw_data_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("Touch raw-data notifications %s", notify_raw_data_enabled ? "enabled" : "disabled");
 }
 
 static ssize_t read_touch_state(struct bt_conn* conn,
@@ -110,6 +113,7 @@ static ssize_t write_sampling_enable(struct bt_conn* conn,
 	bool requested_enabled = (enabled != 0U);
 
 	if (requested_enabled == touch_sampling_enabled) {
+		LOG_INF("Touch sampling already %s", touch_sampling_enabled ? "enabled" : "disabled");
 		return len;
 	}
 
@@ -121,6 +125,7 @@ static ssize_t write_sampling_enable(struct bt_conn* conn,
 	}
 
 	touch_sampling_enabled = requested_enabled;
+	LOG_INF("Touch sampling %s", touch_sampling_enabled ? "enabled" : "disabled");
 	return len;
 }
 
@@ -133,6 +138,7 @@ BT_GATT_SERVICE_DEFINE(
 			       read_touch_state,
 			       NULL,
 			       &touch_state_cache),
+	BT_GATT_CUD("Touch State", BT_GATT_PERM_READ),
 	BT_GATT_CCC(touch_state_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_GESTURE_STATE,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
@@ -140,6 +146,7 @@ BT_GATT_SERVICE_DEFINE(
 			       read_gesture_state,
 			       NULL,
 			       &gesture_state_cache),
+	BT_GATT_CUD("Touch Gesture", BT_GATT_PERM_READ),
 	BT_GATT_CCC(gesture_state_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_RAW_DATA,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
@@ -147,6 +154,7 @@ BT_GATT_SERVICE_DEFINE(
 			       read_raw_data,
 			       NULL,
 			       &raw_touch_cache),
+	BT_GATT_CUD("Touch Raw Data", BT_GATT_PERM_READ),
 	BT_GATT_CCC(raw_data_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE));
 
 BT_GATT_SERVICE_DEFINE(
@@ -157,7 +165,8 @@ BT_GATT_SERVICE_DEFINE(
 			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
 			       read_sampling_enable,
 			       write_sampling_enable,
-			       NULL));
+			       NULL),
+	BT_GATT_CUD("Touch Sampling Enable", BT_GATT_PERM_READ));
 
 void touch_lbs_set_conn(struct bt_conn* conn) {
 	if (conn == NULL) {
@@ -169,12 +178,14 @@ void touch_lbs_set_conn(struct bt_conn* conn) {
 	}
 
 	touch_lbs_conn = bt_conn_ref(conn);
+	LOG_INF("Touch BLE connection attached");
 }
 
 void touch_lbs_clear_conn(void) {
 	if (touch_lbs_conn != NULL) {
 		bt_conn_unref(touch_lbs_conn);
 		touch_lbs_conn = NULL;
+		LOG_INF("Touch BLE connection cleared");
 	}
 }
 
@@ -203,7 +214,7 @@ static void touch_lbs_handle_touch(const struct zbus_channel* chan) {
 	}
 	if (notify_raw_data_enabled) {
 		(void) bt_gatt_notify(touch_lbs_conn,
-				      &touch_lbs_svc.attrs[8],
+				      &touch_lbs_svc.attrs[10],
 				      &raw_touch_cache,
 				      sizeof(raw_touch_cache));
 	}
@@ -222,7 +233,7 @@ static void touch_lbs_handle_gesture(const struct zbus_channel* chan) {
 
 	if (notify_gesture_state_enabled && touch_lbs_conn != NULL) {
 		(void) bt_gatt_notify(touch_lbs_conn,
-				      &touch_lbs_svc.attrs[5],
+				      &touch_lbs_svc.attrs[6],
 				      &gesture_state_cache,
 				      sizeof(gesture_state_cache));
 	}
@@ -250,6 +261,7 @@ bool touch_lbs_streams_ready(void) {
 
 static int touch_lbs_register_stream(enum device_manager_stream_type stream, bool* registered) {
 	if (*registered) {
+		LOG_INF("Touch stream %d already registered", stream);
 		return 0;
 	}
 
@@ -257,6 +269,9 @@ static int touch_lbs_register_stream(enum device_manager_stream_type stream, boo
 
 	if (ret == 0) {
 		*registered = true;
+		LOG_INF("Touch stream %d registered", stream);
+	} else {
+		LOG_INF("Touch stream %d registration failed: %d", stream, ret);
 	}
 
 	return ret;

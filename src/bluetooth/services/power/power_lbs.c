@@ -73,11 +73,14 @@ static struct power_lbs_battery_level_status battery_level_status_cache = {
 static void battery_level_notify_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
 	ARG_UNUSED(attr);
 	notify_battery_level_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("Battery level notifications %s", notify_battery_level_enabled ? "enabled" : "disabled");
 }
 
 static void battery_level_status_notify_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
 	ARG_UNUSED(attr);
 	notify_battery_level_status_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("Battery level status notifications %s",
+		notify_battery_level_status_enabled ? "enabled" : "disabled");
 }
 
 static ssize_t read_battery_level(struct bt_conn* conn,
@@ -131,12 +134,14 @@ void power_lbs_set_conn(struct bt_conn* conn) {
 	}
 
 	power_lbs_conn = bt_conn_ref(conn);
+	LOG_INF("Power BLE connection attached");
 }
 
 void power_lbs_clear_conn(void) {
 	if (power_lbs_conn != NULL) {
 		bt_conn_unref(power_lbs_conn);
 		power_lbs_conn = NULL;
+		LOG_INF("Power BLE connection cleared");
 	}
 }
 
@@ -214,6 +219,7 @@ static void power_lbs_handle_battery(const struct zbus_channel* chan) {
 		       << POWER_LBS_BLS_CHARGE_LEVEL_SHIFT;
 	battery_level_status_cache.power_state = sys_cpu_to_le16(power_state);
 
+	LOG_INF("Battery level updated: %u%%", battery_level_cache);
 	power_lbs_notify_battery_level();
 	power_lbs_notify_battery_level_status();
 }
@@ -242,6 +248,11 @@ static void power_lbs_handle_charger(const struct zbus_channel* chan) {
 		POWER_LBS_BLS_CHARGE_TYPE_UNKNOWN,
 		msg->fault ? POWER_LBS_BLS_CHARGING_FAULT_REASON_OTHER :
 			     POWER_LBS_BLS_CHARGING_FAULT_REASON_NONE);
+	LOG_INF("Charger status updated: power_good=%d charging=%d charged=%d fault=%d",
+		msg->power_good,
+		msg->charging,
+		msg->charged,
+		msg->fault);
 	power_lbs_notify_battery_level_status();
 }
 
@@ -274,7 +285,12 @@ int power_lbs_register_streams(void) {
 						     K_MSEC(100));
 		if (ret == 0) {
 			battery_listener_registered = true;
+			LOG_INF("Battery stream registered");
+		} else {
+			LOG_INF("Battery stream registration failed: %d", ret);
 		}
+	} else {
+		LOG_INF("Battery stream already registered");
 	}
 	if (!charger_listener_registered) {
 		int charger_ret = device_manager_stream_register(device_manager_stream_Charger,
@@ -282,9 +298,15 @@ int power_lbs_register_streams(void) {
 								 K_MSEC(100));
 		if (charger_ret == 0) {
 			charger_listener_registered = true;
+			LOG_INF("Charger stream registered");
 		} else if (ret == 0) {
 			ret = charger_ret;
+			LOG_INF("Charger stream registration failed: %d", charger_ret);
+		} else {
+			LOG_INF("Charger stream registration failed: %d", charger_ret);
 		}
+	} else {
+		LOG_INF("Charger stream already registered");
 	}
 
 	return ret;

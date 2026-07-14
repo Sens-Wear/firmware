@@ -84,6 +84,7 @@ static ssize_t update_pattern(struct bt_conn* conn,
 		return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
 	}
 
+	LOG_INF("Haptic pattern accepted: %u frame(s)", frame_count);
 	return len;
 }
 
@@ -95,7 +96,8 @@ BT_GATT_SERVICE_DEFINE(
 			       BT_GATT_PERM_WRITE,
 			       NULL,
 			       update_pattern,
-			       NULL));
+			       NULL),
+	BT_GATT_CUD("Haptic Pattern", BT_GATT_PERM_READ));
 
 void haptic_lbs_set_conn(struct bt_conn* conn) {
 	if (conn == NULL) {
@@ -107,11 +109,13 @@ void haptic_lbs_set_conn(struct bt_conn* conn) {
 	}
 
 	haptic_lbs_conn = bt_conn_ref(conn);
+	LOG_INF("Haptic BLE connection attached");
 }
 
 void haptic_lbs_clear_conn(void) {
 	if (haptic_lbs_conn != NULL) {
 		bt_conn_unref(haptic_lbs_conn);
 		haptic_lbs_conn = NULL;
+		LOG_INF("Haptic BLE connection cleared");
 	}
 }

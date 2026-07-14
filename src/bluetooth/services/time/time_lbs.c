@@ -114,6 +114,7 @@ static bool current_time_to_unix(const struct time_lbs_current_time* current_tim
 static void current_time_notification_cfg_changed(const struct bt_gatt_attr* attr, uint16_t value) {
 	ARG_UNUSED(attr);
 	notify_current_time_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("Current time notifications %s", notify_current_time_enabled ? "enabled" : "disabled");
 }
 
 static ssize_t read_current_time(struct bt_conn* conn,
@@ -162,6 +163,8 @@ static ssize_t write_current_time(struct bt_conn* conn,
 		LOG_WRN("RTC time update failed: %d", ret);
 		return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
 	}
+
+	LOG_INF("Current time written: %lld", (long long) unix_seconds);
 
 	if (notify_current_time_enabled) {
 		struct bt_conn* notify_conn = time_lbs_conn != NULL ? time_lbs_conn : conn;
@@ -233,11 +236,13 @@ void time_lbs_set_conn(struct bt_conn* conn) {
 	}
 
 	time_lbs_conn = bt_conn_ref(conn);
+	LOG_INF("Time BLE connection attached");
 }
 
 void time_lbs_clear_conn(void) {
 	if (time_lbs_conn != NULL) {
 		bt_conn_unref(time_lbs_conn);
 		time_lbs_conn = NULL;
+		LOG_INF("Time BLE connection cleared");
 	}
 }
