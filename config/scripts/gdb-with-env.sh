@@ -9,6 +9,11 @@ if [ -f .env ]; then
     set +a
 fi
 
+if [ -n "${NCS_TOOLCHAIN_ROOT:-}" ]; then
+    PATH="$NCS_TOOLCHAIN_ROOT/opt/zephyr-sdk/gnu/arm-zephyr-eabi/bin:$NCS_TOOLCHAIN_ROOT/opt/bin:$NCS_TOOLCHAIN_ROOT/opt/bin/Scripts:$NCS_TOOLCHAIN_ROOT/bin:$PATH"
+    export PATH
+fi
+
 if [ -z "${ZEPHYR_GDB:-}" ]; then
     echo "ZEPHYR_GDB is not set. Copy .env.example to .env and set ZEPHYR_GDB." >&2
     exit 1

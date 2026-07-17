@@ -43,7 +43,16 @@ if(CMAKE_EXPORT_COMPILE_COMMANDS AND (NOT SYSBUILD OR SYSBUILD_MAIN_APP))
     file(CREATE_LINK
         ${CMAKE_BINARY_DIR}/compile_commands.json
         ${CMAKE_SOURCE_DIR}/compile_commands.json
+        RESULT _compile_commands_link_result
         SYMBOLIC)
+    if(NOT _compile_commands_link_result STREQUAL "0")
+        add_custom_target(sensewear_compile_commands ALL
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${CMAKE_BINARY_DIR}/compile_commands.json
+                ${CMAKE_SOURCE_DIR}/compile_commands.json
+            COMMENT "Updating project-root compile_commands.json"
+            VERBATIM)
+    endif()
 endif()
 
 set(BOARD_FLASH_RUNNER pyocd)

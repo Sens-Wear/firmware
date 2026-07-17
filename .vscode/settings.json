@@ -5,6 +5,7 @@
     ],
     "cmake.useCMakePresets": "always",
     "cmake.parallelJobs": 0,
+    "cmake.cmakePath": "${env:NCS_TOOLCHAIN_ROOT}/opt/bin/cmake.exe",
     "cortex-debug.variableUseNaturalFormat": true,
     "cortex-debug.pyocdPath": "pyocd",
     "clangd.arguments": [

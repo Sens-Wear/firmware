@@ -1,0 +1,77 @@
+SEGGER J-Link GDB Server V8.96 Command Line Version
+
+JLinkARM.dll V8.96 (DLL compiled Dec 18 2025 16:51:21)
+
+Command line: -singlerun -nogui -if swd -port 50100 -swoport 50101 -telnetport 50102 -device nRF54L15_M33 -rtos GDBServer/RTOSPlugin_Zephyr.dll
+-----GDB Server start settings-----
+GDBInit file:                  none
+GDB Server Listening port:     50100
+SWO raw output listening port: 50101
+Terminal I/O port:             50102
+Accept remote connection:      localhost only
+Generate logfile:              off
+Verify download:               off
+Init regs on start:            off
+Silent mode:                   off
+Single run mode:               on
+Target connection timeout:     0 ms
+------J-Link related settings------
+J-Link Host interface:         USB
+J-Link script:                 none
+J-Link settings file:          none
+------Target related settings------
+Target device:                 nRF54L15_M33
+Target device parameters:      none
+Target interface:              SWD
+Target interface speed:        4000kHz
+Target endian:                 little
+
+Connecting to J-Link...
+J-Link is connected.
+Firmware: J-Link Ultra V4 compiled Sep 22 2022 15:00:10
+Hardware: V4.00
+S/N: 504400507
+Feature(s): RDI, FlashBP, FlashDL, JFlash, GDB
+Checking target voltage...
+Target voltage: 1.82 V
+Listening on TCP/IP port 50100
+Connecting to target...
+Core security extensions: Implemented
+Connected to target
+Waiting for GDB connection...Connected to 0000:0000:0000:0000:0000:0000:0000:0001
+GDB client (conn. 872) requested target.xml from GDB Server
+Reading common registers: 
+Read register 'r0' (4 bytes) from hardware: 0x00000000
+Read register 'r1' (4 bytes) from hardware: 0x00000000
+Read register 'r2' (4 bytes) from hardware: 0x20005338
+Read register 'r3' (4 bytes) from hardware: 0x000438B8
+Read register 'r4' (4 bytes) from hardware: 0x2000C6E0
+Read register 'r5' (4 bytes) from hardware: 0x000298A5
+Read register 'r6' (4 bytes) from hardware: 0x00000000
+Read register 'r7' (4 bytes) from hardware: 0x00000000
+Read register 'r8' (4 bytes) from hardware: 0x00000000
+Read register 'r9' (4 bytes) from hardware: 0x00000008
+Read register 'r10' (4 bytes) from hardware: 0xFFFFFFFF
+Read register 'r11' (4 bytes) from hardware: 0xFFFFFFFF
+Read register 'r12' (4 bytes) from hardware: 0x000469C0
+Read register 'sp' (4 bytes) from hardware: 0x2000C6D0
+Read register 'lr' (4 bytes) from hardware: 0x000298C5
+Read register 'pc' (4 bytes) from hardware: 0x000407F2
+Read register 'xpsr' (4 bytes) from hardware: 0x69000000
+Loading RTOS plugin: GDBServer/RTOSPlugin_Zephyr.dll...
+RTOS plugin (API v1.1) loaded successfully
+RTOS_Init() core = 235012351
+RTOS plugin: Loaded
+RTOS_GetSymbols()
+Received symbol: _kernel (0x20005448)
+Received symbol: _kernel_thread_info_offsets (0x00043C74)
+Received symbol: _kernel_thread_info_num_offsets (0x00043C70)
+Received symbol: _kernel_thread_info_size_t_size (0x00043C6C)
+Received symbol: z_sys_post_kernel (0x20006CB7)
+All mandatory symbols successfully loaded.
+Received monitor command: halt
+Halting target CPU...
+...Target halted (PC = 0x000407F2)
+GDB closed TCP/IP connection (Socket 872)
+Restoring target state and closing J-Link connection...
+Shutting down...
