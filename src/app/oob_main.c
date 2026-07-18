@@ -304,15 +304,11 @@ static bool oob_bring_up_pass(void) {
 		ppg_configured = true;
 		changed = true;
 
-		/* Configuration alone does not start acquisition; enable multi-LED
-		 * wrist-HR sampling so the PPG stream actually produces ir/red/green
-		 * samples. A_FULL batching (per_sample_irq = false) drains once per
-		 * FIFO almost-full. The PPG service subscribes itself. */
-		int ppg_ret = max30101_enable_wrist_hr_sampling(false);
-
-		if (ppg_ret != 0) {
-			LOG_WRN("max30101_enable_wrist_hr_sampling() failed: %d", ppg_ret);
-		}
+		/* device_manager_config() starts multi-LED wrist-HR acquisition after
+		 * this bring-up
+		 * pass. A_FULL batching drains once per FIFO almost-full. */
+		oob_cfg.ppg.sampling_enabled = true;
+		oob_cfg.ppg.per_sample_irq = false;
 	}
 #endif
 
@@ -539,11 +535,11 @@ static void oob_main_thread(void* a, void* b, void* c) {
 }
 
 K_THREAD_DEFINE(oob_main_thread_id,
-		OOB_MAIN_THREAD_STACK_SIZE,
-		oob_main_thread,
-		NULL,
-		NULL,
-		NULL,
-		OOB_MAIN_THREAD_PRIORITY,
-		0,
-		0);
+				OOB_MAIN_THREAD_STACK_SIZE,
+				oob_main_thread,
+				NULL,
+				NULL,
+				NULL,
+				OOB_MAIN_THREAD_PRIORITY,
+				0,
+				0);

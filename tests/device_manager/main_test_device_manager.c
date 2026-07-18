@@ -303,13 +303,12 @@ int main(void) {
 		dm_configured_streams[device_manager_stream_Ppg] = true;
 
 		/* Configuration alone does not start acquisition; enable multi-LED wrist-HR
+		 *
 		 * sampling so the PPG stream actually produces ir/red/green samples. A_FULL
+		 *
 		 * batching (per_sample_irq = false) drains once per FIFO almost-full. */
-		int ppg_ret = max30101_enable_wrist_hr_sampling(false);
-
-		if (ppg_ret != 0) {
-			printk("max30101_enable_wrist_hr_sampling() failed: %d\n", ppg_ret);
-		}
+		cfg.ppg.sampling_enabled = true;
+		cfg.ppg.per_sample_irq = false;
 	}
 #endif
 

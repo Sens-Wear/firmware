@@ -65,6 +65,7 @@ union tpsm83102_state_t {
 struct tpsm83102_data {
 	struct regulator_common_data common;
 	union tpsm83102_state_t state;
+	uint8_t requested_vout_code;
 	uint32_t output_uv;
 };
 
@@ -278,16 +279,26 @@ static int tpsm83102_enable(const struct device* dev) {
 		return ret;
 	}
 
+	/* EN low removes register access. Wait for the control interface, restore
+	 * configuration and VOUT, and only then turn on the converter. */
+	k_msleep(TPSM83102_ENABLE_SETTLE_MS);
+
 	ret = tpsm83102_bus_lock(dev);
 	if (ret != 0) {
 		(void) tpsm83102_set_hardware_enable(dev, false);
 		return ret;
 	}
 
-	ret = tpsm83102_update_register(dev,
-									tpsm83102_register_CONTROL1,
-									TPSM83102_CONTROL1_CONVERTER_EN,
-									TPSM83102_CONTROL1_CONVERTER_EN);
+	ret = tpsm83102_apply_config(dev);
+	if (ret == 0) {
+		ret = tpsm83102_write_register(dev, tpsm83102_register_VOUT, data->requested_vout_code);
+	}
+	if (ret == 0) {
+		ret = tpsm83102_update_register(dev,
+										tpsm83102_register_CONTROL1,
+										TPSM83102_CONTROL1_CONVERTER_EN,
+										TPSM83102_CONTROL1_CONVERTER_EN);
+	}
 	int release_ret = tpsm83102_bus_release(dev);
 
 	if (ret == 0) {
@@ -341,6 +352,15 @@ static int tpsm83102_set_voltage(const struct device* dev, int32_t min_uv, int32
 		return ret;
 	}
 
+	/* With hardware EN low the TPSM83102 cannot acknowledge I2C. Cache the
+	 * requested voltage; tpsm83102_enable() restores it before enabling VOUT. */
+	if (data->state.bits.enabled == 0U) {
+		data->requested_vout_code = vout.value;
+		data->output_uv = tpsm83102_code_to_uv(vout.value);
+		tpsm83102_post_event(tpsm83102_event_VOUT_UPDATED, data->output_uv);
+		return 0;
+	}
+
 	ret = tpsm83102_bus_lock(dev);
 	if (ret != 0) {
 		return ret;
@@ -353,7 +373,8 @@ static int tpsm83102_set_voltage(const struct device* dev, int32_t min_uv, int32
 		ret = release_ret;
 	}
 	if (ret == 0) {
-		data->output_uv = tpsm83102_code_to_uv(vout.bits.bOutputVoltage);
+		data->requested_vout_code = vout.value;
+		data->output_uv = tpsm83102_code_to_uv(vout.value);
 		tpsm83102_post_event(tpsm83102_event_VOUT_UPDATED, data->output_uv);
 	}
 	return ret;
@@ -368,6 +389,13 @@ static int tpsm83102_get_voltage(const struct device* dev, int32_t* uv) {
 		return -EINVAL;
 	}
 
+	/* The hardware register is inaccessible while EN is low. Return the value
+	 * that will be restored on the next enable. */
+	if (data->state.bits.enabled == 0U) {
+		*uv = (int32_t) data->output_uv;
+		return 0;
+	}
+
 	ret = tpsm83102_bus_lock(dev);
 	if (ret != 0) {
 		return ret;
@@ -380,7 +408,8 @@ static int tpsm83102_get_voltage(const struct device* dev, int32_t* uv) {
 		ret = release_ret;
 	}
 	if (ret == 0) {
-		data->output_uv = tpsm83102_code_to_uv(vout.bits.bOutputVoltage);
+		data->requested_vout_code = vout.value;
+		data->output_uv = tpsm83102_code_to_uv(vout.value);
 		*uv = (int32_t) data->output_uv;
 	}
 	return ret;
@@ -401,6 +430,7 @@ static int tpsm83102_init(const struct device* dev) {
 
 	regulator_common_data_init(dev);
 	data->state.value = 0U;
+	data->requested_vout_code = 0U;
 	data->output_uv = 0U;
 
 	if (!sys_i2c_is_ready(&cfg->device)) {
@@ -419,7 +449,7 @@ static int tpsm83102_init(const struct device* dev) {
 			LOG_ERR("Failed to configure EN GPIO (%d)", ret);
 			return ret;
 		}
-		k_msleep(100);
+		k_msleep(TPSM83102_ENABLE_SETTLE_MS);
 	}
 
 	ret = tpsm83102_bus_lock(dev);
@@ -444,7 +474,8 @@ static int tpsm83102_init(const struct device* dev) {
 		return ret;
 	}
 
-	data->output_uv = tpsm83102_code_to_uv(vout.bits.bOutputVoltage);
+	data->requested_vout_code = vout.value;
+	data->output_uv = tpsm83102_code_to_uv(vout.value);
 	data->state.bits.configured = 1;
 	data->state.bits.initialized = 1;
 

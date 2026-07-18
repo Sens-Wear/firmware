@@ -344,16 +344,19 @@ bool max30101_is_ready(void) {
  */
 static bool max30101_led_power_on(int32_t voltage_uv) {
 	if (max30101.state.bits.bLedsPowered != 0) {
-		__ASSERT(regulator_dev != max30101.regulator,
-				 "MAX30101 regulator device is different than the one currently in use, "
-				 "but the LED supply is already flagged enabled");
-		__ASSERT(regulator_is_enabled(regulator_dev) == false,
+		__ASSERT(max30101.regulator != NULL, "MAX30101 regulator is NULL");
+		__ASSERT(regulator_is_enabled(max30101.regulator),
 				 "MAX30101 LED supply is already enabled, but the regulator is disabled");
 		if (voltage_uv != max30101.config.ppg_voltage_uv) {
 			LOG_WRN("MAX30101 LED supply voltage already set to %d uV, requested %d uV",
 					max30101.config.ppg_voltage_uv,
 					voltage_uv);
-			regulator_set_voltage(max30101.regulator, voltage_uv, voltage_uv);
+			int ret = regulator_set_voltage(max30101.regulator, voltage_uv, voltage_uv);
+
+			if (ret < 0) {
+				LOG_ERR("Failed to update MAX30101 rail to %d uV (%d)", voltage_uv, ret);
+				return false;
+			}
 			max30101.config.ppg_voltage_uv = voltage_uv;
 		}
 		return true;
@@ -413,9 +416,15 @@ static void max30101_led_power_off(void) {
 		return;
 	}
 	if (max30101.regulator != NULL) {
-		regulator_disable(max30101.regulator);
+		int ret = regulator_disable(max30101.regulator);
+
+		if (ret < 0) {
+			LOG_ERR("Failed to disable MAX30101 rail (%d)", ret);
+			return;
+		}
 	} else {
 		LOG_WRN("MAX30101 regulator is NULL, but the LED supply is flagged enabled");
+		return;
 	}
 	max30101.state.bits.bLedsPowered = 0;
 }

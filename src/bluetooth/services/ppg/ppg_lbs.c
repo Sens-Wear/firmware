@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdint.h>
 
 #include <zephyr/bluetooth/gatt.h>
@@ -17,8 +18,6 @@ static bool notify_red_enabled;
 static bool notify_ir_enabled;
 static bool notify_green_enabled;
 static bool ppg_listener_registered;
-static bool ppg_sampling_enabled;
-static bool ppg_per_sample_irq;
 
 static struct ppg_sample_notification_t ppg_red_state;
 static struct ppg_sample_notification_t ppg_ir_state;
@@ -43,45 +42,51 @@ static void green_notification_cfg_changed(const struct bt_gatt_attr* attr, uint
 }
 
 static ssize_t read_red(struct bt_conn* conn,
-			const struct bt_gatt_attr* attr,
-			void* buf,
-			uint16_t len,
-			uint16_t offset) {
+						const struct bt_gatt_attr* attr,
+						void* buf,
+						uint16_t len,
+						uint16_t offset) {
 	return bt_gatt_attr_read(conn, attr, buf, len, offset, &ppg_red_state, sizeof(ppg_red_state));
 }
 
 static ssize_t read_ir(struct bt_conn* conn,
-		       const struct bt_gatt_attr* attr,
-		       void* buf,
-		       uint16_t len,
-		       uint16_t offset) {
+					   const struct bt_gatt_attr* attr,
+					   void* buf,
+					   uint16_t len,
+					   uint16_t offset) {
 	return bt_gatt_attr_read(conn, attr, buf, len, offset, &ppg_ir_state, sizeof(ppg_ir_state));
 }
 
 static ssize_t read_green(struct bt_conn* conn,
-			  const struct bt_gatt_attr* attr,
-			  void* buf,
-			  uint16_t len,
-			  uint16_t offset) {
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, &ppg_green_state, sizeof(ppg_green_state));
+						  const struct bt_gatt_attr* attr,
+						  void* buf,
+						  uint16_t len,
+						  uint16_t offset) {
+	return bt_gatt_attr_read(conn,
+							 attr,
+							 buf,
+							 len,
+							 offset,
+							 &ppg_green_state,
+							 sizeof(ppg_green_state));
 }
 
 static ssize_t read_sampling_enable(struct bt_conn* conn,
-				    const struct bt_gatt_attr* attr,
-				    void* buf,
-				    uint16_t len,
-				    uint16_t offset) {
-	uint8_t enabled = ppg_sampling_enabled ? 1U : 0U;
+									const struct bt_gatt_attr* attr,
+									void* buf,
+									uint16_t len,
+									uint16_t offset) {
+	uint8_t enabled = device_manager_is_ppg_sampling_enabled() ? 1U : 0U;
 
 	return bt_gatt_attr_read(conn, attr, buf, len, offset, &enabled, sizeof(enabled));
 }
 
 static ssize_t write_sampling_enable(struct bt_conn* conn,
-				     const struct bt_gatt_attr* attr,
-				     const void* buf,
-				     uint16_t len,
-				     uint16_t offset,
-				     uint8_t flags) {
+									 const struct bt_gatt_attr* attr,
+									 const void* buf,
+									 uint16_t len,
+									 uint16_t offset,
+									 uint8_t flags) {
 	ARG_UNUSED(conn);
 	ARG_UNUSED(attr);
 	ARG_UNUSED(flags);
@@ -101,41 +106,35 @@ static ssize_t write_sampling_enable(struct bt_conn* conn,
 
 	bool requested_enabled = (enabled != 0U);
 
-	if (requested_enabled == ppg_sampling_enabled) {
-		LOG_INF("PPG sampling already %s", ppg_sampling_enabled ? "enabled" : "disabled");
-		return len;
-	}
-
-	int ret = device_manager_set_ppg_sampling_enabled(requested_enabled, ppg_per_sample_irq);
+	int ret = device_manager_set_ppg_sampling_enabled(requested_enabled);
 
 	if (ret != 0) {
 		LOG_WRN("PPG sampling update failed: %d", ret);
 		return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
 	}
 
-	ppg_sampling_enabled = requested_enabled;
 	LOG_INF("PPG sampling %s, IRQ cadence=%s",
-		ppg_sampling_enabled ? "enabled" : "disabled",
-		ppg_per_sample_irq ? "per-sample" : "batch");
+			device_manager_is_ppg_sampling_enabled() ? "enabled" : "disabled",
+			device_manager_is_ppg_per_sample_irq() ? "per-sample" : "batch");
 	return len;
 }
 
 static ssize_t read_per_sample_irq(struct bt_conn* conn,
-				   const struct bt_gatt_attr* attr,
-				   void* buf,
-				   uint16_t len,
-				   uint16_t offset) {
-	uint8_t enabled = ppg_per_sample_irq ? 1U : 0U;
+								   const struct bt_gatt_attr* attr,
+								   void* buf,
+								   uint16_t len,
+								   uint16_t offset) {
+	uint8_t enabled = device_manager_is_ppg_per_sample_irq() ? 1U : 0U;
 
 	return bt_gatt_attr_read(conn, attr, buf, len, offset, &enabled, sizeof(enabled));
 }
 
 static ssize_t write_per_sample_irq(struct bt_conn* conn,
-				    const struct bt_gatt_attr* attr,
-				    const void* buf,
-				    uint16_t len,
-				    uint16_t offset,
-				    uint8_t flags) {
+									const struct bt_gatt_attr* attr,
+									const void* buf,
+									uint16_t len,
+									uint16_t offset,
+									uint8_t flags) {
 	ARG_UNUSED(conn);
 	ARG_UNUSED(attr);
 	ARG_UNUSED(flags);
@@ -153,12 +152,14 @@ static ssize_t write_per_sample_irq(struct bt_conn* conn,
 		return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
 	}
 
-	if (ppg_sampling_enabled) {
-		return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
+	int ret = device_manager_set_ppg_per_sample_irq(enabled != 0U);
+
+	if (ret != 0) {
+		return BT_GATT_ERR(ret == -EBUSY ? BT_ATT_ERR_VALUE_NOT_ALLOWED : BT_ATT_ERR_UNLIKELY);
 	}
 
-	ppg_per_sample_irq = (enabled != 0U);
-	LOG_INF("PPG IRQ cadence set to %s", ppg_per_sample_irq ? "per-sample" : "batch");
+	LOG_INF("PPG IRQ cadence set to %s",
+			device_manager_is_ppg_per_sample_irq() ? "per-sample" : "batch");
 	return len;
 }
 
@@ -166,47 +167,46 @@ BT_GATT_SERVICE_DEFINE(
 	ppg_lbs_svc,
 	BT_GATT_PRIMARY_SERVICE(BT_UUID_LBS_PPG_SERVICE),
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_PPG_RED,
-			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-			       BT_GATT_PERM_READ,
-			       read_red,
-			       NULL,
-			       &ppg_red_state),
+						   BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+						   BT_GATT_PERM_READ,
+						   read_red,
+						   NULL,
+						   &ppg_red_state),
 	BT_GATT_CUD("PPG Red", BT_GATT_PERM_READ),
 	BT_GATT_CCC(red_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_PPG_IR,
-			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-			       BT_GATT_PERM_READ,
-			       read_ir,
-			       NULL,
-			       &ppg_ir_state),
+						   BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+						   BT_GATT_PERM_READ,
+						   read_ir,
+						   NULL,
+						   &ppg_ir_state),
 	BT_GATT_CUD("PPG Infrared", BT_GATT_PERM_READ),
 	BT_GATT_CCC(ir_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_PPG_GREEN,
-			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-			       BT_GATT_PERM_READ,
-			       read_green,
-			       NULL,
-			       &ppg_green_state),
+						   BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+						   BT_GATT_PERM_READ,
+						   read_green,
+						   NULL,
+						   &ppg_green_state),
 	BT_GATT_CUD("PPG Green", BT_GATT_PERM_READ),
 	BT_GATT_CCC(green_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE));
 
-BT_GATT_SERVICE_DEFINE(
-	ppg_lbs_config_svc,
-	BT_GATT_PRIMARY_SERVICE(BT_UUID_LBS_PPG_CONFIG_SERVICE),
-	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_PPG_CONFIG_SAMPLING_ENABLE,
-			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
-			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
-			       read_sampling_enable,
-			       write_sampling_enable,
-			       NULL),
-	BT_GATT_CUD("PPG Sampling Enable", BT_GATT_PERM_READ),
-	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_PPG_CONFIG_PER_SAMPLE_IRQ,
-			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
-			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
-			       read_per_sample_irq,
-			       write_per_sample_irq,
-			       NULL),
-	BT_GATT_CUD("PPG Per-Sample IRQ", BT_GATT_PERM_READ));
+BT_GATT_SERVICE_DEFINE(ppg_lbs_config_svc,
+					   BT_GATT_PRIMARY_SERVICE(BT_UUID_LBS_PPG_CONFIG_SERVICE),
+					   BT_GATT_CHARACTERISTIC(BT_UUID_LBS_PPG_CONFIG_SAMPLING_ENABLE,
+											  BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
+											  BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
+											  read_sampling_enable,
+											  write_sampling_enable,
+											  NULL),
+					   BT_GATT_CUD("PPG Sampling Enable", BT_GATT_PERM_READ),
+					   BT_GATT_CHARACTERISTIC(BT_UUID_LBS_PPG_CONFIG_PER_SAMPLE_IRQ,
+											  BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
+											  BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
+											  read_per_sample_irq,
+											  write_per_sample_irq,
+											  NULL),
+					   BT_GATT_CUD("PPG Per-Sample IRQ", BT_GATT_PERM_READ));
 
 void ppg_lbs_set_conn(struct bt_conn* conn) {
 	if (conn == NULL) {
@@ -246,16 +246,22 @@ static void ppg_lbs_notify_cache(void) {
 	}
 
 	if (notify_red_enabled) {
-		(void) bt_gatt_notify(ppg_lbs_conn, &ppg_lbs_svc.attrs[2], &ppg_red_state, sizeof(ppg_red_state));
+		(void) bt_gatt_notify(ppg_lbs_conn,
+							  &ppg_lbs_svc.attrs[2],
+							  &ppg_red_state,
+							  sizeof(ppg_red_state));
 	}
 	if (notify_ir_enabled) {
-		(void) bt_gatt_notify(ppg_lbs_conn, &ppg_lbs_svc.attrs[6], &ppg_ir_state, sizeof(ppg_ir_state));
+		(void) bt_gatt_notify(ppg_lbs_conn,
+							  &ppg_lbs_svc.attrs[6],
+							  &ppg_ir_state,
+							  sizeof(ppg_ir_state));
 	}
 	if (notify_green_enabled) {
 		(void) bt_gatt_notify(ppg_lbs_conn,
-				      &ppg_lbs_svc.attrs[10],
-				      &ppg_green_state,
-				      sizeof(ppg_green_state));
+							  &ppg_lbs_svc.attrs[10],
+							  &ppg_green_state,
+							  sizeof(ppg_green_state));
 	}
 }
 
@@ -286,7 +292,8 @@ int ppg_lbs_register_stream(void) {
 		return 0;
 	}
 
-	int ret = device_manager_stream_register(device_manager_stream_Ppg, &ppg_lbs_listener, K_MSEC(100));
+	int ret =
+		device_manager_stream_register(device_manager_stream_Ppg, &ppg_lbs_listener, K_MSEC(100));
 
 	if (ret == 0) {
 		ppg_listener_registered = true;

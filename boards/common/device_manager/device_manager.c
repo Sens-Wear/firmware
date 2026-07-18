@@ -176,6 +176,7 @@ void device_manager_get_default_config(struct device_manager_config_t* config) {
 
 	*config = (struct device_manager_config_t) {
 		.imu = {.phy_streams_enabled = false, .drain_period_ms = 100},
+		.ppg = {.sampling_enabled = false, .per_sample_irq = false},
 		.gauge = {.update_period_min = 5},
 		.temperature = {.update_period_min = 1},
 	};
@@ -690,6 +691,38 @@ int device_manager_config(const struct device_manager_config_t* config) {
 		return -ENODEV;
 	}
 #endif
+#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+	if (config->ppg.sampling_enabled && !max30101_is_ready()) {
+		LOG_ERR("device manager: PPG sampling requested but PPG not ready");
+		return -ENODEV;
+	}
+
+	/* A cadence change requires the MAX30101 to be stopped and restarted. Keep
+	 * the manager
+	 * state accurate after each successful hardware transition. */
+	if (device_manager_config_state.ppg.sampling_enabled &&
+		(!config->ppg.sampling_enabled ||
+		 device_manager_config_state.ppg.per_sample_irq != config->ppg.per_sample_irq)) {
+		int ret = max30101_disable_sampling();
+
+		if (ret != 0) {
+			LOG_ERR("device manager: PPG stop failed (%d)", ret);
+			return ret;
+		}
+		device_manager_config_state.ppg.sampling_enabled = false;
+	}
+
+	device_manager_config_state.ppg.per_sample_irq = config->ppg.per_sample_irq;
+	if (config->ppg.sampling_enabled && !device_manager_config_state.ppg.sampling_enabled) {
+		int ret = max30101_enable_wrist_hr_sampling(config->ppg.per_sample_irq);
+
+		if (ret != 0) {
+			LOG_ERR("device manager: PPG start failed (%d)", ret);
+			return ret;
+		}
+		device_manager_config_state.ppg.sampling_enabled = true;
+	}
+#endif
 
 	device_manager_config_state = *config;
 
@@ -745,26 +778,58 @@ int device_manager_set_imu_phy_streams_enabled(bool enabled, uint32_t drain_peri
 #endif
 }
 
-int device_manager_set_ppg_sampling_enabled(bool enabled, bool per_sample_irq) {
+int device_manager_set_ppg_sampling_enabled(bool enabled) {
 #if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
-	if (enabled) {
-		if (!max30101_is_ready()) {
-			int config_ret = max30101_config(NULL);
-
-			if (config_ret != 0) {
-				LOG_ERR("device manager: PPG config failed (%d)", config_ret);
-				return config_ret;
-			}
-		}
-		return max30101_enable_wrist_hr_sampling(per_sample_irq);
+	if (enabled == device_manager_config_state.ppg.sampling_enabled) {
+		return 0;
 	}
 
-	return max30101_disable_sampling();
+	int ret;
+
+	if (enabled) {
+		if (!max30101_is_ready()) {
+			ret = max30101_config(NULL);
+
+			if (ret != 0) {
+				LOG_ERR("device manager: PPG config failed (%d)", ret);
+				return ret;
+			}
+		}
+		ret = max30101_enable_wrist_hr_sampling(device_manager_config_state.ppg.per_sample_irq);
+	} else {
+		ret = max30101_disable_sampling();
+	}
+
+	if (ret == 0) {
+		device_manager_config_state.ppg.sampling_enabled = enabled;
+	}
+	return ret;
 #else
 	ARG_UNUSED(enabled);
+	return -ENOTSUP;
+#endif
+}
+
+int device_manager_set_ppg_per_sample_irq(bool per_sample_irq) {
+#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+	if (device_manager_config_state.ppg.sampling_enabled) {
+		return -EBUSY;
+	}
+
+	device_manager_config_state.ppg.per_sample_irq = per_sample_irq;
+	return 0;
+#else
 	ARG_UNUSED(per_sample_irq);
 	return -ENOTSUP;
 #endif
+}
+
+bool device_manager_is_ppg_sampling_enabled(void) {
+	return device_manager_config_state.ppg.sampling_enabled;
+}
+
+bool device_manager_is_ppg_per_sample_irq(void) {
+	return device_manager_config_state.ppg.per_sample_irq;
 }
 
 int device_manager_set_touch_sampling_enabled(bool enabled) {

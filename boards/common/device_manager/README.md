@@ -170,9 +170,9 @@ returns 0 always. **Does not** start the consumer thread.
 Two configuration surfaces:
 
 - **`device_manager_config(const struct device_manager_config_t*)`** — the
-  high-level aggregate. It enables/stops IMU physical streams at the requested
-  FIFO-drain period and arms the RTC minute alarm when any minute-driven cadence
-  is requested. Passing `NULL` selects the SenseWear defaults. It rejects up
+  high-level aggregate. It enables/stops IMU physical streams and PPG sampling
+  at their requested FIFO cadences, and arms the RTC minute alarm when any
+  minute-driven cadence is requested. Passing `NULL` selects the SenseWear defaults. It rejects up
   front (`-ENODEV`, no state change) if a requested feature's device is not
   ready.
 - **`device_manager_configure_device(device, const void* native_cfg)`** —
@@ -212,6 +212,8 @@ has registered observers but its producing device is not ready.
 | ---------------------------- | ------------------------------------------------ | ------- |
 | `imu.phy_streams_enabled`    | Stream quaternion/accel/gyro at high rate        | `false` |
 | `imu.drain_period_ms`        | BHI360 FIFO drain-timer period (ms)              | `100`   |
+| `ppg.sampling_enabled`       | Acquire multi-LED wrist-HR samples               | `false` |
+| `ppg.per_sample_irq`         | Interrupt per sample instead of FIFO batch       | `false` |
 | `gauge.update_period_min`    | Fuel-gauge refresh cadence, minutes (0 disables) | `5`     |
 | `temperature.update_period_min` | Temperature sample cadence, minutes (0 disables) | `1`  |
 

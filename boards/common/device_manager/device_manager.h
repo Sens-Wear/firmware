@@ -144,6 +144,14 @@ struct device_manager_imu_config_t {
 };
 
 /**
+ * @brief PPG (MAX30101) acquisition configuration.
+ */
+struct device_manager_ppg_config_t {
+	bool sampling_enabled; /**< Acquire multi-LED wrist-HR samples. */
+	bool per_sample_irq;   /**< Interrupt per sample instead of per FIFO batch. */
+};
+
+/**
  * @brief RTC-minute-driven periodic-update configuration.
  * @details Some devices are refreshed on a slow wall-clock cadence rather than by
  *          their own interrupt. The device manager counts ::rtc_event_MinuteAlarm
@@ -162,6 +170,7 @@ struct device_manager_periodic_config_t {
  */
 struct device_manager_config_t {
 	struct device_manager_imu_config_t imu;				 /**< IMU physical streaming. */
+	struct device_manager_ppg_config_t ppg;				 /**< PPG acquisition. */
 	struct device_manager_periodic_config_t gauge;		 /**< Fuel-gauge refresh cadence. */
 	struct device_manager_periodic_config_t temperature; /**< Temperature sampling cadence. */
 };
@@ -314,14 +323,41 @@ int device_manager_set_imu_phy_streams_enabled(bool enabled, uint32_t drain_peri
  *          uses the driver's wrist-HR sampling mode and default configuration
  *          when the sensor has not already been configured.
  *
- * @param enabled True to enable PPG sampling, false to stop sampling.
- * @param per_sample_irq True for one interrupt per sample, false for FIFO batch interrupts.
+ * Uses the interrupt cadence selected by
+ * device_manager_set_ppg_per_sample_irq() when enabling.
+ * Repeating the current
+ * state is a successful no-op.
+ *
+ * @param enabled True to enable PPG
+ * sampling, false to stop sampling.
  * @retval 0 The sampling state was updated.
- * @retval -ENODEV The PPG sensor is not initialized or present.
+ * @retval -ENODEV
+ * The PPG sensor is not initialized or present.
  * @retval -ENOTSUP The PPG shield driver is not built.
  * @return A negative errno propagated from the PPG driver.
  */
-int device_manager_set_ppg_sampling_enabled(bool enabled, bool per_sample_irq);
+int device_manager_set_ppg_sampling_enabled(bool enabled);
+
+/**
+ * @brief Select the PPG FIFO interrupt cadence.
+ * @details The cadence can only be changed
+ * while PPG sampling is stopped.
+ *
+ * @param per_sample_irq True for one interrupt per sample,
+ * false for FIFO batch interrupts.
+ * @retval 0 The cadence was updated or already had the
+ * requested value.
+ * @retval -EBUSY PPG sampling is active.
+ * @retval -ENOTSUP The PPG shield
+ * driver is not built.
+ */
+int device_manager_set_ppg_per_sample_irq(bool per_sample_irq);
+
+/** @return True when PPG sampling is active according to the device manager. */
+bool device_manager_is_ppg_sampling_enabled(void);
+
+/** @return True when per-sample PPG interrupts are selected. */
+bool device_manager_is_ppg_per_sample_irq(void);
 
 /**
  * @brief Enable or disable touch-controller acquisition at run time.

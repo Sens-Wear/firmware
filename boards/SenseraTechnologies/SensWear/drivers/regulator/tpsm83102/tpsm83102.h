@@ -59,6 +59,11 @@
 #define TPSM83102_I2C_TIMEOUT (100)
 #endif
 
+/** Delay after asserting hardware EN before accessing registers, in milliseconds. */
+#ifndef TPSM83102_ENABLE_SETTLE_MS
+#define TPSM83102_ENABLE_SETTLE_MS (100)
+#endif
+
 /**
  * @brief Driver-level TPSM83102 event identifiers.
  * @details Posted to the SenseWear device-event manager under

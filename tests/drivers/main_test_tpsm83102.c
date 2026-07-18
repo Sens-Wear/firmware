@@ -168,6 +168,23 @@ int main(void) {
 		printk("regulator_enable() failed: %d\n", ret);
 		return 0;
 	}
+
+	/* Exercise the disabled set-voltage path used by the MAX30101 when BLE
+	 * sampling is stopped and then started again. */
+	ret = regulator_disable(reg);
+	if (ret != 0) {
+		printk("regulator_disable() failed: %d\n", ret);
+		return 0;
+	}
+	ret = set_and_read_voltage(TEST_MAX_UV);
+	if (ret != 0) {
+		return 0;
+	}
+	ret = regulator_enable(reg);
+	if (ret != 0) {
+		printk("regulator re-enable failed: %d\n", ret);
+		return 0;
+	}
 	printk("regulator enabled; ramping from %d uV to %d uV and back...\n",
 		   TEST_MIN_UV,
 		   TEST_MAX_UV);
