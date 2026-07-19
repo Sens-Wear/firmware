@@ -238,9 +238,9 @@ elapses:
 
 - **Fuel gauge:** calls `bq27427_update_state()`, publishing a fresh `Battery`
   message.
-- **Temperature:** triggers a one-shot MAX30208 conversion. *Note:* this
-  requires the MAX30208 to already be in the sampling state
-  (`max30208_start()`); wiring that enable path is the caller's responsibility.
+- **Temperature:** triggers a one-shot MAX30208 conversion on the configured
+  device. The driver's independent sampling timer does not need to be running;
+  the RTC alarm provides the cadence.
 
 ---
 

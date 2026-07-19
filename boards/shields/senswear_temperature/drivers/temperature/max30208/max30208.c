@@ -534,7 +534,11 @@ void max30208_set_sampling_rate(uint16_t new_sampling_rate) {
 }
 
 int max30208_get_samples(struct temperature_sample_t* samples, size_t max_samples) {
-	if (max30208.state.bits.bInitialized == 0 || max30208.state.bits.bSampling == 0) {
+	/* A caller-driven one-shot conversion only needs an initialized and
+	 * configured device. bSampling controls the driver's optional periodic
+	 * timer; requiring it here prevented the RTC-driven device-manager cadence
+	 * from ever obtaining a temperature sample. */
+	if (max30208.state.bits.bInitialized == 0 || max30208.state.bits.bConfigured == 0) {
 		return -EAGAIN;
 	}
 

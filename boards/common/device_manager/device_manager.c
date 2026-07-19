@@ -1289,7 +1289,11 @@ static void device_manager_translate_temperature(const struct device_driver_even
 	if (event == max30208_TimerIrq) {
 		/* Drain the conversion(s); this posts max30208_event_SampleReady, which
 		 * is handled below on the next iteration. */
-		(void) max30208_get_samples(NULL, 0);
+		int ret = max30208_get_samples(NULL, 0);
+
+		if (ret < 0) {
+			LOG_WRN("device manager: temperature timer conversion failed (%d)", ret);
+		}
 		return;
 	}
 	if (event != max30208_event_SampleReady) {
@@ -1411,14 +1415,15 @@ static void device_manager_handle_rtc(const struct device_driver_event_t* ev) {
 #endif
 
 #if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
-	/* NOTE: max30208_get_samples() triggers a one-shot conversion but requires
-	 * the driver to already be in the sampling state (max30208_start()); wiring
-	 * that enable path is left to the caller. */
 	if (device_manager_config_state.temperature.update_period_min > 0 &&
 		++device_manager_temp_minutes >=
 			device_manager_config_state.temperature.update_period_min) {
 		device_manager_temp_minutes = 0;
-		(void) max30208_get_samples(NULL, 0);
+		int ret = max30208_get_samples(NULL, 0);
+
+		if (ret < 0) {
+			LOG_WRN("device manager: periodic temperature conversion failed (%d)", ret);
+		}
 	}
 #endif
 }

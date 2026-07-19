@@ -240,15 +240,17 @@ void max30208_set_sampling_rate(uint16_t new_sampling_rate);
  *
  * Triggers a single-shot conversion, appends the decoded result to the driver's
  * internal sample buffer, publishes ::max30208_event_SampleReady, and copies the
- * buffered samples into @p samples. Intended to be called by the event consumer
- * in response to ::max30208_TimerIrq. All samples returned from one drain share
- * the same conversion timestamp captured with rtc_get_timestamp_us().
+ * buffered samples into @p samples. It may be called directly on a configured
+ * device for caller-paced acquisition, or by the event consumer in response to
+ * ::max30208_TimerIrq when the driver's periodic timer is running. All samples
+ * returned from one drain share the same conversion timestamp captured with
+ * rtc_get_timestamp_us().
  *
  * @param samples Destination array, or NULL to only refresh the internal buffer
  *        and publish the event.
  * @param max_samples Capacity of @p samples in elements.
  * @retval >=0 Number of samples written to @p samples.
- * @retval -EAGAIN The driver is not initialized or not sampling.
+ * @retval -EAGAIN The driver is not initialized or not configured.
  * @retval -EIO A bus transfer failed.
  * @retval -ETIMEDOUT The conversion did not complete in time.
  */
