@@ -2,10 +2,10 @@
  * bq25180.c
  *
  * @file bq25180.c
- * @brief SenseWear BQ25180 charger driver implementation.
+ * @brief SensWear BQ25180 charger driver implementation.
  * @details The driver is a board-level singleton. Its connection is derived
  *          from `DT_NODELABEL(bq25180)`, while all transfers are routed through
- *          @ref sensewear_sys_i2c. Public hardware operations own the shared
+ *          @ref senswear_sys_i2c. Public hardware operations own the shared
  *          bus for their complete register sequence and finish with
  *          sys_i2c_release().
  *

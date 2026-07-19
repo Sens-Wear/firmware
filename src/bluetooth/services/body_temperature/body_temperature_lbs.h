@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file body_temperature_lbs.h
- * @brief SenseWear BLE Health Thermometer body-temperature service.
+ * @brief SensWear BLE Health Thermometer body-temperature service.
  *
- * @defgroup sensewear_ble_body_temperature SenseWear BLE body temperature service
+ * @defgroup senswear_ble_body_temperature SensWear BLE body temperature service
  * @ingroup io_interfaces
  * @{
  *
@@ -15,7 +15,7 @@
  * is writable; writes are translated to the device-manager body-temperature
  * update period. The service is compiled only for the temperature shield.
  *
- * @section sensewear_ble_body_temperature_example Typical usage
+ * @section senswear_ble_body_temperature_example Typical usage
  *
  * @code{.c}
  * static void connected(struct bt_conn *conn, uint8_t err)

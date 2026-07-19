@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file m95p.c
- * @brief SenseWear M95P32 page EEPROM driver implementation.
- * @details Implements the board-level singleton declared by @ref sensewear_m95p.
+ * @brief SensWear M95P32 page EEPROM driver implementation.
+ * @details Implements the board-level singleton declared by @ref senswear_m95p.
  *          Public operations own the shared system SPI bus for their complete
  *          command sequence. Private transfer helpers require that ownership
  *          to have already been acquired and drive chip select explicitly.

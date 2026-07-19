@@ -7,7 +7,7 @@
  *
  * Bridges the board's M95P driver to Zephyr's disk-access subsystem so a
  * filesystem can be mounted on the EEPROM. Public design notes are in
- * @ref sensewear_m95p_disk.
+ * @ref senswear_m95p_disk.
  *
  * Sector model: one logical disk sector is @ref M95P_DISK_SECTOR_SIZE bytes,
  * which equals one M95P page (M95P_PAGE_SIZE). Logical sector N therefore maps
@@ -20,7 +20,7 @@
 
 #include <errno.h>
 
-#ifdef CONFIG_SENSEWEAR_M95P_DISK
+#ifdef CONFIG_SENSWEAR_M95P_DISK
 
 #include "m95p.h"
 #include "m95p_organization.h"
@@ -195,7 +195,7 @@ int m95p_fs_unmount(void) {
 	return fs_unmount(&m95p_mount);
 }
 
-#ifdef CONFIG_SENSEWEAR_M95P_DISK_AUTOMOUNT
+#ifdef CONFIG_SENSWEAR_M95P_DISK_AUTOMOUNT
 /** Mount the filesystem at boot, after the disk has been registered. */
 static int m95p_fs_automount(void) {
 	(void) m95p_fs_mount();
@@ -209,7 +209,7 @@ static int m95p_fs_automount(void) {
  * would emit a malformed ".z_init_..._P_90 + 1_..." section.
  */
 SYS_INIT(m95p_fs_automount, APPLICATION, UTIL_INC(CONFIG_APPLICATION_INIT_PRIORITY));
-#endif /* CONFIG_SENSEWEAR_M95P_DISK_AUTOMOUNT */
+#endif /* CONFIG_SENSWEAR_M95P_DISK_AUTOMOUNT */
 
 #else /* CONFIG_FILE_SYSTEM_LITTLEFS */
 
@@ -223,7 +223,7 @@ int m95p_fs_unmount(void) {
 
 #endif /* CONFIG_FILE_SYSTEM_LITTLEFS */
 
-#else /* CONFIG_SENSEWEAR_M95P_DISK */
+#else /* CONFIG_SENSWEAR_M95P_DISK */
 
 int m95p_fs_mount(void) {
 	return -ENOSYS;
@@ -233,4 +233,4 @@ int m95p_fs_unmount(void) {
 	return -ENOSYS;
 }
 
-#endif /* CONFIG_SENSEWEAR_M95P_DISK */
+#endif /* CONFIG_SENSWEAR_M95P_DISK */

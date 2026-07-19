@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file rtc.h
- * @brief SenseWear software real-time clock bound to the system wall clock.
+ * @brief SensWear software real-time clock bound to the system wall clock.
  *
- * @defgroup sensewear_rtc SenseWear software RTC
+ * @defgroup senswear_rtc SensWear software RTC
  * @ingroup io_interfaces
  * @{
  *
@@ -21,7 +21,7 @@
  *      |                                       |
  *      | rtc_set_time(), rtc_get_time()        | reads SYS_CLOCK_REALTIME
  *      v                                       v
- * SenseWear rtc facade  --- sys_clock_settime(SYS_CLOCK_REALTIME) ---> kernel
+ * SensWear rtc facade  --- sys_clock_settime(SYS_CLOCK_REALTIME) ---> kernel
  *      |        \                                                       wall
  *      |         \--- NVS (settings) persistence -> restored at boot     clock
  *      v
@@ -33,7 +33,7 @@
  * advanced by the system clock. No periodic polling is performed for
  * timekeeping itself.
  *
- * @section sensewear_rtc_persistence Persistence
+ * @section senswear_rtc_persistence Persistence
  *
  * The current Unix time is saved to the Settings/NVS backend on every
  * rtc_set_time() and periodically every ::RTC_PERSIST_INTERVAL_SEC seconds. At
@@ -42,7 +42,7 @@
  * with no hardware RTC there is nothing to keep counting while unpowered. When
  * no value has ever been saved, the clock starts at ::RTC_DEFAULT_UNIX.
  *
- * @section sensewear_rtc_alarms Alarms
+ * @section senswear_rtc_alarms Alarms
  *
  * Alarms are backed by `k_timer` objects, whose timeouts the kernel turns into
  * GRTC hardware compares. The SoC therefore sleeps (System-ON idle) between
@@ -54,21 +54,21 @@
  * - rtc_enable_day_alarm()    fires at every wall-clock `00:00:00` UTC.
  * - rtc_set_time_alarm()      fires once at a specific UTC time.
  *
- * Each firing publishes a ::rtc_event_type through the SenseWear device-event
+ * Each firing publishes a ::rtc_event_type through the SensWear device-event
  * manager from interrupt context; process it from the consumer thread.
  *
  * @note Alarms do not wake the SoC from System-OFF (deepest sleep). That would
  *       require a GRTC extended channel (z_nrf_grtc_timer_ext_chan_alloc()) and
  *       is intentionally out of scope here.
  *
- * @section sensewear_rtc_time_repr Time representation
+ * @section senswear_rtc_time_repr Time representation
  *
  * Broken-down time uses the standard `struct tm` in UTC. Unix time is exposed
  * in seconds through `rtc_get_unix()`. For data streams that need sub-second
  * epoch tags, `rtc_get_timestamp_ms()` and `rtc_get_timestamp_us()` return Unix
  * timestamps in milliseconds and microseconds.
  *
- * @section sensewear_rtc_example Typical usage
+ * @section senswear_rtc_example Typical usage
  *
  * @code{.c}
  * struct tm now = {
@@ -86,8 +86,8 @@
  * @endcode
  */
 
-#ifndef SENSEWEAR_RTC_H_
-#define SENSEWEAR_RTC_H_
+#ifndef SENSWEAR_RTC_H_
+#define SENSWEAR_RTC_H_
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -299,4 +299,4 @@ const char* rtc_event_name(uint32_t event_id);
 
 /** @} */
 
-#endif /* SENSEWEAR_RTC_H_ */
+#endif /* SENSWEAR_RTC_H_ */

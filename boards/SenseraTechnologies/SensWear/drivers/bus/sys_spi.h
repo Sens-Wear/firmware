@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file sys_spi.h
- * @brief Ownership-locking access to the SenseWear shared system SPI bus.
+ * @brief Ownership-locking access to the SensWear shared system SPI bus.
  *
- * @defgroup sensewear_sys_spi SenseWear shared system SPI bus
+ * @defgroup senswear_sys_spi SensWear shared system SPI bus
  * @ingroup io_interfaces
  * @{
  *
- * The SenseWear main board connects multiple peripherals to one physical SPI
+ * The SensWear main board connects multiple peripherals to one physical SPI
  * controller. Each peripheral may use a different chip-select, clock frequency,
  * polarity, phase, or word configuration. Multi-command operations such as
  * flash write-enable followed by program must not be interleaved with transfers
@@ -44,7 +44,7 @@
  * applies `spec->config.spi` on every operation, selecting the bus parameters
  * for the consumer that currently holds the lock.
  *
- * @section sensewear_sys_spi_contract Locking contract
+ * @section senswear_sys_spi_contract Locking contract
  *
  * A high-level driver operation must:
  *
@@ -67,13 +67,13 @@
  * the wrapper. Other threads block until the complete nested lock chain has
  * been released. Transfer calls validate both the spec and owning thread.
  *
- * @section sensewear_sys_spi_devicetree Devicetree representation
+ * @section senswear_sys_spi_devicetree Devicetree representation
  *
  * The wrapper references the physical SPI controller:
  *
  * @code{.dts}
  * sys_spi: sys_spi {
- *     compatible = "sensewear,sys-spi";
+ *     compatible = "senswear,sys-spi";
  *     controller = <&spi00>;
  *     status = "okay";
  * };
@@ -107,7 +107,7 @@
  * tooling. Board drivers construct a sys_spi spec to enforce ownership and
  * configure/toggle their own CS GPIO from the per-device `cs-gpios` entry.
  *
- * @section sensewear_sys_spi_example Typical usage
+ * @section senswear_sys_spi_example Typical usage
  *
  * The spec must have static or otherwise stable lifetime because its embedded
  * configuration object is the ownership token:
@@ -191,8 +191,8 @@
  * @endcode
  */
 
-#ifndef SENSEWEAR_SYS_SPI_H_
-#define SENSEWEAR_SYS_SPI_H_
+#ifndef SENSWEAR_SYS_SPI_H_
+#define SENSWEAR_SYS_SPI_H_
 
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
@@ -213,7 +213,7 @@ struct sys_spi_config {
 
 /** Devicetree-derived connection between a consumer and the shared bus. */
 struct sys_spi_dt_spec {
-	/** The `sensewear,sys-spi` wrapper device. */
+	/** The `senswear,sys-spi` wrapper device. */
 	const struct device *bus;
 	/** Consumer settings whose object address serves as the ownership token. */
 	struct sys_spi_config config;
@@ -328,4 +328,4 @@ int sys_spi_transceive(const struct sys_spi_dt_spec *spec,
 
 /** @} */
 
-#endif /* SENSEWEAR_SYS_SPI_H_ */
+#endif /* SENSWEAR_SYS_SPI_H_ */

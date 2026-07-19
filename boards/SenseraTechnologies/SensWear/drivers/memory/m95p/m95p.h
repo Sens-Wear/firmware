@@ -5,7 +5,7 @@
  * @file m95p.h
  * @brief Public interface for the board's M95P32 page EEPROM.
  *
- * @defgroup sensewear_m95p SenseWear M95P32 page EEPROM
+ * @defgroup senswear_m95p SensWear M95P32 page EEPROM
  * @ingroup io_interfaces
  * @{
  *

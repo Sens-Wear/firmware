@@ -1,0 +1,28 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	aliases {
+		senswear-daughter = &drv2605;
+		senswear-haptic = &drv2605;
+	};
+};
+
+&sys_i2c_peripheral {
+	drv2605: drv2605@5a {
+		compatible = "senswear,drv2605";
+		reg = <0x5a>;
+		/* Enable uses SENSOR_GPIO_0 / P1.14 claimed through daughter_if. */
+		status = "okay";
+		actuator-mode = "LRA";
+		loop-gain = "HIGH";
+		feedback-brake-factor = "2X";
+		label = "drv2605";
+		/* NFP-WS0625 is rated at 3.0 V DC. */
+		// vib-rated-mv = <3000>;
+		// vib-overdrive-mv = <3000>;
+		/* Powered from the shared daughter-connector rail (VDD_DAUGHTER). */
+		vin-supply = <&tpsm83102>;
+	};
+};

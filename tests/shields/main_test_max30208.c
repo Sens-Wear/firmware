@@ -2,8 +2,8 @@
  * Copyright (c) 2026
  * SPDX-License-Identifier: Apache-2.0
  *
- * Bring-up test for the SenseWear MAX30208 temperature driver on the
- * sensewear_temperature shield.
+ * Bring-up test for the SensWear MAX30208 temperature driver on the
+ * senswear_temperature shield.
  *
  * Unlike the PPG daughter board, the temperature daughter board exposes neither
  * a regulator nor a daughter-connector interrupt line to this driver: the rail
@@ -139,7 +139,7 @@ static bool start_max30208_event_consumer(void) {
 }
 
 int main(void) {
-	printk("\n=== MAX30208 temperature test (sensewear_temperature shield) ===\n");
+	printk("\n=== MAX30208 temperature test (senswear_temperature shield) ===\n");
 
 	if (max30208_init() != 0) {
 		printk("max30208_init() failed\n");

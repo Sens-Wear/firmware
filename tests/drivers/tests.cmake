@@ -2,7 +2,7 @@
 #
 # Driver bring-up test targets. Reached only when TEST_DRIVERS is ON (see the
 # top-level CMakeLists). Each test is gated on its own
-# CONFIG_SENSEWEAR_TEST_<driver>_DRIVER Kconfig symbol and built as a
+# CONFIG_SENSWEAR_TEST_<driver>_DRIVER Kconfig symbol and built as a
 # `test_<driver>` INTERFACE library linked into `app`.
 #
 # Every test file defines its own main(), so exactly one test may be enabled at
@@ -21,10 +21,10 @@ macro(senswear_add_driver_test _name _sym)
     endif()
 endmacro()
 
-senswear_add_driver_test(bq25180   CONFIG_SENSEWEAR_TEST_BQ25180_DRIVER)
-senswear_add_driver_test(bq27427   CONFIG_SENSEWEAR_TEST_BQ27427_DRIVER)
-senswear_add_driver_test(bhi360    CONFIG_SENSEWEAR_TEST_BHI360_DRIVER)
-senswear_add_driver_test(lp5562    CONFIG_SENSEWEAR_TEST_LP5562_DRIVER)
-senswear_add_driver_test(m95p      CONFIG_SENSEWEAR_TEST_M95P_DRIVER)
-senswear_add_driver_test(tpsm83102 CONFIG_SENSEWEAR_TEST_TPSM83102_DRIVER)
-senswear_add_driver_test(rtc       CONFIG_SENSEWEAR_TEST_RTC_DRIVER)
+senswear_add_driver_test(bq25180   CONFIG_SENSWEAR_TEST_BQ25180_DRIVER)
+senswear_add_driver_test(bq27427   CONFIG_SENSWEAR_TEST_BQ27427_DRIVER)
+senswear_add_driver_test(bhi360    CONFIG_SENSWEAR_TEST_BHI360_DRIVER)
+senswear_add_driver_test(lp5562    CONFIG_SENSWEAR_TEST_LP5562_DRIVER)
+senswear_add_driver_test(m95p      CONFIG_SENSWEAR_TEST_M95P_DRIVER)
+senswear_add_driver_test(tpsm83102 CONFIG_SENSWEAR_TEST_TPSM83102_DRIVER)
+senswear_add_driver_test(rtc       CONFIG_SENSWEAR_TEST_RTC_DRIVER)

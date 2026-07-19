@@ -3,15 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file bq25180.h
- * @brief SenseWear BQ25180 charger and power-path controller API.
+ * @brief SensWear BQ25180 charger and power-path controller API.
  *
- * @defgroup sensewear_bq25180 SenseWear BQ25180 charger
+ * @defgroup senswear_bq25180 SensWear BQ25180 charger
  * @ingroup io_interfaces
  * @{
  *
  * The BQ25180 manages battery charging, input-current limiting, battery
  * protection thresholds, power-path behavior, ship mode, and shutdown behavior
- * for the SenseWear main board. It also exposes a cached charger-state
+ * for the SensWear main board. It also exposes a cached charger-state
  * snapshot and the most recent interrupt timestamp for policy code that needs
  * to react to charger events.
  *
@@ -20,7 +20,7 @@
  * since `1970-01-01 00:00:00 UTC`, and truncate the sub-microsecond portion of
  * the clock.
  *
- * The driver uses the board's @ref sensewear_sys_i2c ownership wrapper rather
+ * The driver uses the board's @ref senswear_sys_i2c ownership wrapper rather
  * than calling Zephyr's I2C API directly:
  *
  * @code{.text}
@@ -32,21 +32,21 @@
  *          |
  *          | sys_i2c_lock(), transfer(s), sys_i2c_release()
  *          v
- * SenseWear shared system I2C bus
+ * SensWear shared system I2C bus
  * @endcode
  *
  * Every high-level hardware operation acquires the shared bus once and calls
  * sys_i2c_release() on exit. Private register helpers assume that ownership has
  * already been acquired.
  *
- * @section sensewear_bq25180_devicetree Devicetree representation
+ * @section senswear_bq25180_devicetree Devicetree representation
  *
  * The charger remains a standard child of the physical I2C controller:
  *
  * @code{.dts}
  * sys_i2c_peripheral: &i2c21 {
  *     bq25180: charger@6a {
- *         compatible = "sensewear,bq25180";
+ *         compatible = "senswear,bq25180";
  *         reg = <0x6a>;
  *         int-gpios = <&gpio1 5 GPIO_ACTIVE_LOW>;
  *         kill-gpios = <&gpio1 8 GPIO_ACTIVE_HIGH>;
@@ -59,7 +59,7 @@
  * interrupt GPIO is also read from this node. `kill-gpios` is reserved for
  * power-hold control but is not yet consumed by the current implementation.
  *
- * @section sensewear_bq25180_lifecycle Driver lifecycle
+ * @section senswear_bq25180_lifecycle Driver lifecycle
  *
  * The expected lifecycle is:
  *
@@ -74,7 +74,7 @@
  * Initialization and configuration are deliberately separate. A successful
  * probe does not imply that the desired battery parameters have been applied.
  *
- * @section sensewear_bq25180_example Typical usage
+ * @section senswear_bq25180_example Typical usage
  *
  * @code{.c}
  * struct bq25180_config_t config;
@@ -98,7 +98,7 @@
  * }
  * @endcode
  *
- * @section sensewear_bq25180_interrupts Interrupt status
+ * @section senswear_bq25180_interrupts Interrupt status
  *
  * The GPIO callback for `int-gpios` posts bq25180_event_InterruptDetected from
  * ISR context. Call bq25180_update_state() from thread context to read the IC,
@@ -293,7 +293,7 @@ const char* bq25180_event_name(uint32_t event_id);
 void bq25180_get_default_config(struct bq25180_config_t* config);
 
 /**
- * @brief Populate the SenseWear LiPo/USB charging defaults.
+ * @brief Populate the SensWear LiPo/USB charging defaults.
  *
  * @param config Destination configuration. Must not be NULL.
  */

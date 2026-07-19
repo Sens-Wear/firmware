@@ -2,7 +2,7 @@
 #
 # Device-manager bring-up test target. Reached only when TEST_DRIVERS is ON
 # (see the top-level CMakeLists). The test is gated on
-# CONFIG_SENSEWEAR_TEST_DEVICE_MANAGER and built as a `test_device_manager`
+# CONFIG_SENSWEAR_TEST_DEVICE_MANAGER and built as a `test_device_manager`
 # INTERFACE library linked into `app`.
 #
 # The test defines its own main(), so exactly one bring-up test (across
@@ -11,7 +11,7 @@
 
 set(DEVICE_MANAGER_TESTS_DIR ${CMAKE_CURRENT_LIST_DIR})
 
-if(CONFIG_SENSEWEAR_TEST_DEVICE_MANAGER)
+if(CONFIG_SENSWEAR_TEST_DEVICE_MANAGER)
     add_library(test_device_manager INTERFACE)
     target_sources(test_device_manager INTERFACE
         ${DEVICE_MANAGER_TESTS_DIR}/main_test_device_manager.c

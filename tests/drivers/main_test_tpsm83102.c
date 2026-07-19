@@ -15,7 +15,7 @@
  * regulator API.
  *
  * The driver also publishes lifecycle events (Enabled / VOUT_UPDATED /
- * Disabled) into the SenseWear device-event manager, tagged with its own
+ * Disabled) into the SensWear device-event manager, tagged with its own
  * generated id (TPSM83102_DEVICE_DTS_ID) -- the caller does not supply one. A
  * dedicated consumer thread drains the manager and prints those events,
  * mirroring the bq25180 / bq27427 tests.

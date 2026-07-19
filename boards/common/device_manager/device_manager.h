@@ -3,15 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file device_manager.h
- * @brief SenseWear device manager: per-message-type zbus streams.
+ * @brief SensWear device manager: per-message-type zbus streams.
  *
- * @defgroup sensewear_device_manager SenseWear device manager
+ * @defgroup senswear_device_manager SensWear device manager
  * @ingroup io_interfaces
  * @{
  *
  * The device manager is the single publisher that turns decoded device activity
  * into application-facing data. It owns one @b zbus channel per message type in
- * @ref sensewear_device_driver_messages — each channel is an independent,
+ * @ref senswear_device_driver_messages — each channel is an independent,
  * subscribable @e stream:
  *
  * @code{.text}
@@ -27,7 +27,7 @@
  * A stream carries exactly one message type, so a subscriber observes only the
  * data it cares about; filtering is the framework's job, not the consumer's.
  *
- * @section sensewear_device_manager_subscribe Subscribing to a stream
+ * @section senswear_device_manager_subscribe Subscribing to a stream
  *
  * Consumers register themselves as zbus observers of the streams they want once
  * the producing device is ready (typically after it has been configured). For a
@@ -52,13 +52,13 @@
  * instead; note listeners run in the publisher's (device-manager) context, so
  * they must not block.
  *
- * @section sensewear_device_manager_lifecycle Lifecycle
+ * @section senswear_device_manager_lifecycle Lifecycle
  *
  * device_manager_init() runs each available device's driver init but does not
  * start any thread. device_manager_start() then spawns the manager's consumer
- * thread, which drains the shared @ref sensewear_device_driver_events queue,
+ * thread, which drains the shared @ref senswear_device_driver_events queue,
  * drives each device's interrupt handler, and publishes decoded messages onto
- * the streams. The whole module is gated by @c CONFIG_SENSEWEAR_DEVICE_MANAGER,
+ * the streams. The whole module is gated by @c CONFIG_SENSWEAR_DEVICE_MANAGER,
  * so it is absent from isolated device/shield test images.
  */
 
@@ -204,7 +204,7 @@ int device_manager_init(void);
 int device_manager_start(void);
 
 /**
- * @brief Fill a configuration with the SenseWear defaults.
+ * @brief Fill a configuration with the SensWear defaults.
  * @param config Destination configuration. Must not be NULL.
  */
 void device_manager_get_default_config(struct device_manager_config_t* config);
@@ -398,7 +398,7 @@ int device_manager_set_gauge_update_period(uint16_t minutes);
 int device_manager_set_body_temperature_update_period(uint16_t minutes);
 
 /**
- * @brief Set the RTC wall-clock time through the SenseWear RTC driver.
+ * @brief Set the RTC wall-clock time through the SensWear RTC driver.
  * @details Programs the RTC facade with Unix time in seconds since
  *          1970-01-01 00:00:00 UTC. The RTC driver updates
  *          SYS_CLOCK_REALTIME, persists the value, and realigns active RTC
@@ -413,7 +413,7 @@ int device_manager_set_body_temperature_update_period(uint16_t minutes);
  */
 int device_manager_set_rtc_time(time_t unix_seconds);
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_HAPTIC)
+#if defined(CONFIG_SHIELD_SENSWEAR_HAPTIC)
 /**
  * @name Vibration motor control
  * @brief Drive the DRV2605 haptic actuator. The manager owns the real-time
@@ -462,7 +462,7 @@ int device_manager_haptic_start_rtp(const uint8_t* amplitude,
 /**
  * @brief Play a ROM waveform sequence from the LRA library.
  * @details Plays pre-programmed effects from the DRV2605 LRA library (the only
- *          library the SenseWear haptic driver supports). @p sequence holds
+ *          library the SensWear haptic driver supports). @p sequence holds
  *          waveform identifiers (1-123); playback stops at the first zero entry,
  *          so a short sequence needs no explicit terminator.
  *
@@ -493,7 +493,7 @@ int device_manager_haptic_stop(void);
 bool device_manager_haptic_is_active(void);
 
 /** @} */
-#endif /* CONFIG_SHIELD_SENSEWEAR_HAPTIC */
+#endif /* CONFIG_SHIELD_SENSWEAR_HAPTIC */
 
 /** @} */
 

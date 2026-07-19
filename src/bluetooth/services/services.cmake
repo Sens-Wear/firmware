@@ -2,7 +2,7 @@
 #
 # Bluetooth GATT services, collected into the `ble_services` INTERFACE library
 # (mirrors the board_drivers.cmake pattern). Core services are always built;
-# daughter-board services are gated on their CONFIG_SENSEWEAR_DAUGHTER_*
+# daughter-board services are gated on their CONFIG_SENSWEAR_DAUGHTER_*
 # Kconfig choice, so include this after find_package(Zephyr).
 #
 # The interface include directory is the src/ root, so consumers include
@@ -42,20 +42,20 @@ target_include_directories(ble_services INTERFACE
     ${CMAKE_SOURCE_DIR}/boards/common/device_manager
 )
 
-# Daughter-board services, selected by the active SENSEWEAR_DAUGHTER_* choice.
-if(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
+# Daughter-board services, selected by the active SENSWEAR_DAUGHTER_* choice.
+if(CONFIG_SENSWEAR_DAUGHTER_HAPTIC)
     add_ble_service_dir(haptic)
 endif()
 
-if(CONFIG_SENSEWEAR_DAUGHTER_PPG)
+if(CONFIG_SENSWEAR_DAUGHTER_PPG)
     add_ble_service_dir(ppg)
 endif()
 
-if(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
+if(CONFIG_SENSWEAR_DAUGHTER_TOUCH)
     add_ble_service_dir(touch)
 endif()
 
 # Shield-backed services, selected by the active shield config.
-if(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+if(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
     add_ble_service_dir(body_temperature)
 endif()

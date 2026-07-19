@@ -1,0 +1,25 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	aliases {
+		senswear-daughter = &max30208;
+		senswear-temperature = &max30208;
+	};
+};
+
+&sys_i2c_peripheral {
+	max30208: max30208@50 {
+		/*
+		 * Plain i2c-device: the temperature driver neither owns the
+		 * daughter rail (VDD_DAUGHTER, managed centrally by the
+		 * daughter-board manager) nor a connector interrupt line, so it
+		 * carries no vin-supply / gpio dependency in devicetree.
+		 */
+		compatible = "i2c-device";
+		status = "okay";
+		reg = <0x50>;
+		label = "MAX30208";
+	};
+};

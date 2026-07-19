@@ -2,7 +2,7 @@
  * Copyright (c) 2026
  * SPDX-License-Identifier: Apache-2.0
  *
- * Minimal bring-up test for the SenseWear software RTC.
+ * Minimal bring-up test for the SensWear software RTC.
  *
  * Sets a known wall-clock time, reads it back through both the rtc API and the
  * POSIX time()/gmtime_r() path to confirm they agree, then arms the recurring

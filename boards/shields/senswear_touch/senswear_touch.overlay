@@ -1,0 +1,21 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	aliases {
+		senswear-daughter = &mtch6102;
+		senswear-touch = &mtch6102;
+	};
+};
+
+&sys_i2c_peripheral {
+	mtch6102: mtch6102@25 {
+		compatible = "senswear,daughter-i2c-device", "i2c-device";
+		status = "okay";
+		reg = <0x25>;
+		label = "MTCH6102";
+		/* Powered from the shared daughter-connector rail (VDD_DAUGHTER). */
+		vin-supply = <&tpsm83102>;
+	};
+};

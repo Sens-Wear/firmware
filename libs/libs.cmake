@@ -11,7 +11,7 @@
 
 add_library(libs INTERFACE)
 
-if(CONFIG_SENSEWEAR_BHI360_DRIVER)
+if(CONFIG_SENSWEAR_BHI360_DRIVER)
     include(${CMAKE_CURRENT_LIST_DIR}/BHY2-Sensor-API/bhy2-sensors.cmake)
     target_link_libraries(libs INTERFACE
         bhy2_sensors

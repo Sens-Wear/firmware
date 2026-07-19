@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file imu_lbs.h
- * @brief SenseWear custom BLE IMU and IMU-configuration services.
+ * @brief SensWear custom BLE IMU and IMU-configuration services.
  *
- * @defgroup sensewear_ble_imu SenseWear BLE IMU service
+ * @defgroup senswear_ble_imu SensWear BLE IMU service
  * @ingroup io_interfaces
  * @{
  *
@@ -21,14 +21,14 @@
  * - IMU data service: quaternion, linear acceleration, gyro, gesture, activity.
  * - IMU config service: physical-stream enable and FIFO drain period.
  *
- * @section sensewear_ble_imu_payloads Payload units
+ * @section senswear_ble_imu_payloads Payload units
  *
  * All timestamps are Unix time in microseconds, copied from the device-manager
  * messages. Quaternion and vector values use the fixed-point units emitted by
  * the BHI360 driver and normalized by the device manager; this BLE layer only
  * transports the values.
  *
- * @section sensewear_ble_imu_example Typical usage
+ * @section senswear_ble_imu_example Typical usage
  *
  * @code{.c}
  * static void connected(struct bt_conn *conn, uint8_t err)

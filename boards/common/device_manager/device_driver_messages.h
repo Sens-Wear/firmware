@@ -3,20 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file device_driver_messages.h
- * @brief SenseWear device-manager message contract.
+ * @brief SensWear device-manager message contract.
  *
- * @defgroup sensewear_device_driver_messages SenseWear device driver messages
+ * @defgroup senswear_device_driver_messages SensWear device driver messages
  * @ingroup io_interfaces
  * @{
  *
- * This header defines the decoded data structures the SenseWear device manager
+ * This header defines the decoded data structures the SensWear device manager
  * publishes for the rest of the application to consume (for example over zbus).
  * It is the stable *contract* between the device manager and its subscribers
  * (the BLE manager, storage/logging, app logic, LED/haptic feedback, ...): a
  * subscriber depends only on these types, never on the individual device
  * drivers.
  *
- * @section sensewear_device_driver_messages_design Design
+ * @section senswear_device_driver_messages_design Design
  *
  * The message types are **self-contained plain-old-data**: they intentionally do
  * @b not include any device-driver header, and they flatten each driver's decoded
@@ -32,7 +32,7 @@
  *   contract; when the device manager is disabled (for isolated device or shield
  *   tests) nothing else references it.
  *
- * @section sensewear_device_driver_messages_time Timestamps
+ * @section senswear_device_driver_messages_time Timestamps
  *
  * Every message carries a @c timestamp in **microseconds since the Unix epoch**.
  * Some devices report a device-local time base instead (the BHI360, for example,
@@ -40,7 +40,7 @@
  * common epoch is the device manager's responsibility, so subscribers can treat
  * all timestamps uniformly.
  *
- * @section sensewear_device_driver_messages_channels Channels
+ * @section senswear_device_driver_messages_channels Channels
  *
  * This header defines only the payloads. How they are carried is a device-manager
  * decision: either one channel per data type (each message struct is the channel
@@ -49,7 +49,7 @@
  * (and revisited) in the device manager without changing the contract.
  *
  * The @c device_id field carries the producing device's generated
- * `<LABEL>_DEVICE_ID` (see @ref sensewear_device_driver_events). It is a
+ * `<LABEL>_DEVICE_ID` (see @ref senswear_device_driver_events). It is a
  * build-time identifier, not a stable ABI value; never persist it off-device.
  */
 

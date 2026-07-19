@@ -8,13 +8,13 @@ Zephyr build.
 | Path | Purpose |
 | --- | --- |
 | `CMakeLists.txt` | Application build entry point. Registers the board, shields, devicetree bindings, and the local Zephyr module before loading Zephyr. It then links the board drivers, third-party libraries, and either the normal application or one driver test. |
-| `Kconfig` | SenseWear application options, board-driver enable symbols, daughter-board selection, M95P disk options, and driver-test selections. |
+| `Kconfig` | SensWear application options, board-driver enable symbols, daughter-board selection, M95P disk options, and driver-test selections. |
 | `prj.conf` | Default Zephyr configuration for the firmware image. |
 | `sysbuild.conf` | Sysbuild configuration. |
 | `CMakePresets.json` | Reproducible application and driver-test configure presets. |
 | `SETUP.md` | Local toolchain, build, and debugging setup. |
 
-Driver presence is controlled by `CONFIG_SENSEWEAR_<device>_DRIVER`. The
+Driver presence is controlled by `CONFIG_SENSWEAR_<device>_DRIVER`. The
 per-driver CMake files consume these resolved Kconfig symbols; there is no
 second set of CMake driver options.
 
@@ -32,7 +32,7 @@ boards/SenseraTechnologies/SensWear/
 
 - Board DTS, pin control, metadata, and default configuration describe the
   nRF54L15 targets and permanently fitted hardware.
-- `dts/bindings/` contains bindings owned by the SenseWear board integration.
+- `dts/bindings/` contains bindings owned by the SensWear board integration.
 - `drivers/` contains drivers for devices physically owned by the base board:
   shared buses, charger, fuel gauge, IMU, LED controller, EEPROM, and
   regulator.
@@ -94,14 +94,14 @@ Optional daughter-board hardware is described as Zephyr shields under:
 
 ```text
 boards/shields/
-├── sensewear_haptic/
-├── sensewear_ppg/
-├── sensewear_temperature/
-└── sensewear_touch/
+├── senswear_haptic/
+├── senswear_ppg/
+├── senswear_temperature/
+└── senswear_touch/
 ```
 
 Each shield owns its overlay, shield metadata, and Kconfig defaults. Selecting a
-shield enables the corresponding `SENSEWEAR_DAUGHTER_*` choice. `src/app.cmake`
+shield enables the corresponding `SENSWEAR_DAUGHTER_*` choice. `src/app.cmake`
 then adds only that daughter board's application bridge, Bluetooth service, and
 device-facing source files.
 
@@ -143,7 +143,7 @@ The top-level `CMakeLists.txt` appends this directory to
 Kconfig has resolved the `CONFIG_*` symbols.
 
 The disk extension is loaded only when both
-`CONFIG_SENSEWEAR_M95P_DRIVER` and `CONFIG_SENSEWEAR_M95P_DISK` are enabled.
+`CONFIG_SENSWEAR_M95P_DRIVER` and `CONFIG_SENSWEAR_M95P_DISK` are enabled.
 Its `zephyr_library_amend()` call selects Zephyr's existing `drivers__disk`
 library and marks it as allowed to remain empty. This is intentional because
 the M95P disk backend is compiled through `board_drivers`, while
@@ -152,7 +152,7 @@ library.
 
 When `CONFIG_FILE_SYSTEM_LITTLEFS` is set, the same adapter
 (`memory/m95p/m95p_disk.c`) layers a LittleFS filesystem on the disk and, with
-`CONFIG_SENSEWEAR_M95P_DISK_AUTOMOUNT`, mounts it at `/eeprom` during system
+`CONFIG_SENSWEAR_M95P_DISK_AUTOMOUNT`, mounts it at `/eeprom` during system
 init; `m95p_fs_mount()` / `m95p_fs_unmount()` expose the same operation to
 application code. `prj.conf` enables `CONFIG_POSIX_API` (sized by
 `CONFIG_ZVFS_OPEN_MAX`) so the mount is reachable not only through Zephyr's
@@ -172,7 +172,7 @@ integrated through `libs/bhy2-sensors.cmake`.
 ## Driver bring-up tests
 
 `tests/drivers/` contains one standalone `main_test_<device>.c` per base-board
-driver. Enabling one `CONFIG_SENSEWEAR_TEST_<device>_DRIVER` symbol replaces
+driver. Enabling one `CONFIG_SENSWEAR_TEST_<device>_DRIVER` symbol replaces
 the normal application sources with that test. `tests/drivers/tests.cmake`
 rejects configurations that select more than one test.
 

@@ -5,11 +5,11 @@
  * @file bhi360_registers.h
  * @brief Host-interface register and status-bit declarations for the BHI360.
  *
- * @defgroup sensewear_bhi360 SenseWear BHI360 smart IMU
+ * @defgroup senswear_bhi360 SensWear BHI360 smart IMU
  * @ingroup io_interfaces
  * @{
  *
- * This header provides SenseWear-side, byte-level representations of the BHI360
+ * This header provides SensWear-side, byte-level representations of the BHI360
  * host-interface status registers. The canonical register addresses and bit
  * masks are owned by the Bosch BHY2 sensor API (@c bhy2_defs.h); the unions
  * below mirror that hardware layout in a form convenient for decoding and

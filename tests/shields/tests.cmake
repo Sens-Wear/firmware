@@ -2,13 +2,13 @@
 #
 # Shield driver bring-up test targets. Reached only when TEST_SHIELDS is ON (see
 # the top-level CMakeLists). Each test is gated on its own
-# CONFIG_SENSEWEAR_TEST_<driver>_DRIVER Kconfig symbol and built as a
+# CONFIG_SENSWEAR_TEST_<driver>_DRIVER Kconfig symbol and built as a
 # `test_<driver>` INTERFACE library linked into `app`.
 #
 # Every test file defines its own main(), so exactly one bring-up test (across
 # tests/drivers and tests/shields) may be enabled at a time; the app main
 # (src/main.c) is omitted while a test is on. The relevant shield must be
-# enabled (e.g. SHIELD=sensewear_haptic) so its driver and devicetree node are
+# enabled (e.g. SHIELD=senswear_haptic) so its driver and devicetree node are
 # present.
 
 set(SHIELD_TESTS_DIR ${CMAKE_CURRENT_LIST_DIR})
@@ -25,14 +25,14 @@ macro(senswear_add_shield_test _name _sym)
     endif()
 endmacro()
 
-senswear_add_shield_test(drv2605 CONFIG_SENSEWEAR_TEST_DRV2605_DRIVER)
-senswear_add_shield_test(max30101 CONFIG_SENSEWEAR_TEST_MAX30101_DRIVER)
-senswear_add_shield_test(max30208 CONFIG_SENSEWEAR_TEST_MAX30208_DRIVER)
-senswear_add_shield_test(mtch6102 CONFIG_SENSEWEAR_TEST_MTCH6102_DRIVER)
+senswear_add_shield_test(drv2605 CONFIG_SENSWEAR_TEST_DRV2605_DRIVER)
+senswear_add_shield_test(max30101 CONFIG_SENSWEAR_TEST_MAX30101_DRIVER)
+senswear_add_shield_test(max30208 CONFIG_SENSWEAR_TEST_MAX30208_DRIVER)
+senswear_add_shield_test(mtch6102 CONFIG_SENSWEAR_TEST_MTCH6102_DRIVER)
 
 list(LENGTH _enabled_shield_tests _enabled_shield_count)
 if(_enabled_shield_count GREATER 1)
     message(FATAL_ERROR
         "Multiple shield tests enabled (${_enabled_shield_tests}); each defines "
-        "main(). Enable exactly one SENSEWEAR_TEST_<driver>_DRIVER.")
+        "main(). Enable exactly one SENSWEAR_TEST_<driver>_DRIVER.")
 endif()

@@ -41,7 +41,7 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "SHIELD": "sensewear_haptic",
+                "SHIELD": "senswear_haptic",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
@@ -63,7 +63,7 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "SHIELD": "sensewear_ppg sensewear_temperature",
+                "SHIELD": "senswear_ppg;senswear_temperature",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
@@ -84,7 +84,7 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "SHIELD": "sensewear_temperature",
+                "SHIELD": "senswear_temperature",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
@@ -105,7 +105,7 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "SHIELD": "sensewear_touch",
+                "SHIELD": "senswear_touch",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
@@ -126,7 +126,7 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "CONFIG_SENSEWEAR_TEST_BQ25180_DRIVER": "y",
+                "CONFIG_SENSWEAR_TEST_BQ25180_DRIVER": "y",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
@@ -147,7 +147,7 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "CONFIG_SENSEWEAR_TEST_BQ27427_DRIVER": "y",
+                "CONFIG_SENSWEAR_TEST_BQ27427_DRIVER": "y",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
@@ -168,7 +168,7 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "CONFIG_SENSEWEAR_TEST_BHI360_DRIVER": "y",
+                "CONFIG_SENSWEAR_TEST_BHI360_DRIVER": "y",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
@@ -189,7 +189,7 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "CONFIG_SENSEWEAR_TEST_LP5562_DRIVER": "y",
+                "CONFIG_SENSWEAR_TEST_LP5562_DRIVER": "y",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
@@ -210,7 +210,7 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "CONFIG_SENSEWEAR_TEST_M95P_DRIVER": "y",
+                "CONFIG_SENSWEAR_TEST_M95P_DRIVER": "y",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
@@ -231,7 +231,7 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "CONFIG_SENSEWEAR_TEST_TPSM83102_DRIVER": "y",
+                "CONFIG_SENSWEAR_TEST_TPSM83102_DRIVER": "y",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
@@ -252,7 +252,7 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "CONFIG_SENSEWEAR_TEST_RTC_DRIVER": "y",
+                "CONFIG_SENSWEAR_TEST_RTC_DRIVER": "y",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
@@ -274,7 +274,7 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "CONFIG_SENSEWEAR_TEST_DEVICE_MANAGER": "y",
+                "CONFIG_SENSWEAR_TEST_DEVICE_MANAGER": "y",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
@@ -296,8 +296,8 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "SHIELD": "sensewear_haptic",
-                "CONFIG_SENSEWEAR_TEST_DEVICE_MANAGER": "y",
+                "SHIELD": "senswear_haptic",
+                "CONFIG_SENSWEAR_TEST_DEVICE_MANAGER": "y",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
@@ -319,8 +319,8 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "SHIELD": "sensewear_ppg sensewear_temperature",
-                "CONFIG_SENSEWEAR_TEST_DEVICE_MANAGER": "y",
+                "SHIELD": "senswear_ppg;senswear_temperature",
+                "CONFIG_SENSWEAR_TEST_DEVICE_MANAGER": "y",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
@@ -342,8 +342,8 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "SHIELD": "sensewear_temperature",
-                "CONFIG_SENSEWEAR_TEST_DEVICE_MANAGER": "y",
+                "SHIELD": "senswear_temperature",
+                "CONFIG_SENSWEAR_TEST_DEVICE_MANAGER": "y",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
@@ -365,15 +365,15 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "SHIELD": "sensewear_touch",
-                "CONFIG_SENSEWEAR_TEST_DEVICE_MANAGER": "y",
+                "SHIELD": "senswear_touch",
+                "CONFIG_SENSWEAR_TEST_DEVICE_MANAGER": "y",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
         },
         {
             "name": "test_drv2605",
-            "displayName": "Test: DRV2605 haptics (sensewear_haptic shield)",
+            "displayName": "Test: DRV2605 haptics (senswear_haptic shield)",
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/tests/drv2605",
             "environment": {
@@ -387,15 +387,15 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "SHIELD": "sensewear_haptic",
-                "CONFIG_SENSEWEAR_TEST_DRV2605_DRIVER": "y",
+                "SHIELD": "senswear_haptic",
+                "CONFIG_SENSWEAR_TEST_DRV2605_DRIVER": "y",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
         },
         {
             "name": "test_max30101",
-            "displayName": "Test: MAX30101 PPG (sensewear_ppg shield)",
+            "displayName": "Test: MAX30101 PPG (senswear_ppg shield)",
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/tests/max30101",
             "environment": {
@@ -409,15 +409,15 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "SHIELD": "sensewear_ppg",
-                "CONFIG_SENSEWEAR_TEST_MAX30101_DRIVER": "y",
+                "SHIELD": "senswear_ppg",
+                "CONFIG_SENSWEAR_TEST_MAX30101_DRIVER": "y",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
         },
         {
             "name": "test_max30208",
-            "displayName": "Test: MAX30208 temperature (sensewear_temperature shield)",
+            "displayName": "Test: MAX30208 temperature (senswear_temperature shield)",
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/tests/max30208",
             "environment": {
@@ -431,15 +431,15 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "SHIELD": "sensewear_temperature",
-                "CONFIG_SENSEWEAR_TEST_MAX30208_DRIVER": "y",
+                "SHIELD": "senswear_temperature",
+                "CONFIG_SENSWEAR_TEST_MAX30208_DRIVER": "y",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }
         },
         {
             "name": "test_mtch6102",
-            "displayName": "Test: MTCH6102 touch (sensewear_touch shield)",
+            "displayName": "Test: MTCH6102 touch (senswear_touch shield)",
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/tests/mtch6102",
             "environment": {
@@ -453,8 +453,8 @@
             "cacheVariables": {
                 "BOARD": "SensWear/nrf54l15/cpuapp",
                 "BOARD_ROOT": "${sourceDir}",
-                "SHIELD": "sensewear_touch",
-                "CONFIG_SENSEWEAR_TEST_MTCH6102_DRIVER": "y",
+                "SHIELD": "senswear_touch",
+                "CONFIG_SENSWEAR_TEST_MTCH6102_DRIVER": "y",
                 "CONFIG_SHELL": "n",
                 "CONFIG_I2C_SHELL": "n"
             }

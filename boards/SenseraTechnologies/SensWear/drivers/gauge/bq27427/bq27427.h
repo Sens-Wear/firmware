@@ -3,15 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file bq27427.h
- * @brief SenseWear BQ27427 single-cell Li-Ion fuel-gauge API.
+ * @brief SensWear BQ27427 single-cell Li-Ion fuel-gauge API.
  *
- * @defgroup sensewear_bq27427_driver SenseWear BQ27427 fuel gauge
+ * @defgroup senswear_bq27427_driver SensWear BQ27427 fuel gauge
  * @ingroup io_interfaces
  * @{
  *
  * The BQ27427 is an Impedance Track gas gauge that reports battery voltage,
  * current, temperature, state of charge, and remaining/full capacity for the
- * SenseWear main board. The driver programs the gauge's design parameters
+ * SensWear main board. The driver programs the gauge's design parameters
  * (capacity, energy, chemistry, current thresholds) into data flash and then
  * reads the decoded battery state on demand.
  *
@@ -20,7 +20,7 @@
  * since `1970-01-01 00:00:00 UTC`, and truncate the sub-microsecond portion of
  * the clock.
  *
- * Unlike the @ref sensewear_bq25180 charger, this driver talks to the device
+ * Unlike the @ref senswear_bq25180 charger, this driver talks to the device
  * directly through Zephyr's I2C API using an I2C_DT_SPEC_GET() specification:
  *
  * @code{.text}
@@ -35,14 +35,14 @@
  * Zephyr I2C controller
  * @endcode
  *
- * @section sensewear_bq27427_devicetree Devicetree representation
+ * @section senswear_bq27427_devicetree Devicetree representation
  *
  * The gauge is a standard child of the I2C controller. The driver resolves it
  * through DT_NODELABEL(bq27427), so the node must use that label:
  *
  * @code{.dts}
  * bq27427: fuel-gauge@55 {
- *     compatible = "sensewear,bq27427";
+ *     compatible = "senswear,bq27427";
  *     reg = <0x55>;
  *     int-gpios = <&gpio1 7 GPIO_ACTIVE_LOW>;
  *     status = "okay";
@@ -53,7 +53,7 @@
  * (GAUGE_IRQ) property is declared for the GPOUT/SOC_INT line but is not yet
  * consumed by the current implementation; battery state is polled.
  *
- * @section sensewear_bq27427_lifecycle Driver lifecycle
+ * @section senswear_bq27427_lifecycle Driver lifecycle
  *
  * The expected lifecycle is:
  *
@@ -71,7 +71,7 @@
  *          bq27427_config() and bq27427_reset() must be called from a context
  *          where blocking for several seconds is acceptable.
  *
- * @section sensewear_bq27427_example Typical usage
+ * @section senswear_bq27427_example Typical usage
  *
  * @code{.c}
  * struct bq27427_config_t config;
@@ -230,7 +230,7 @@ bool bq27427_config(const struct bq27427_config_t* config);
 bool bq27427_reset(const struct bq27427_config_t* config);
 
 /**
- * @brief Populate a configuration with the SenseWear battery defaults.
+ * @brief Populate a configuration with the SensWear battery defaults.
  *
  * @details Fills @p config from the BQ27427_DEFAULT_* values in
  *          bq27427_registers.h.

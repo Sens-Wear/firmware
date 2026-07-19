@@ -168,6 +168,7 @@ BT_GATT_SERVICE_DEFINE(
 			       NULL,
 			       NULL,
 			       NULL),
+	BT_GATT_CUD("Body Temperature Measurement", BT_GATT_PERM_READ),
 	BT_GATT_CCC(body_temperature_measurement_ccc_changed,
 		    BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	BT_GATT_CHARACTERISTIC(BT_UUID_HTS_TEMP_TYP,
@@ -176,12 +177,14 @@ BT_GATT_SERVICE_DEFINE(
 			       read_temperature_type,
 			       NULL,
 			       (void*) &temperature_type),
+	BT_GATT_CUD("Body Temperature Type", BT_GATT_PERM_READ),
 	BT_GATT_CHARACTERISTIC(BT_UUID_HTS_INTERVAL,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE | BT_GATT_CHRC_INDICATE,
 			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
 			       read_measurement_interval,
 			       write_measurement_interval,
 			       &measurement_interval_sec),
+	BT_GATT_CUD("Body Temperature Measurement Interval", BT_GATT_PERM_READ),
 	BT_GATT_CCC(body_temperature_interval_ccc_changed,
 		    BT_GATT_PERM_READ | BT_GATT_PERM_WRITE));
 

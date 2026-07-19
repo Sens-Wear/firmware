@@ -40,27 +40,27 @@
 #include "bluetooth/services/power/power_lbs.h"
 #include "bluetooth/services/time/time_lbs.h"
 
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 #include "bq27427.h"
 #endif
 
-#if defined(CONFIG_SENSEWEAR_DAUGHTER_PPG)
+#if defined(CONFIG_SENSWEAR_DAUGHTER_PPG)
 #include "bluetooth/services/ppg/ppg_lbs.h"
 #endif
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 #include "max30101.h"
 #endif
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 #include "bluetooth/services/body_temperature/body_temperature_lbs.h"
 #endif
 
-#if defined(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
+#if defined(CONFIG_SENSWEAR_DAUGHTER_TOUCH)
 #include "bluetooth/services/touch/touch_lbs.h"
 #endif
 
-#if defined(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
+#if defined(CONFIG_SENSWEAR_DAUGHTER_HAPTIC)
 #include "bluetooth/services/haptic/haptic_lbs.h"
 #endif
 
@@ -78,7 +78,7 @@ LOG_MODULE_REGISTER(SENSE_WEAR_OOB_MAIN_LOGGER);
  * (with a client-chosen drain period) over BLE on demand. */
 #define OOB_MAIN_IMU_IDLE_DRAIN_MS 60000U
 
-#if defined(CONFIG_SENSEWEAR_RTC_DRIVER)
+#if defined(CONFIG_SENSWEAR_RTC_DRIVER)
 /** Wall-clock seed so timestamps and the minute alarm work before a client
  * syncs real time through the Current Time service: 2026-01-01T00:00:00Z. */
 #define OOB_MAIN_RTC_EPOCH_DEFAULT ((time_t) 1767225600)
@@ -97,17 +97,17 @@ static struct device_manager_config_t oob_cfg;
 static bool imu_configured;
 static bool charger_configured;
 static bool battery_configured;
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 static bool ppg_configured;
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 static bool temperature_configured;
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH)
+#if defined(CONFIG_SHIELD_SENSWEAR_TOUCH)
 static bool touch_configured;
 #endif
 
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 /* One-shot follow-ups after the manager is running. */
 static bool gauge_kicked;
 #endif
@@ -163,16 +163,16 @@ static void on_connected(struct bt_conn* conn, uint8_t err) {
 	led_lbs_set_conn(conn);
 	power_lbs_set_conn(conn);
 	time_lbs_set_conn(conn);
-#if defined(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
+#if defined(CONFIG_SENSWEAR_DAUGHTER_HAPTIC)
 	haptic_lbs_set_conn(conn);
 #endif
-#if defined(CONFIG_SENSEWEAR_DAUGHTER_PPG)
+#if defined(CONFIG_SENSWEAR_DAUGHTER_PPG)
 	ppg_lbs_set_conn(conn);
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 	body_temperature_lbs_set_conn(conn);
 #endif
-#if defined(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
+#if defined(CONFIG_SENSWEAR_DAUGHTER_TOUCH)
 	touch_lbs_set_conn(conn);
 #endif
 }
@@ -191,16 +191,16 @@ static void on_disconnected(struct bt_conn* conn, uint8_t reason) {
 	led_lbs_clear_conn();
 	power_lbs_clear_conn();
 	time_lbs_clear_conn();
-#if defined(CONFIG_SENSEWEAR_DAUGHTER_HAPTIC)
+#if defined(CONFIG_SENSWEAR_DAUGHTER_HAPTIC)
 	haptic_lbs_clear_conn();
 #endif
-#if defined(CONFIG_SENSEWEAR_DAUGHTER_PPG)
+#if defined(CONFIG_SENSWEAR_DAUGHTER_PPG)
 	ppg_lbs_clear_conn();
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 	body_temperature_lbs_clear_conn();
 #endif
-#if defined(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
+#if defined(CONFIG_SENSWEAR_DAUGHTER_TOUCH)
 	touch_lbs_clear_conn();
 #endif
 
@@ -268,7 +268,7 @@ static bool configure_ready_device(enum device_manager_device_type device,
 static bool oob_bring_up_pass(void) {
 	bool changed = false;
 
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 	if (!imu_configured && configure_ready_device(device_manager_device_Bhi360,
 												  device_manager_stream_ImuQuaternion,
 												  "Bhi360")) {
@@ -277,7 +277,7 @@ static bool oob_bring_up_pass(void) {
 	}
 #endif
 
-#if defined(CONFIG_SENSEWEAR_BQ25180_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ25180_DRIVER)
 	if (!charger_configured && configure_ready_device(device_manager_device_Bq25180,
 													  device_manager_stream_Charger,
 													  "Bq25180")) {
@@ -286,7 +286,7 @@ static bool oob_bring_up_pass(void) {
 	}
 #endif
 
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 	if (!battery_configured && configure_ready_device(device_manager_device_Bq27427,
 													  device_manager_stream_Battery,
 													  "Bq27427")) {
@@ -297,7 +297,7 @@ static bool oob_bring_up_pass(void) {
 	}
 #endif
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 	if (!ppg_configured && configure_ready_device(device_manager_device_Max30101,
 												  device_manager_stream_Ppg,
 												  "Max30101")) {
@@ -312,7 +312,7 @@ static bool oob_bring_up_pass(void) {
 	}
 #endif
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 	if (!temperature_configured && configure_ready_device(device_manager_device_Max30208,
 														  device_manager_stream_Temperature,
 														  "Max30208")) {
@@ -322,7 +322,7 @@ static bool oob_bring_up_pass(void) {
 	}
 #endif
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH)
+#if defined(CONFIG_SHIELD_SENSWEAR_TOUCH)
 	/* The touch service subscribes itself once the streams are ready. */
 	if (!touch_configured && configure_ready_device(device_manager_device_Mtch6102,
 													device_manager_stream_Touch,
@@ -343,7 +343,7 @@ static void oob_apply_config(void) {
 		LOG_WRN("device_manager_config() failed: %d", ret);
 	}
 
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 	/* With the physical sensors idle, device_manager_config() leaves the shared
 	 * FIFO timer stopped. The event sensors are interrupt-driven, but drain the
 	 * FIFO on a slow cadence as well so anything that does not raise its own
@@ -378,7 +378,7 @@ static void oob_start_services(void) {
 		}
 	}
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 	if (temperature_configured) {
 		int ret = body_temperature_lbs_register_stream();
 
@@ -388,7 +388,7 @@ static void oob_start_services(void) {
 	}
 #endif
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG) && defined(CONFIG_SENSEWEAR_DAUGHTER_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG) && defined(CONFIG_SENSWEAR_DAUGHTER_PPG)
 	if (ppg_configured) {
 		int ret = ppg_lbs_register_stream();
 
@@ -398,7 +398,7 @@ static void oob_start_services(void) {
 	}
 #endif
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH) && defined(CONFIG_SENSEWEAR_DAUGHTER_TOUCH)
+#if defined(CONFIG_SHIELD_SENSWEAR_TOUCH) && defined(CONFIG_SENSWEAR_DAUGHTER_TOUCH)
 	if (touch_configured) {
 		int ret = touch_lbs_register_streams();
 
@@ -408,7 +408,7 @@ static void oob_start_services(void) {
 	}
 #endif
 
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 	/* One immediate refresh for deterministic battery output; the manager's
 	 * RTC-minute cadence takes over from here. */
 	if (battery_configured && !gauge_kicked) {
@@ -421,22 +421,22 @@ static void oob_start_services(void) {
 static unsigned int oob_unconfigured_count(void) {
 	unsigned int count = 0;
 
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 	count += imu_configured ? 0U : 1U;
 #endif
-#if defined(CONFIG_SENSEWEAR_BQ25180_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ25180_DRIVER)
 	count += charger_configured ? 0U : 1U;
 #endif
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 	count += battery_configured ? 0U : 1U;
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 	count += ppg_configured ? 0U : 1U;
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 	count += temperature_configured ? 0U : 1U;
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH)
+#if defined(CONFIG_SHIELD_SENSWEAR_TOUCH)
 	count += touch_configured ? 0U : 1U;
 #endif
 
@@ -455,22 +455,22 @@ static void oob_log_device(const char* name,
 static void oob_log_state(void) {
 	LOG_INF("device state (%u unconfigured):", oob_unconfigured_count());
 
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 	oob_log_device("Bhi360", imu_configured, device_manager_stream_ImuQuaternion);
 #endif
-#if defined(CONFIG_SENSEWEAR_BQ25180_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ25180_DRIVER)
 	oob_log_device("Bq25180", charger_configured, device_manager_stream_Charger);
 #endif
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 	oob_log_device("Bq27427", battery_configured, device_manager_stream_Battery);
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 	oob_log_device("Max30101", ppg_configured, device_manager_stream_Ppg);
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 	oob_log_device("Max30208", temperature_configured, device_manager_stream_Temperature);
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH)
+#if defined(CONFIG_SHIELD_SENSWEAR_TOUCH)
 	oob_log_device("Mtch6102", touch_configured, device_manager_stream_Touch);
 #endif
 }
@@ -486,7 +486,7 @@ static void oob_main_thread(void* a, void* b, void* c) {
 		LOG_ERR("oob_ble_start() failed; continuing without BLE");
 	}
 
-#if defined(CONFIG_SENSEWEAR_RTC_DRIVER)
+#if defined(CONFIG_SENSWEAR_RTC_DRIVER)
 	int rtc_ret = device_manager_set_rtc_time(OOB_MAIN_RTC_EPOCH_DEFAULT);
 
 	if (rtc_ret != 0) {

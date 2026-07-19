@@ -124,11 +124,11 @@ static ssize_t read_current_time(struct bt_conn* conn,
 				 uint16_t offset) {
 	struct time_lbs_current_time current_time;
 	time_t now = time(NULL);
-
+	LOG_INF("Current time read request received, current unix time: %lld", (long long) now);
 	if (!current_time_from_unix(now, &current_time)) {
 		return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
 	}
-
+	LOG_INF("Current time read: %lld", (long long) now);
 	return bt_gatt_attr_read(conn, attr, buf, len, offset, &current_time, sizeof(current_time));
 }
 
@@ -212,6 +212,7 @@ BT_GATT_SERVICE_DEFINE(
 			       read_current_time,
 			       write_current_time,
 			       NULL),
+	BT_GATT_CUD("Current Time", BT_GATT_PERM_READ),
 	BT_GATT_CCC(current_time_notification_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_LOCAL_TIME_INFORMATION,
 			       BT_GATT_CHRC_READ,
@@ -219,12 +220,14 @@ BT_GATT_SERVICE_DEFINE(
 			       read_local_time_information,
 			       NULL,
 			       &local_time_cache),
+	BT_GATT_CUD("Local Time Information", BT_GATT_PERM_READ),
 	BT_GATT_CHARACTERISTIC(BT_UUID_LBS_REFERENCE_TIME_INFORMATION,
 			       BT_GATT_CHRC_READ,
 			       BT_GATT_PERM_READ,
 			       read_reference_time_information,
 			       NULL,
-			       &reference_time_cache));
+			       &reference_time_cache),
+	BT_GATT_CUD("Reference Time Information", BT_GATT_PERM_READ));
 
 void time_lbs_set_conn(struct bt_conn* conn) {
 	if (conn == NULL) {

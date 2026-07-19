@@ -114,6 +114,7 @@ BT_GATT_SERVICE_DEFINE(
 			       read_battery_level,
 			       NULL,
 			       &battery_level_cache),
+	BT_GATT_CUD("Battery Level", BT_GATT_PERM_READ),
 	BT_GATT_CCC(battery_level_notify_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	BT_GATT_CHARACTERISTIC(BT_UUID_BAS_BATTERY_LEVEL_STATUS,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
@@ -121,6 +122,7 @@ BT_GATT_SERVICE_DEFINE(
 			       read_battery_level_status,
 			       NULL,
 			       &battery_level_status_cache),
+	BT_GATT_CUD("Battery Level Status", BT_GATT_PERM_READ),
 	BT_GATT_CCC(battery_level_status_notify_cfg_changed,
 		    BT_GATT_PERM_READ | BT_GATT_PERM_WRITE));
 

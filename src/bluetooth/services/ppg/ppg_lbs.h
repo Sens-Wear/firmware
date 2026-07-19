@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file ppg_lbs.h
- * @brief SenseWear custom BLE PPG and PPG-configuration services.
+ * @brief SensWear custom BLE PPG and PPG-configuration services.
  *
- * @defgroup sensewear_ble_ppg SenseWear BLE PPG service
+ * @defgroup senswear_ble_ppg SensWear BLE PPG service
  * @ingroup io_interfaces
  * @{
  *
@@ -15,13 +15,13 @@
  * control is exposed through a separate configuration service; writes are
  * forwarded to the device manager.
  *
- * @section sensewear_ble_ppg_payloads Payload units
+ * @section senswear_ble_ppg_payloads Payload units
  *
  * Each PPG characteristic reports a single channel as a timestamp/value pair.
  * @c unix_ms is milliseconds since the Unix epoch. @c value is the raw
  * right-justified 18-bit ADC count from the MAX30101 channel.
  *
- * @section sensewear_ble_ppg_example Typical usage
+ * @section senswear_ble_ppg_example Typical usage
  *
  * @code{.c}
  * static void connected(struct bt_conn *conn, uint8_t err)

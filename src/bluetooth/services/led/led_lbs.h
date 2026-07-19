@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file led_lbs.h
- * @brief SenseWear custom BLE LED service.
+ * @brief SensWear custom BLE LED service.
  *
- * @defgroup sensewear_ble_led SenseWear BLE LED service
+ * @defgroup senswear_ble_led SensWear BLE LED service
  * @ingroup io_interfaces
  * @{
  *
@@ -14,7 +14,7 @@
  * only owns the GATT-facing state; actuator routing can be wired behind this
  * service without changing the client-facing contract.
  *
- * @section sensewear_ble_led_example Typical usage
+ * @section senswear_ble_led_example Typical usage
  *
  * @code{.c}
  * static void connected(struct bt_conn *conn, uint8_t err)

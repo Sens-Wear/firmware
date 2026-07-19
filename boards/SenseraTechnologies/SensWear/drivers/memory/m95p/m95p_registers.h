@@ -5,7 +5,7 @@
  * @file m95p_registers.h
  * @brief Instruction, register, and identification declarations for M95P32.
  *
- * @defgroup sensewear_m95p SenseWear M95P32 page EEPROM
+ * @defgroup senswear_m95p SensWear M95P32 page EEPROM
  * @ingroup io_interfaces
  * @{
  *

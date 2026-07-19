@@ -40,7 +40,7 @@ struct lp5562_t {
 	union lp5562_led_map_register_t led_engines;		 //!< The operation engines of the LEDs.
 };
 
-/* The board has exactly one LP5562 and it lives on the shared SenseWear I2C bus,
+/* The board has exactly one LP5562 and it lives on the shared SensWear I2C bus,
  * so the driver is a file-scope singleton that talks through the sys_i2c
  * ownership wrapper. Every high-level operation acquires the shared bus once and
  * releases it on exit; the private register helpers assume the bus is owned. */

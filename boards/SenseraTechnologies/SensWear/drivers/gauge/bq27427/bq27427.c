@@ -2,7 +2,7 @@
  * bq27427.c
  *
  * @file bq27427.c
- * @brief SenseWear BQ27427 fuel-gauge driver implementation.
+ * @brief SensWear BQ27427 fuel-gauge driver implementation.
  * @details The driver is a board-level singleton that talks to the gauge
  *          through the board's shared I2C wrapper. Battery state is polled on
  *          demand, and each successful refresh updates the cached state with a

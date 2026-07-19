@@ -1,1 +1,1 @@
-sensewear	SenseWear project-specific devices
+senswear	SensWear project-specific devices

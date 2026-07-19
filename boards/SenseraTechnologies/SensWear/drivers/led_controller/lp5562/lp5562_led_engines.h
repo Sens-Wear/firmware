@@ -5,7 +5,7 @@
  * @file lp5562_led_engines.h
  * @brief LP5562 LED engine model and program-instruction builders.
  *
- * @defgroup sensewear_lp5562 SenseWear LP5562 LED controller
+ * @defgroup senswear_lp5562 SensWear LP5562 LED controller
  * @ingroup io_interfaces
  * @{
  *

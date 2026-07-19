@@ -3,18 +3,18 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file tpsm83102.h
- * @brief SenseWear TPSM83102 regulator-driver declarations.
+ * @brief SensWear TPSM83102 regulator-driver declarations.
  *
- * @defgroup sensewear_tpsm83102 SenseWear TPSM83102 regulator
+ * @defgroup senswear_tpsm83102 SensWear TPSM83102 regulator
  * @ingroup io_interfaces
  * @{
  *
  * The board driver exposes the TPSM83102 through Zephyr's regulator API. Use
  * DEVICE_DT_GET(DT_NODELABEL(tpsm83102)) with regulator_enable(),
  * regulator_disable(), regulator_set_voltage(), and regulator_get_voltage().
- * Register transfers are serialized through the SenseWear shared-I2C wrapper.
+ * Register transfers are serialized through the SensWear shared-I2C wrapper.
  *
- * @section sensewear_tpsm83102_regulator_api Zephyr regulator API
+ * @section senswear_tpsm83102_regulator_api Zephyr regulator API
  *
  * This driver intentionally has @b no bespoke public control surface: it is a
  * standard Zephyr regulator device and is meant to be driven entirely through
@@ -27,13 +27,13 @@
  *   https://docs.zephyrproject.org/latest/hardware/peripherals/regulators.html
  *   include/zephyr/drivers/regulator.h
  *
- * @section sensewear_tpsm83102_events Device-event reporting
+ * @section senswear_tpsm83102_events Device-event reporting
  *
  * In addition to the regulator API, the driver publishes lifecycle events into
- * the SenseWear centralized device-event manager (see device_driver_events.h)
+ * the SensWear centralized device-event manager (see device_driver_events.h)
  * so power-policy code can observe the rail without polling.
  *
- * Unlike the SenseWear I2C drivers (for example bq25180 / bq27427), which take
+ * Unlike the SensWear I2C drivers (for example bq25180 / bq27427), which take
  * a device identifier as an argument to their @c _init() call, this driver does
  * @b not require the caller to supply one. Because it is a devicetree-defined
  * regulator (instantiated by DEVICE_DT_DEFINE, not an application init call),
@@ -66,7 +66,7 @@
 
 /**
  * @brief Driver-level TPSM83102 event identifiers.
- * @details Posted to the SenseWear device-event manager under
+ * @details Posted to the SensWear device-event manager under
  *          @c TPSM83102_DEVICE_DTS_ID. These are software lifecycle events, not
  *          a hardware register encoding.
  */

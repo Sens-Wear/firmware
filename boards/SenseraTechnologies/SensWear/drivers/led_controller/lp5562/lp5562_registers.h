@@ -5,7 +5,7 @@
  * @file lp5562_registers.h
  * @brief Register map and bit definitions for the TI LP5562 LED driver.
  *
- * @defgroup sensewear_lp5562 SenseWear LP5562 LED controller
+ * @defgroup senswear_lp5562 SensWear LP5562 LED controller
  * @ingroup io_interfaces
  * @{
  *

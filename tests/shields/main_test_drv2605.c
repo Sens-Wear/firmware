@@ -2,8 +2,8 @@
  * Copyright (c) 2026
  * SPDX-License-Identifier: Apache-2.0
  *
- * Bring-up test for the SenseWear-patched DRV2605 haptic driver on the
- * sensewear_haptic shield.
+ * Bring-up test for the SensWear-patched DRV2605 haptic driver on the
+ * senswear_haptic shield.
  *
  * The driver auto-initialises at POST_KERNEL (claims the daughter_if GPIO0
  * enable line, resets and configures the device), so this test first checks
@@ -32,7 +32,7 @@
 #define TEST_RTP_PLAY_MS         800
 #define TEST_ROM_PLAY_MS         500
 
-static const struct device *const haptic_dev = DEVICE_DT_GET(DT_ALIAS(sensewear_haptic));
+static const struct device *const haptic_dev = DEVICE_DT_GET(DT_ALIAS(senswear_haptic));
 
 /*
  * RTP "buzz": ramp the amplitude up then drop to off. RTP playback runs
@@ -126,7 +126,7 @@ static int play_rom(void)
 
 int main(void)
 {
-	printk("\n=== DRV2605 haptics test (sensewear_haptic shield) ===\n");
+	printk("\n=== DRV2605 haptics test (senswear_haptic shield) ===\n");
 
 	if (!device_is_ready(haptic_dev)) {
 		printk("DRV2605 device not ready\n");

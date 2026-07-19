@@ -2,12 +2,12 @@
  * Copyright (c) 2026
  * SPDX-License-Identifier: Apache-2.0
  *
- * Bring-up test for the SenseWear device manager.
+ * Bring-up test for the SensWear device manager.
  *
  * The device manager (boards/common/device_manager) is the single publisher that
  * drains the shared device-event queue, drives each device's interrupt handler,
  * and republishes decoded data onto one zbus channel per message type. This test
- * enables the manager (CONFIG_SENSEWEAR_DEVICE_MANAGER, selected by the test
+ * enables the manager (CONFIG_SENSWEAR_DEVICE_MANAGER, selected by the test
  * symbol), configures only devices that initialized, subscribes to ready
  * streams, and drives the pipeline:
  *
@@ -17,11 +17,11 @@
  *   - PPG, temperature, touch, IMU, charger, and regulator: if present and
  *     enabled, configured or monitored through the manager before subscribing to
  *     their streams.
- *   - Haptic motor: if the sensewear_haptic shield is present, a short buzz plus
+ *   - Haptic motor: if the senswear_haptic shield is present, a short buzz plus
  *     a ROM waveform exercises the actuator control API.
  *
  * Build with the `test_device_manager` preset; see tests/device_manager/README.md
- * and BUILD.md. Add SHIELD=sensewear_haptic to also exercise the vibration motor.
+ * and BUILD.md. Add SHIELD=senswear_haptic to also exercise the vibration motor.
  */
 
 #include <zephyr/kernel.h>
@@ -29,17 +29,17 @@
 
 #include "device_manager.h"
 
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 #include "bq27427.h"
 #endif
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 #include "max30101.h"
 #endif
 
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER) || defined(CONFIG_SENSEWEAR_BQ25180_DRIVER) || \
-	defined(CONFIG_SENSEWEAR_BQ27427_DRIVER) || defined(CONFIG_SHIELD_SENSEWEAR_PPG) ||    \
-	defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE) || defined(CONFIG_SHIELD_SENSEWEAR_TOUCH)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER) || defined(CONFIG_SENSWEAR_BQ25180_DRIVER) || \
+	defined(CONFIG_SENSWEAR_BQ27427_DRIVER) || defined(CONFIG_SHIELD_SENSWEAR_PPG) ||    \
+	defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE) || defined(CONFIG_SHIELD_SENSWEAR_TOUCH)
 static bool configure_ready_device(enum device_manager_device_type device,
 								   enum device_manager_stream_type stream,
 								   const char* name) {
@@ -105,7 +105,7 @@ static void register_configured_streams(void) {
 	}
 }
 
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 /** Slow FIFO-drain period used while the physical sensors are idle, in ms. */
 #define DM_TEST_IMU_IDLE_DRAIN_MS 60000
 
@@ -117,7 +117,7 @@ static void enable_imu_streams(void) {
 	dm_configured_streams[device_manager_stream_ImuGesture] = true;
 	dm_configured_streams[device_manager_stream_ImuActivity] = true;
 }
-#endif /* CONFIG_SENSEWEAR_BHI360_DRIVER */
+#endif /* CONFIG_SENSWEAR_BHI360_DRIVER */
 
 /* One buffer large enough for any stream message. */
 union dm_any_msg {
@@ -242,7 +242,7 @@ static void print_message(const struct zbus_channel* chan) {
 int main(void) {
 	printk("\n=== Device manager test ===\n");
 
-#if defined(CONFIG_SENSEWEAR_RTC_DRIVER)
+#if defined(CONFIG_SENSWEAR_RTC_DRIVER)
 	/* Give the wall clock a value so timestamps and the minute alarm work. */
 	int rtc_ret = device_manager_set_rtc_time((time_t) 1767225600); /* 2026-01-01T00:00:00Z */
 
@@ -266,7 +266,7 @@ int main(void) {
 	cfg.gauge.update_period_min = 0;
 	cfg.temperature.update_period_min = 0;
 
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 	bool imu_configured = configure_ready_device(device_manager_device_Bhi360,
 												 device_manager_stream_ImuQuaternion,
 												 "Bhi360");
@@ -275,7 +275,7 @@ int main(void) {
 	}
 #endif
 
-#if defined(CONFIG_SENSEWEAR_BQ25180_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ25180_DRIVER)
 	bool charger_configured = configure_ready_device(device_manager_device_Bq25180,
 													 device_manager_stream_Charger,
 													 "Bq25180");
@@ -284,7 +284,7 @@ int main(void) {
 	}
 #endif
 
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 	/* Refresh the fuel gauge every minute only when the gauge initialized. */
 	bool battery_configured = configure_ready_device(device_manager_device_Bq27427,
 													 device_manager_stream_Battery,
@@ -295,7 +295,7 @@ int main(void) {
 	}
 #endif
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 	bool ppg_configured = configure_ready_device(device_manager_device_Max30101,
 												 device_manager_stream_Ppg,
 												 "Max30101");
@@ -312,7 +312,7 @@ int main(void) {
 	}
 #endif
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 	bool temperature_configured = configure_ready_device(device_manager_device_Max30208,
 														 device_manager_stream_Temperature,
 														 "Max30208");
@@ -322,7 +322,7 @@ int main(void) {
 	}
 #endif
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH)
+#if defined(CONFIG_SHIELD_SENSWEAR_TOUCH)
 	bool touch_configured = configure_ready_device(device_manager_device_Mtch6102,
 												   device_manager_stream_Touch,
 												   "Mtch6102");
@@ -332,7 +332,7 @@ int main(void) {
 	}
 #endif
 
-#if defined(CONFIG_SENSEWEAR_TPSM83102_DRIVER)
+#if defined(CONFIG_SENSWEAR_TPSM83102_DRIVER)
 	if (device_manager_stream_ready(device_manager_stream_Regulator)) {
 		dm_configured_streams[device_manager_stream_Regulator] = true;
 	} else {
@@ -346,7 +346,7 @@ int main(void) {
 		printk("device_manager_config() failed: %d\n", cfg_ret);
 	}
 
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 	/* The physical sensors are not sampling in this test, so device_manager_config()
 	 * leaves the shared FIFO timer stopped. The low-rate event sensors (pedometer,
 	 * gesture, activity) are interrupt-driven, but drain the FIFO once a minute as
@@ -369,13 +369,13 @@ int main(void) {
 		return 0;
 	}
 
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 	if (battery_configured) {
 		(void) bq27427_update_state(NULL);
 	}
 #endif
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_HAPTIC)
+#if defined(CONFIG_SHIELD_SENSWEAR_HAPTIC)
 	/* Actuator check: a short RTP buzz, then a ROM click effect. */
 	static const uint8_t click_seq[] = {1};
 

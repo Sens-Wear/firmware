@@ -5,18 +5,18 @@
  * @file m95p_disk.h
  * @brief Maps the M95P EEPROM onto Zephyr's filesystem stack.
  *
- * @defgroup sensewear_m95p_disk SenseWear M95P disk / filesystem mapping
+ * @defgroup senswear_m95p_disk SensWear M95P disk / filesystem mapping
  * @ingroup io_interfaces
  * @{
  *
- * This unit registers the @ref sensewear_bq25180-style M95P driver with the
+ * This unit registers the @ref senswear_bq25180-style M95P driver with the
  * Zephyr disk-access subsystem under @ref M95P_DISK_NAME. A 512-byte logical
  * sector maps one-to-one to an M95P page, so any filesystem layered on the
  * disk-access block device (LittleFS via `CONFIG_FS_LITTLEFS_BLK_DEV`, or
  * FatFs) can use the EEPROM as backing storage.
  *
  * The disk is registered automatically during system init. Mounting is
- * separate: either enable @kconfig{CONFIG_SENSEWEAR_M95P_DISK_AUTOMOUNT} to
+ * separate: either enable @kconfig{CONFIG_SENSWEAR_M95P_DISK_AUTOMOUNT} to
  * mount LittleFS at boot, or call m95p_fs_mount() from application code.
  *
  * Once mounted, the filesystem is reachable through Zephyr's native `fs_*`
@@ -27,8 +27,8 @@
  * the number of simultaneously open file descriptors.
  */
 
-#ifndef SENSEWEAR_M95P_DISK_H_
-#define SENSEWEAR_M95P_DISK_H_
+#ifndef SENSWEAR_M95P_DISK_H_
+#define SENSWEAR_M95P_DISK_H_
 
 #ifdef __cplusplus
 extern "C" {
@@ -67,4 +67,4 @@ int m95p_fs_unmount(void);
 
 /** @} */
 
-#endif /* SENSEWEAR_M95P_DISK_H_ */
+#endif /* SENSWEAR_M95P_DISK_H_ */

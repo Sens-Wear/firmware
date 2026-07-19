@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+
+if SHIELD_SENSWEAR_HAPTIC
+
+config I2C
+	default y
+
+config SENSWEAR_SYS_I2C
+	default y
+
+config GPIO
+	default y
+
+config SENSWEAR_TPSM83102_DRIVER
+	default y
+
+config SENSWEAR_DAUGHTER_IF_DRIVER
+	default y
+
+config SENSWEAR_DEVICE_DRIVER_EVENTS
+	default y
+
+rsource "drivers/haptic/drv2605/Kconfig.drv2605"
+
+endif # SHIELD_SENSWEAR_HAPTIC

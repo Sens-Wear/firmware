@@ -6,12 +6,12 @@
  * @brief Register, command, and data-flash declarations for the BQ27427 fuel
  *        gauge.
  *
- * @defgroup sensewear_bq27427 SenseWear BQ27427 fuel gauge
+ * @defgroup senswear_bq27427 SensWear BQ27427 fuel gauge
  * @ingroup io_interfaces
  * @{
  *
  * This header contains the standard-command map, Control() subcommands,
- * data-flash class identifiers, register bit-field overlays, and SenseWear
+ * data-flash class identifiers, register bit-field overlays, and SensWear
  * battery defaults for the BQ27427 register map. It is intended for low-level
  * register access helpers used by the fuel-gauge driver.
  */
@@ -241,31 +241,31 @@ union bq27427_op_config_register_t {
 /** @brief Block-data offset of TaperVoltage in the current-threshold subclass. */
 #define BQ27427_TAPER_VOLTAGE_MEMORY_OFFSET (0x08u)
 
-/** @brief SenseWear default battery chemistry (LiPo, 4.20 V max). */
+/** @brief SensWear default battery chemistry (LiPo, 4.20 V max). */
 #define BQ27427_DEFAULT_BATTERY_TYPE (bq27427_chemistry_LiPo4V20)
-/** @brief SenseWear default DesignCapacity in mAh. */
+/** @brief SensWear default DesignCapacity in mAh. */
 #define BQ27427_DEFAULT_BATTERY_CAPACITY (23u)
-/** @brief SenseWear default DesignEnergy in mWh. */
+/** @brief SensWear default DesignEnergy in mWh. */
 #define BQ27427_DEFAULT_BATTERY_ENERGY (851u)
-/** @brief SenseWear default TerminateVoltage in mV. */
+/** @brief SensWear default TerminateVoltage in mV. */
 #define BQ27427_DEFAULT_BATTERY_TERMINATION_VOLTAGE (3400u)
-/** @brief SenseWear default TaperRate (charge-current divisor). */
+/** @brief SensWear default TaperRate (charge-current divisor). */
 #define BQ27427_DEFAULT_TAPER_RATE (110u)
-/** @brief SenseWear default SleepCurrent threshold in mA. */
+/** @brief SensWear default SleepCurrent threshold in mA. */
 #define BQ27427_DEFAULT_GAUGE_SLEEP_CURRENT (1u)
 
-/** @brief SenseWear default discharge current threshold in mA. */
+/** @brief SensWear default discharge current threshold in mA. */
 #define BQ27427_DEFAULT_DISCHARGE_CURRENT_THRESHOLD (990u)
-/** @brief SenseWear default charge current threshold in mA. */
+/** @brief SensWear default charge current threshold in mA. */
 #define BQ27427_DEFAULT_CHARGE_CURRENT_THRESHOLD (200u)
-/** @brief SenseWear default quit current threshold in mA. */
+/** @brief SensWear default quit current threshold in mA. */
 #define BQ27427_DEFAULT_QUIT_CURRENT_THRESHOLD (1000u)
-/** @brief SenseWear default cell voltage at charge termination in mV. */
+/** @brief SensWear default cell voltage at charge termination in mV. */
 #define BQ27427_DEFAULT_V_AT_CHARGE_TERM (4190u)
-/** @brief SenseWear default taper voltage in mV. */
+/** @brief SensWear default taper voltage in mV. */
 #define BQ27427_DEFAULT_TAPER_VOLTAGE (4170u)
 
-/** @brief SenseWear default Ra-table seed values. */
+/** @brief SensWear default Ra-table seed values. */
 #define BQ27427_DEFAULT_RA_VALUES_ \
 	{97, 107, 121, 136, 103, 102, 101, 100, 101, 104, 108, 122, 161, 501, 122}
 /** @brief Number of entries in the Ra table. */

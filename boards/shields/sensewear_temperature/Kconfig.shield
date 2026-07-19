@@ -1,4 +1,0 @@
-# SPDX-License-Identifier: Apache-2.0
-
-config SHIELD_SENSEWEAR_TEMPERATURE
-	def_bool $(shields_list_contains,sensewear_temperature)

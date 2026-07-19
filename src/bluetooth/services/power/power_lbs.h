@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file power_lbs.h
- * @brief SenseWear BLE Battery Service bridge.
+ * @brief SensWear BLE Battery Service bridge.
  *
- * @defgroup sensewear_ble_power SenseWear BLE power service
+ * @defgroup senswear_ble_power SensWear BLE power service
  * @ingroup io_interfaces
  * @{
  *
@@ -15,7 +15,7 @@
  * notifies connected clients when values change. The service does not call the
  * fuel-gauge or charger drivers directly.
  *
- * @section sensewear_ble_power_example Typical usage
+ * @section senswear_ble_power_example Typical usage
  *
  * @code{.c}
  * static void connected(struct bt_conn *conn, uint8_t err)

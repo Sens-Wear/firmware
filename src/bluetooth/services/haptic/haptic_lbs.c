@@ -74,7 +74,7 @@ static ssize_t update_pattern(struct bt_conn* conn,
 		amplitudes[i] = data[frame_offset + 2U];
 	}
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_HAPTIC)
+#if defined(CONFIG_SHIELD_SENSWEAR_HAPTIC)
 	rc = device_manager_haptic_start_rtp(amplitudes, hold_us, frame_count);
 #else
 	rc = -ENOTSUP;

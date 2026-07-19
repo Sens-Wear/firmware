@@ -2,7 +2,7 @@
  * Copyright (c) 2026
  * SPDX-License-Identifier: Apache-2.0
  *
- * Bring-up test for the SenseWear MTCH6102 touch driver on the sensewear_touch
+ * Bring-up test for the SensWear MTCH6102 touch driver on the senswear_touch
  * shield.
  *
  * The MTCH6102 sits on the daughter-board connector, so it owns the TPSM83102
@@ -13,7 +13,7 @@
  *   mtch6102_init()   - verify the shared bus, validate the rail, probe the
  *                       firmware ID, claim the daughter_if INT/SYNC lines, and
  *                       arm the INT interrupt
- *   mtch6102_config() - apply the SenseWear default configuration (NULL =
+ *   mtch6102_config() - apply the SensWear default configuration (NULL =
  *                       defaults); the I2C address register is never written
  *   mtch6102_start()  - power the rail; the INT line is already armed, so the
  *                       device begins asserting INT on touch
@@ -137,7 +137,7 @@ static bool start_mtch6102_event_consumer(void) {
 }
 
 int main(void) {
-	printk("\n=== MTCH6102 touch test (sensewear_touch shield) ===\n");
+	printk("\n=== MTCH6102 touch test (senswear_touch shield) ===\n");
 
 	/* The driver owns the VDD_DAUGHTER rail and validates its state during
 	 * init; start from a known-off rail so init powers it cleanly. */

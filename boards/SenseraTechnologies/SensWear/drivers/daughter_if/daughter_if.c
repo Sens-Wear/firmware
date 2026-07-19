@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file daughter_if.c
- * @brief SenseWear daughter-board connector GPIO ownership arbiter.
+ * @brief SensWear daughter-board connector GPIO ownership arbiter.
  * @details Aggregates the connector's four GPIO lines and grants exclusive
  *          control to the first driver that claims each line. Ownership is
  *          tracked in a per-line table guarded by a mutex (runtime arbitration).

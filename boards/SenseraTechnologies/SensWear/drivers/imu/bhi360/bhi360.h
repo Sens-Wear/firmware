@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file bhi360.h
- * @brief SenseWear BHI360 smart IMU driver API.
+ * @brief SensWear BHI360 smart IMU driver API.
  *
- * @defgroup sensewear_bhi360 SenseWear BHI360 smart IMU
+ * @defgroup senswear_bhi360 SensWear BHI360 smart IMU
  * @ingroup io_interfaces
  * @{
  *
@@ -22,7 +22,7 @@
  * context, calls bhi360_irq_handler(), and then consumes decoded sensor/meta
  * events posted by the parser callbacks.
  *
- * @section sensewear_bhi360_timestamp_semantics Timestamp semantics
+ * @section senswear_bhi360_timestamp_semantics Timestamp semantics
  *
  * Sensor payload timestamps come from the BHY2 FIFO parser callback data. The
  * @c time_stamp value in @c struct bhy2_fifo_parse_data_info is the BHI360
@@ -35,7 +35,7 @@
  * IRQ timestamps captured by the driver itself use rtc_get_timestamp_ms() and
  * therefore are milliseconds since the Unix epoch.
  *
- * @section sensewear_bhi360_event_model Event-driven architecture
+ * @section senswear_bhi360_event_model Event-driven architecture
  *
  * The BHI360 posts the following event types (see @ref bhi360_event_type):
  *
@@ -97,7 +97,7 @@
  *   notifications are consumed by the driver and not posted to the application
  *   queue.
  *
- * @section sensewear_bhi360_devicetree Devicetree representation
+ * @section senswear_bhi360_devicetree Devicetree representation
  *
  * The BHI360 is declared with its INT pins and SPI bus specification:
  *
@@ -122,7 +122,7 @@
  * Port 1, it is better suited as an output strobe. GPIO1 is better suited as an
  * MPU input for custom firmware triggers.
  *
- * @section sensewear_bhi360_lifecycle Driver lifecycle
+ * @section senswear_bhi360_lifecycle Driver lifecycle
  *
  * The expected lifecycle is:
  *
@@ -140,7 +140,7 @@
  * 6. Call bhi360_stop() to disable all configured virtual sensors and soft-reset
  *    the device.
  *
- * @section sensewear_bhi360_sensors Configured Sensors
+ * @section senswear_bhi360_sensors Configured Sensors
  *
  * The driver uses two requested sensor groups.
  * Sensor availability is firmware-dependent: bhi360_config() only enables
@@ -184,7 +184,7 @@
  *   complete), transfer cause, sensor framework, and reset notifications. Only
  *   routine spacer (FIFO padding) packets are filtered in the driver.
  *
- * @section sensewear_bhi360_example Typical usage
+ * @section senswear_bhi360_example Typical usage
  *
  * @code{.c}
  * // Initialize
@@ -298,7 +298,7 @@
  * (void)bhi360_stop_phy_sensor_streams();
  * @endcode
  *
- * @section sensewear_bhi360_isr Interrupt handling
+ * @section senswear_bhi360_isr Interrupt handling
  *
  * GPIO callbacks fire in ISR context and post bhi360_event_Irq to the event
  * queue. The application must call bhi360_irq_handler() from thread context to
@@ -448,7 +448,7 @@ enum bhi360_activity_event_type {
 
 /**
  * @brief Activity-class sensor sources supported by bhi360_config().
- * @details This is the supported subset for the current SenseWear BHI360
+ * @details This is the supported subset for the current SensWear BHI360
  *          firmware and parser implementation. Other BHY2 activity-capable
  *          virtual sensors may exist, but they are intentionally not exposed
  *          until the driver has parser and firmware support for them.
@@ -612,9 +612,9 @@ bool bhi360_init(void);
 bool bhi360_is_ready(void);
 
 /**
- * @brief Populate the SenseWear default BHI360 configuration.
+ * @brief Populate the SensWear default BHI360 configuration.
  * @details The default enables the supported low-rate activity-class sensors at
- *          their historical SenseWear rates and latencies. Physical high-rate
+ *          their historical SensWear rates and latencies. Physical high-rate
  *          streams are intentionally not enabled by this configuration.
  *
  * @param config Destination configuration. Must not be NULL. The returned
@@ -631,7 +631,7 @@ void bhi360_get_default_config(struct bhi360_config_t* config);
  *          Physical stream sensors (GAMERV_WU, ACC_WU, GYRO_WU) are not enabled
  *          here; call bhi360_start_phy_sensor_streams() later when high-rate data
  *          is needed.
- * @param config Configuration to apply, or NULL for the SenseWear defaults.
+ * @param config Configuration to apply, or NULL for the SensWear defaults.
  * @retval true Firmware upload and sensor configuration completed.
  * @retval false Upload or configuration failed.
  * @pre bhi360_init() has completed successfully.

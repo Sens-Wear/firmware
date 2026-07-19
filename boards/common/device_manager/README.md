@@ -1,7 +1,7 @@
-# SenseWear Device Manager
+# SensWear Device Manager
 
 The device manager is the single point that turns raw, per-driver device activity
-into stable, application-facing data streams. Each SenseWear device driver
+into stable, application-facing data streams. Each SensWear device driver
 (`bhi360`, `bq25180`, `bq27427`, `max30101`, `max30208`, `mtch6102`, `tpsm83102`,
 `rtc`) posts low-level events onto one shared queue. The device manager owns the
 one thread that drains that queue, drives each driver's interrupt handling, and
@@ -15,7 +15,7 @@ receives fully decoded, timestamped messages.
 - **Header / API:** [`device_manager.h`](device_manager.h)
 - **Message contract:** [`device_driver_messages.h`](device_driver_messages.h)
 - **Implementation:** [`device_manager.c`](device_manager.c)
-- **Build gate:** `CONFIG_SENSEWEAR_DEVICE_MANAGER`
+- **Build gate:** `CONFIG_SENSWEAR_DEVICE_MANAGER`
 
 ---
 
@@ -51,19 +51,19 @@ Key properties:
 
 | Stream (`device_manager_stream_*`) | Message type          | Producing device      | Build gate                          |
 | ---------------------------------- | --------------------- | --------------------- | ----------------------------------- |
-| `ImuQuaternion`                    | `imu_quaternion_msg_t`| BHI360                | `CONFIG_SENSEWEAR_BHI360_DRIVER`    |
-| `ImuAccel`                         | `imu_accel_msg_t`     | BHI360                | `CONFIG_SENSEWEAR_BHI360_DRIVER`    |
-| `ImuGyro`                          | `imu_gyro_msg_t`      | BHI360                | `CONFIG_SENSEWEAR_BHI360_DRIVER`    |
-| `ImuPedometer`                     | `imu_pedometer_msg_t` | BHI360                | `CONFIG_SENSEWEAR_BHI360_DRIVER`    |
-| `ImuGesture`                       | `imu_gesture_msg_t`   | BHI360                | `CONFIG_SENSEWEAR_BHI360_DRIVER`    |
-| `ImuActivity`                      | `imu_activity_msg_t`  | BHI360                | `CONFIG_SENSEWEAR_BHI360_DRIVER`    |
-| `Ppg`                              | `ppg_msg_t`           | MAX30101              | `CONFIG_SHIELD_SENSEWEAR_PPG`       |
-| `Temperature`                      | `temperature_msg_t`   | MAX30208              | `CONFIG_SHIELD_SENSEWEAR_TEMPERATURE` |
-| `Touch`                            | `touch_msg_t`         | MTCH6102              | `CONFIG_SHIELD_SENSEWEAR_TOUCH`     |
-| `TouchGesture`                     | `touch_gesture_msg_t` | MTCH6102              | `CONFIG_SHIELD_SENSEWEAR_TOUCH`     |
-| `Battery`                          | `battery_msg_t`       | BQ27427 (fuel gauge)  | `CONFIG_SENSEWEAR_BQ27427_DRIVER`   |
-| `Charger`                          | `charger_msg_t`       | BQ25180 (charger)     | `CONFIG_SENSEWEAR_BQ25180_DRIVER`   |
-| `Regulator`                        | `regulator_msg_t`     | TPSM83102 (regulator) | `CONFIG_SENSEWEAR_TPSM83102_DRIVER` |
+| `ImuQuaternion`                    | `imu_quaternion_msg_t`| BHI360                | `CONFIG_SENSWEAR_BHI360_DRIVER`    |
+| `ImuAccel`                         | `imu_accel_msg_t`     | BHI360                | `CONFIG_SENSWEAR_BHI360_DRIVER`    |
+| `ImuGyro`                          | `imu_gyro_msg_t`      | BHI360                | `CONFIG_SENSWEAR_BHI360_DRIVER`    |
+| `ImuPedometer`                     | `imu_pedometer_msg_t` | BHI360                | `CONFIG_SENSWEAR_BHI360_DRIVER`    |
+| `ImuGesture`                       | `imu_gesture_msg_t`   | BHI360                | `CONFIG_SENSWEAR_BHI360_DRIVER`    |
+| `ImuActivity`                      | `imu_activity_msg_t`  | BHI360                | `CONFIG_SENSWEAR_BHI360_DRIVER`    |
+| `Ppg`                              | `ppg_msg_t`           | MAX30101              | `CONFIG_SHIELD_SENSWEAR_PPG`       |
+| `Temperature`                      | `temperature_msg_t`   | MAX30208              | `CONFIG_SHIELD_SENSWEAR_TEMPERATURE` |
+| `Touch`                            | `touch_msg_t`         | MTCH6102              | `CONFIG_SHIELD_SENSWEAR_TOUCH`     |
+| `TouchGesture`                     | `touch_gesture_msg_t` | MTCH6102              | `CONFIG_SHIELD_SENSWEAR_TOUCH`     |
+| `Battery`                          | `battery_msg_t`       | BQ27427 (fuel gauge)  | `CONFIG_SENSWEAR_BQ27427_DRIVER`   |
+| `Charger`                          | `charger_msg_t`       | BQ25180 (charger)     | `CONFIG_SENSWEAR_BQ25180_DRIVER`   |
+| `Regulator`                        | `regulator_msg_t`     | TPSM83102 (regulator) | `CONFIG_SENSWEAR_TPSM83102_DRIVER` |
 
 A stream whose device is not built is simply never valid; registering an
 observer for it returns an error rather than crashing.
@@ -172,7 +172,7 @@ Two configuration surfaces:
 - **`device_manager_config(const struct device_manager_config_t*)`** — the
   high-level aggregate. It enables/stops IMU physical streams and PPG sampling
   at their requested FIFO cadences, and arms the RTC minute alarm when any
-  minute-driven cadence is requested. Passing `NULL` selects the SenseWear defaults. It rejects up
+  minute-driven cadence is requested. Passing `NULL` selects the SensWear defaults. It rejects up
   front (`-ENODEV`, no state change) if a requested feature's device is not
   ready.
 - **`device_manager_configure_device(device, const void* native_cfg)`** —
@@ -393,7 +393,7 @@ if (device_manager_stream_ready(device_manager_stream_Regulator)) {
 
 ### 7.4 Haptic control (haptic shield only)
 
-Available when `CONFIG_SHIELD_SENSEWEAR_HAPTIC` is set. The manager owns the
+Available when `CONFIG_SHIELD_SENSWEAR_HAPTIC` is set. The manager owns the
 playback buffer, so caller arrays need not outlive the call.
 
 ```c
@@ -441,7 +441,7 @@ return codes, and preconditions.
 
 ## 9. Build and testing
 
-- Enable the module with `CONFIG_SENSEWEAR_DEVICE_MANAGER`. Per-device
+- Enable the module with `CONFIG_SENSWEAR_DEVICE_MANAGER`. Per-device
   translators compile only when their driver's Kconfig is set, so the module is
   safe to build in any device/shield combination.
 - A standalone bring-up test lives in

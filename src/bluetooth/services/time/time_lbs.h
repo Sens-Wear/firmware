@@ -3,19 +3,19 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file time_lbs.h
- * @brief SenseWear BLE Current Time Service.
+ * @brief SensWear BLE Current Time Service.
  *
- * @defgroup sensewear_ble_time SenseWear BLE time service
+ * @defgroup senswear_ble_time SensWear BLE time service
  * @ingroup io_interfaces
  * @{
  *
  * The time BLE service implements the Bluetooth SIG Current Time Service (CTS).
  * A client may read or write Current Time. Writes are validated, converted to
- * Unix seconds, and forwarded to the device manager so the SenseWear RTC is the
+ * Unix seconds, and forwarded to the device manager so the SensWear RTC is the
  * single owner of wall-clock state. Local Time Information and Reference Time
  * Information are exposed as read-only standard characteristics.
  *
- * @section sensewear_ble_time_example Typical usage
+ * @section senswear_ble_time_example Typical usage
  *
  * @code{.c}
  * static void connected(struct bt_conn *conn, uint8_t err)

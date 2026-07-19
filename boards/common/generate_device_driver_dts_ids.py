@@ -106,7 +106,7 @@ def write_header(
     lines.extend(
         [
             "",
-            f"#define SENSEWEAR_GENERATED_DEVICE_COUNT ({len(nodes)}u)",
+            f"#define SENSWEAR_GENERATED_DEVICE_COUNT ({len(nodes)}u)",
             "",
             f"/* Source DTS: {dts_path.as_posix()} */",
             "",

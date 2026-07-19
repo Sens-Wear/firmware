@@ -5,7 +5,7 @@
  * @file bq25180_registers.h
  * @brief Register declarations for the BQ25180 register map.
  *
- * @defgroup sensewear_bq25180 SenseWear BQ25180 charger
+ * @defgroup senswear_bq25180 SensWear BQ25180 charger
  * @ingroup io_interfaces
  * @{
  *
@@ -19,62 +19,62 @@
 #include <stdint.h>
 
 /**
- * @brief SenseWear LiPo battery regulation-voltage default.
+ * @brief SensWear LiPo battery regulation-voltage default.
  * @details Maps to the VBAT_CTRL.VBATREG field after conversion from 4200 mV.
  */
 #define BQ25180_DEFAULT_BATTERY_VOLTAGE (4200u)
 
 /**
- * @brief SenseWear LiPo fast-charge-current default.
+ * @brief SensWear LiPo fast-charge-current default.
  * @details Maps to the ICHG_CTRL.ICHG field after conversion from 100 mA.
  */
 #define BQ25180_DEFAULT_BATTERY_CHARGE_CURRENT (100u)
 
 /**
- * @brief SenseWear charge-termination-current default.
+ * @brief SensWear charge-termination-current default.
  * @details Maps to CHARGECTRL0.ITERM as 20 percent of fast-charge current.
  */
 #define BQ25180_DEFAULT_TERMINATION_CURRENT (bq25180_termination_current_20Percent)
 
 /**
- * @brief SenseWear precharge-current default.
+ * @brief SensWear precharge-current default.
  * @details Maps to CHARGECTRL0.IPRECHARGE and selects the termination current.
  */
 #define BQ25180_DEFAULT_PRECHARGE_CURRENT (bq25180_precharge_current_Termination)
 
 /**
- * @brief SenseWear recharge-voltage threshold default.
+ * @brief SensWear recharge-voltage threshold default.
  * @details Maps to IC_CTRL.VRECHG and restarts charging 200 mV below VBATREG.
  */
 #define BQ25180_DEFAULT_RECHARGE_VOLTAGE_THRESHOLD (bq25180_recharge_voltage_threshold_200mV)
 
 /**
- * @brief SenseWear precharge-voltage threshold default.
+ * @brief SensWear precharge-voltage threshold default.
  * @details Maps to IC_CTRL.VLOWV and selects a 3.0 V threshold.
  */
 #define BQ25180_DEFAULT_PRECHARGE_VOLTAGE_THRESHOLD (bq25180_precharge_voltage_threshold_3V0)
 
 /**
- * @brief SenseWear battery-undervoltage threshold default.
+ * @brief SensWear battery-undervoltage threshold default.
  * @details Maps to CHARGECTRL1.BUVLO and selects a 2.8 V threshold.
  */
 #define BQ25180_DEFAULT_UVLO_THRESHOLD (bq25180_battery_UVLO_threshold_2V8)
 
 /**
- * @brief SenseWear battery discharge-current-limit default.
+ * @brief SensWear battery discharge-current-limit default.
  * @details Maps to CHARGECTRL1.BATOCP and disables battery OCP limiting.
  */
 #define BQ25180_DEFAULT_BATTERY_DISCHARGE_CURRENT_LIMIT \
 	(bq25180_battery_discharge_current_limit_Disabled)
 
 /**
- * @brief SenseWear input-current-limit default.
+ * @brief SensWear input-current-limit default.
  * @details Maps to TMR_ILIM.ILIM and selects 1100 mA.
  */
 #define BQ25180_DEFAULT_INPUT_CURRENT_LIMIT (bq25180_input_current_limit_1100mA)
 
 /**
- * @brief SenseWear input-voltage DPM threshold default.
+ * @brief SensWear input-voltage DPM threshold default.
  * @details Maps to CHARGECTRL0.VINDPM and selects 4.7 V.
  */
 #define BQ25180_DEFAULT_VINDPM_LEVEL (bq25180_VINDPM_level_4V7)

@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+
+shield:
+  name: senswear_ppg
+  full_name: SensWear PPG Daughter Board
+  vendor: senswear
+  supported_features:
+    - sensor

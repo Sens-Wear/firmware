@@ -3,18 +3,18 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file sys_spi.c
- * @brief SenseWear shared system SPI ownership-wrapper implementation.
+ * @brief SensWear shared system SPI ownership-wrapper implementation.
  *
- * Each `sensewear,sys-spi` instance maintains a recursive mutex, the current
+ * Each `senswear,sys-spi` instance maintains a recursive mutex, the current
  * consumer configuration pointer, the owning thread, and the balanced lock
  * depth. Transfer calls verify ownership and pass the consumer's complete
  * struct spi_config to the wrapped Zephyr SPI controller.
  *
  * Public design principles, the locking contract, devicetree examples, and
- * typical usage are documented in @ref sensewear_sys_spi.
+ * typical usage are documented in @ref senswear_sys_spi.
  */
 
-#define DT_DRV_COMPAT sensewear_sys_spi
+#define DT_DRV_COMPAT senswear_sys_spi
 
 #include "sys_spi.h"
 
@@ -228,7 +228,7 @@ static int sys_spi_init(const struct device *dev)
 	};                                                                         \
 	DEVICE_DT_INST_DEFINE(inst, sys_spi_init, NULL,                            \
 			      &sys_spi_data_##inst, &sys_spi_config_##inst,        \
-			      POST_KERNEL, CONFIG_SENSEWEAR_SYS_SPI_INIT_PRIORITY, \
+			      POST_KERNEL, CONFIG_SENSWEAR_SYS_SPI_INIT_PRIORITY, \
 			      NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(SYS_SPI_INIT)

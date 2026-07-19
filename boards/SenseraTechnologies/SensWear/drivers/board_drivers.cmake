@@ -1,4 +1,4 @@
-# SenseWear board driver aggregation.
+# SensWear board driver aggregation.
 #
 # Each driver type provides a <type>_drivers.cmake that appends its enabled
 # sources and public include directories to BOARD_DRIVER_SOURCES and

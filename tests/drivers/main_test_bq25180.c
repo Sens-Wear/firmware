@@ -77,8 +77,8 @@ static void bq25180_event_consumer_thread(void* a, void* b, void* c) {
 
 static bool start_bq25180_event_consumer(void) {
 	if (device_driver_event_get_queue() == NULL) {
-#ifdef CONFIG_SENSEWEAR_DEVICE_DRIVER_EVENTS_MAX
-		int ret = device_driver_event_init(CONFIG_SENSEWEAR_DEVICE_DRIVER_EVENTS_MAX);
+#ifdef CONFIG_SENSWEAR_DEVICE_DRIVER_EVENTS_MAX
+		int ret = device_driver_event_init(CONFIG_SENSWEAR_DEVICE_DRIVER_EVENTS_MAX);
 		if (ret != 0 && ret != -EALREADY) {
 			printk("device_driver_event_init() failed: %d\n", ret);
 			return false;

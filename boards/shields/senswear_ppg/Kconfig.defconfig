@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+
+if SHIELD_SENSWEAR_PPG
+
+config I2C
+	default y
+
+config SENSWEAR_SYS_I2C
+	default y
+
+config GPIO
+	default y
+
+config SENSOR
+	default y
+
+config REGULATOR
+	default y
+
+config SENSWEAR_TPSM83102_DRIVER
+	default y
+
+config SENSWEAR_DAUGHTER_IF_DRIVER
+	default y
+
+config SENSWEAR_DEVICE_DRIVER_EVENTS
+	default y
+
+endif # SHIELD_SENSWEAR_PPG

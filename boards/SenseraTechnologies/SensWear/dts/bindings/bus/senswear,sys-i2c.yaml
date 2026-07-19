@@ -1,0 +1,20 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  SensWear shared system I2C bus (SYS_I2C).
+
+  A thin ownership-locking wrapper around a Nordic I2C controller. A consumer takes
+  ownership of the bus for an atomic, multi-transfer sequence; on acquisition the bus
+  is reconfigured for that owner. Physical devices remain standard children of the
+  wrapped I2C controller and use their `reg` property as the target address.
+
+compatible: "senswear,sys-i2c"
+
+include: base.yaml
+
+properties:
+  controller:
+    type: phandle
+    required: true
+    description: Underlying Nordic I2C controller this bus wraps (e.g. &i2c21).

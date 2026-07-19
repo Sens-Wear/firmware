@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file tpsm83102.c
- * @brief SenseWear TPSM83102 regulator driver implementation.
+ * @brief SensWear TPSM83102 regulator driver implementation.
  * @details The driver remains a Zephyr regulator device so existing consumers
  *          can use regulator_enable(), regulator_disable(), and voltage APIs.
- *          All register sequences use the SenseWear shared-I2C ownership
+ *          All register sequences use the SensWear shared-I2C ownership
  *          wrapper. Private register helpers require the caller to own the bus.
  */
 

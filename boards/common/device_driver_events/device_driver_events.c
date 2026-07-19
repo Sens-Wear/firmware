@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file device_driver_events.c
- * @brief SenseWear centralized device event manager implementation.
+ * @brief SensWear centralized device event manager implementation.
  *
  * The manager owns a single Zephyr message queue. Producers copy events into it
  * (non-blocking, ISR-safe); the lone consumer copies them out via

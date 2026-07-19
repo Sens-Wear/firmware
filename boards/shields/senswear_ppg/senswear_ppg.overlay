@@ -1,0 +1,21 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	aliases {
+		senswear-daughter = &max30101;
+		senswear-ppg = &max30101;
+	};
+};
+
+&sys_i2c_peripheral {
+	max30101: max30101@57 {
+		compatible = "senswear,daughter-i2c-device", "i2c-device";
+		status = "okay";
+		reg = <0x57>;
+		label = "MAX30101";
+		/* Powered from the shared daughter-connector rail (VDD_DAUGHTER). */
+		vin-supply = <&tpsm83102>;
+	};
+};

@@ -1,0 +1,37 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: Apache-2.0
+
+description: SensWear M95P serial page EEPROM
+
+compatible: "senswear,m95p"
+
+include: spi-device.yaml
+
+properties:
+  cs-gpios:
+    type: phandle-array
+    required: true
+    description: |
+      Chip-select GPIO owned and driven by this driver (P2.03 M95P_CS#).
+      The SPI controller does not manage chip-select for this device; the
+      driver asserts and deasserts this line manually around each transfer.
+
+  size:
+    type: int
+    required: true
+    description: Memory size in bytes.
+
+  address-width:
+    type: int
+    required: true
+    description: Memory address width in bits.
+
+  pagesize:
+    type: int
+    required: true
+    description: Programmable page size in bytes.
+
+  timeout:
+    type: int
+    required: true
+    description: Device operation timeout in milliseconds.

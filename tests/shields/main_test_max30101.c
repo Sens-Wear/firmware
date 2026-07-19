@@ -2,7 +2,7 @@
  * Copyright (c) 2026
  * SPDX-License-Identifier: Apache-2.0
  *
- * Bring-up test for the SenseWear MAX30101 PPG driver on the sensewear_ppg
+ * Bring-up test for the SensWear MAX30101 PPG driver on the senswear_ppg
  * shield.
  *
  * The MAX30101 sits on the daughter-board connector, so the sensor's TPSM83102
@@ -164,7 +164,7 @@ static bool start_max30101_event_consumer(void) {
 }
 
 int main(void) {
-	printk("\n=== MAX30101 PPG test (sensewear_ppg shield) ===\n");
+	printk("\n=== MAX30101 PPG test (senswear_ppg shield) ===\n");
 
 	const struct device* const regulator = DEVICE_DT_GET(DT_NODELABEL(tpsm83102));
 	regulator_disable(regulator);

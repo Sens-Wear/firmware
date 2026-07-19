@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file haptic_lbs.h
- * @brief SenseWear custom BLE haptic service.
+ * @brief SensWear custom BLE haptic service.
  *
- * @defgroup sensewear_ble_haptic SenseWear BLE haptic service
+ * @defgroup senswear_ble_haptic SensWear BLE haptic service
  * @ingroup io_interfaces
  * @{
  *
@@ -19,7 +19,7 @@
  * - bytes 2-3: frame count, little-endian
  * - repeated frames: uint16 duration_ms, uint8 amplitude
  *
- * @section sensewear_ble_haptic_example Typical usage
+ * @section senswear_ble_haptic_example Typical usage
  *
  * @code{.c}
  * static void connected(struct bt_conn *conn, uint8_t err)
@@ -72,7 +72,7 @@ extern "C" {
 /** Current haptic pattern packet version accepted by the service. */
 #define HAPTIC_LBS_PATTERN_VERSION 1U
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_HAPTIC)
+#if defined(CONFIG_SHIELD_SENSWEAR_HAPTIC)
 /** Maximum number of frames accepted by one haptic pattern write. */
 #define HAPTIC_LBS_MAX_FRAMES DEVICE_MANAGER_HAPTIC_RTP_MAX
 #else

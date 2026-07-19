@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file bhi360.c
- * @brief SenseWear BHI360 smart IMU driver implementation.
+ * @brief SensWear BHI360 smart IMU driver implementation.
  *
  * @section bhi360_impl_overview Implementation Overview
  *
@@ -52,7 +52,7 @@
  * @section bhi360_impl_enabled_sensors Enabled Sensors
  *
  * bhi360_config() enables the activity-class virtual sensors requested by
- * struct bhi360_config_t. Passing NULL selects the SenseWear default list:
+ * struct bhi360_config_t. Passing NULL selects the SensWear default list:
  * motion/no-motion, wrist gesture/wear, wear-aware activity recognition, step
  * counter, and step detector. High-rate physical streams (rotation vector,
  * acceleration, gyroscope) are enabled later through
@@ -136,7 +136,7 @@ LOG_MODULE_REGISTER(bhi360, CONFIG_LOG_DEFAULT_LEVEL);
  * @brief Sensor configuration descriptor used during enable/disable passes.
  * @details Each entry binds a BHY2 virtual-sensor ID to a desired output rate,
  *          latency budget, a human-readable name for logging, and the FIFO
- *          parser callback that translates raw BHY2 packets into SenseWear
+ *          parser callback that translates raw BHY2 packets into SensWear
  *          driver events.
  */
 struct bhi360_sensor_enable {
@@ -642,7 +642,7 @@ static const struct bhi360_activity_sensor_descriptor bhi360_activity_sensor_des
 	 parse_scalar_event},
 };
 
-/** SenseWear default activity-class sensor configuration. */
+/** SensWear default activity-class sensor configuration. */
 static const struct bhi360_activity_sensor_config_t bhi360_default_activity_sensors[] = {
 	/* Report latency 0 on every low-rate event sensor: these are on-change/event
 	 * sensors, so a zero max-report-latency makes the firmware raise a host

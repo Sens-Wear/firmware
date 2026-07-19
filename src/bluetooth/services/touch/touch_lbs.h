@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file touch_lbs.h
- * @brief SenseWear custom BLE touch and touch-configuration services.
+ * @brief SensWear custom BLE touch and touch-configuration services.
  *
- * @defgroup sensewear_ble_touch SenseWear BLE touch service
+ * @defgroup senswear_ble_touch SensWear BLE touch service
  * @ingroup io_interfaces
  * @{
  *
@@ -14,14 +14,14 @@
  * own a service thread. Runtime acquisition control is exposed through a custom
  * configuration service that forwards writes to the device manager.
  *
- * @section sensewear_ble_touch_payloads Payload units
+ * @section senswear_ble_touch_payloads Payload units
  *
  * Touch timestamps are Unix time in microseconds. X and Y are the controller
  * coordinates reported by the MTCH6102 driver. Gesture values are normalized
  * device-manager gesture identifiers, while @c gesture_state preserves the raw
  * MTCH6102 gesture-state register byte.
  *
- * @section sensewear_ble_touch_example Typical usage
+ * @section senswear_ble_touch_example Typical usage
  *
  * @code{.c}
  * static void connected(struct bt_conn *conn, uint8_t err)

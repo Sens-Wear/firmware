@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file lp5562.h
- * @brief SenseWear LP5562 four-channel LED-controller API.
+ * @brief SensWear LP5562 four-channel LED-controller API.
  *
- * @defgroup sensewear_lp5562 SenseWear LP5562 LED controller
+ * @defgroup senswear_lp5562 SensWear LP5562 LED controller
  * @ingroup io_interfaces
  * @{
  *
@@ -19,7 +19,7 @@
  * through a GPIO_DT_SPEC. The device is resolved through DT_NODELABEL(lp5562),
  * so the node must use that label.
  *
- * @section sensewear_lp5562_organization Source organization
+ * @section senswear_lp5562_organization Source organization
  *
  * The driver is split into three headers, mirroring the bq25180 / bq27427
  * layout:
@@ -28,7 +28,7 @@
  *   instruction types and builders (the LED PWM programming model).
  * - @ref lp5562.h (this file) — the public API.
  *
- * @section sensewear_lp5562_model Singleton driver
+ * @section senswear_lp5562_model Singleton driver
  *
  * The board has exactly one LP5562, so the driver is a file-scope singleton
  * inside @c lp5562.c that owns the devicetree I2C/GPIO specs and the cached

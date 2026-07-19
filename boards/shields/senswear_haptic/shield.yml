@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+
+shield:
+  name: senswear_haptic
+  full_name: SensWear Haptic Daughter Board
+  vendor: senswear
+  supported_features:
+    - haptics

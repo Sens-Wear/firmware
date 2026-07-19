@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config SHIELD_SENSWEAR_TOUCH
+	def_bool $(shields_list_contains,senswear_touch)

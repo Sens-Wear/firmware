@@ -1,0 +1,21 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  SensWear shared system SPI bus (SYS_SPI).
+
+  A thin ownership-locking wrapper around a Nordic SPI controller. A consumer takes
+  ownership of the bus for an atomic, multi-transfer sequence; the owner's SPI config
+  (frequency, mode, chip-select) is applied on each transfer. Physical devices remain
+  standard children of the wrapped SPI controller, with standard `reg`,
+  `spi-max-frequency`, and controller `cs-gpios` metadata.
+
+compatible: "senswear,sys-spi"
+
+include: base.yaml
+
+properties:
+  controller:
+    type: phandle
+    required: true
+    description: Underlying Nordic SPI controller this bus wraps (e.g. &spi00).

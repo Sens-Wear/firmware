@@ -3,18 +3,18 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file sys_i2c.c
- * @brief SenseWear shared system I2C ownership-wrapper implementation.
+ * @brief SensWear shared system I2C ownership-wrapper implementation.
  *
  * The implementation maintains one mutex and one current-owner pointer for each
- * `sensewear,sys-i2c` instance. Acquiring ownership reconfigures the underlying
+ * `senswear,sys-i2c` instance. Acquiring ownership reconfigures the underlying
  * Zephyr I2C controller with the requesting consumer's speed and address mode.
  * Transfer functions reject calls from any spec other than the current owner.
  *
  * Public design principles, the locking contract, devicetree examples, and
- * typical usage are documented in @ref sensewear_sys_i2c.
+ * typical usage are documented in @ref senswear_sys_i2c.
  */
 
-#define DT_DRV_COMPAT sensewear_sys_i2c
+#define DT_DRV_COMPAT senswear_sys_i2c
 
 #include "sys_i2c.h"
 
@@ -246,7 +246,7 @@ static int sys_i2c_init(const struct device *dev)
 	};                                                                         \
 	DEVICE_DT_INST_DEFINE(inst, sys_i2c_init, NULL,                            \
 			      &sys_i2c_data_##inst, &sys_i2c_config_##inst,        \
-			      POST_KERNEL, CONFIG_SENSEWEAR_SYS_I2C_INIT_PRIORITY, \
+			      POST_KERNEL, CONFIG_SENSWEAR_SYS_I2C_INIT_PRIORITY, \
 			      NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(SYS_I2C_INIT)

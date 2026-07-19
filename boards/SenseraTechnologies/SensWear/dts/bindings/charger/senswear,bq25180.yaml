@@ -1,0 +1,16 @@
+description: SensWear BQ25180 charger
+
+compatible: "senswear,bq25180"
+
+include: i2c-device.yaml
+
+properties:
+  int-gpios:
+    type: phandle-array
+    required: true
+    description: Active-low charger interrupt GPIO.
+
+  kill-gpios:
+    type: phandle-array
+    required: true
+    description: Power-hold control GPIO.

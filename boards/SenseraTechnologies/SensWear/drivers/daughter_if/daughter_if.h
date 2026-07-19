@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file daughter_if.h
- * @brief SenseWear daughter-board connector GPIO ownership arbiter.
+ * @brief SensWear daughter-board connector GPIO ownership arbiter.
  *
- * @defgroup sensewear_daughter_if SenseWear daughter-board interface
+ * @defgroup senswear_daughter_if SensWear daughter-board interface
  * @ingroup io_interfaces
  * @{
  *
@@ -16,7 +16,7 @@
  * lines differently, this module @b aggregates the connector lines in one place
  * and arbitrates which driver controls each line.
  *
- * @section sensewear_daughter_if_model Ownership model
+ * @section senswear_daughter_if_model Ownership model
  *
  * Each line has a single owner slot. A driver calls daughter_if_gpio_claim() for
  * the line it wants and receives the line's @ref gpio_dt_spec to configure and
@@ -29,7 +29,7 @@
  * it naturally supports hot daughter-board changes and probe-order independence.
  * The check is serialized with a mutex and is safe to call from thread context.
  *
- * @section sensewear_daughter_if_usage Typical usage
+ * @section senswear_daughter_if_usage Typical usage
  *
  * @code{.c}
  * const struct gpio_dt_spec *irq = daughter_if_gpio_claim(daughter_if_gpio_0);

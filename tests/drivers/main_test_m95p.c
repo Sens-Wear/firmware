@@ -9,7 +9,7 @@
  * round-trips using the POSIX file API (open/write/read/close): one text file
  * and one binary file. Finally it prints the busy/ready status every 2 seconds.
  *
- * The filesystem is auto-mounted at boot (CONFIG_SENSEWEAR_M95P_DISK_AUTOMOUNT),
+ * The filesystem is auto-mounted at boot (CONFIG_SENSWEAR_M95P_DISK_AUTOMOUNT),
  * and POSIX file operations are provided by the POSIX layer (CONFIG_POSIX_API);
  * see prj.conf. Swap this file in for src/main.c (see tests/drivers/README.md)
  * and flash to exercise the driver on hardware.
@@ -297,7 +297,7 @@ int main(void) {
 	 * system init, so re-mounting would just log an "already mounted" error.
 	 * Only mount explicitly when automount is disabled.
 	 */
-#if !defined(CONFIG_SENSEWEAR_M95P_DISK_AUTOMOUNT)
+#if !defined(CONFIG_SENSWEAR_M95P_DISK_AUTOMOUNT)
 	int rc = m95p_fs_mount();
 
 	if (rc != 0) {

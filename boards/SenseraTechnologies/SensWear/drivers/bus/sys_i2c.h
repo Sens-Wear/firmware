@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file sys_i2c.h
- * @brief Ownership-locking access to the SenseWear shared system I2C bus.
+ * @brief Ownership-locking access to the SensWear shared system I2C bus.
  *
- * @defgroup sensewear_sys_i2c SenseWear shared system I2C bus
+ * @defgroup senswear_sys_i2c SensWear shared system I2C bus
  * @ingroup io_interfaces
  * @{
  *
- * The SenseWear main board routes several devices through one physical I2C
+ * The SensWear main board routes several devices through one physical I2C
  * controller. Device drivers may require different controller settings and may
  * perform multi-transfer operations that must not be interleaved with transfers
  * from another device.
@@ -32,7 +32,7 @@
  * configuration stored inside that object identify the consumer. In particular,
  * the address of `spec->config` is used as the ownership token.
  *
- * @section sensewear_sys_i2c_contract Locking contract
+ * @section senswear_sys_i2c_contract Locking contract
  *
  * A high-level driver operation must:
  *
@@ -56,13 +56,13 @@
  * the wrapper. Other threads block on the mutex until the complete nested lock
  * chain is released.
  *
- * @section sensewear_sys_i2c_devicetree Devicetree representation
+ * @section senswear_sys_i2c_devicetree Devicetree representation
  *
  * The shared wrapper references the physical controller:
  *
  * @code{.dts}
  * sys_i2c: sys_i2c {
- *     compatible = "sensewear,sys-i2c";
+ *     compatible = "senswear,sys-i2c";
  *     controller = <&i2c21>;
  *     status = "okay";
  * };
@@ -84,7 +84,7 @@
  * Board drivers construct a sys_i2c spec to enforce ownership while performing
  * transfers through the wrapper.
  *
- * @section sensewear_sys_i2c_example Typical usage
+ * @section senswear_sys_i2c_example Typical usage
  *
  * The DT spec must have static or otherwise stable lifetime because its embedded
  * configuration object is the ownership token.
@@ -139,8 +139,8 @@
  *
  */
 
-#ifndef SENSEWEAR_SYS_I2C_H_
-#define SENSEWEAR_SYS_I2C_H_
+#ifndef SENSWEAR_SYS_I2C_H_
+#define SENSWEAR_SYS_I2C_H_
 
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
@@ -165,7 +165,7 @@ struct sys_i2c_config {
 
 /** Devicetree-derived connection between a consumer and the shared bus. */
 struct sys_i2c_dt_spec {
-	/** The `sensewear,sys-i2c` wrapper device. */
+	/** The `senswear,sys-i2c` wrapper device. */
 	const struct device *bus;
 	/** Consumer settings whose address also serves as the ownership token. */
 	struct sys_i2c_config config;
@@ -175,7 +175,7 @@ struct sys_i2c_dt_spec {
  * @brief Construct a shared-I2C specification from a consumer node.
  *
  * The node must be a child of the physical system I2C controller and provide
- * the standard `reg` property. All current SenseWear system-I2C consumers use
+ * the standard `reg` property. All current SensWear system-I2C consumers use
  * standard-speed, 7-bit addressing.
  *
  * @param node Devicetree node identifier for the consumer.
@@ -286,4 +286,4 @@ int sys_i2c_write_read(const struct sys_i2c_dt_spec *spec,
 
 /** @} */
 
-#endif /* SENSEWEAR_SYS_I2C_H_ */
+#endif /* SENSWEAR_SYS_I2C_H_ */

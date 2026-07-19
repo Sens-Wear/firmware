@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file device_driver_events.h
- * @brief SenseWear centralized device event manager.
+ * @brief SensWear centralized device event manager.
  *
- * @defgroup sensewear_device_driver_events SenseWear device driver event manager
+ * @defgroup senswear_device_driver_events SensWear device driver event manager
  * @ingroup io_interfaces
  * @{
  *
- * Many SenseWear devices (charger, fuel gauge, IMU, daughter board, ...) signal
+ * Many SensWear devices (charger, fuel gauge, IMU, daughter board, ...) signal
  * asynchronous activity from interrupt handlers. Rather than giving each device
  * its own thread, they all publish into one shared event queue that a single
  * consumer thread drains and dispatches. This keeps device-event handling in one
@@ -27,7 +27,7 @@
  *                   dispatch by device_id / event_id
  * @endcode
  *
- * @section sensewear_device_driver_events_model Ownership model
+ * @section senswear_device_driver_events_model Ownership model
  *
  * Events are delivered @b by @b value: device_driver_event_wait() copies the next event
  * into a caller-provided ::device_driver_event_t. There is no allocation to release and
@@ -41,7 +41,7 @@
  * buffers must not be passed through @ref device_driver_event_t.p_param. Small payloads
  * should be carried inline in @ref device_driver_event_t.v_param instead.
  *
- * @section sensewear_device_driver_events_context Execution context
+ * @section senswear_device_driver_events_context Execution context
  *
  * Producers may run in either thread or interrupt context:
  * - device_driver_event_post() is for thread context.
@@ -51,7 +51,7 @@
  * assumes exactly one consumer thread; the queue is otherwise multi-producer and
  * thread-/ISR-safe.
  *
- * @section sensewear_device_driver_events_ids Device identifiers
+ * @section senswear_device_driver_events_ids Device identifiers
  *
  * The @ref device_driver_event_t.device_id values come from @c device_driver_dts_ids.h,
  * which is @b generated at build time from the merged Zephyr devicetree by
@@ -67,7 +67,7 @@
  * For a node label @c foo the macro is named @c FOO_DEVICE_ID: the label is upper-cased
  * and every non-alphanumeric character is replaced with an underscore. IDs are assigned
  * sequentially starting at @c 1u in DTS order; @c DEVICE_ID_INVALID is @c 0u and
- * @c SENSEWEAR_GENERATED_DEVICE_COUNT holds the total. For example a DTS node
+ * @c SENSWEAR_GENERATED_DEVICE_COUNT holds the total. For example a DTS node
  * @c sys_spi:&nbsp;spi&nbsp;{&nbsp;compatible&nbsp;=&nbsp;"...";&nbsp;} yields
  * @c SYS_SPI_DEVICE_ID.
  *
@@ -77,20 +77,20 @@
  * generated @c <LABEL>_DEVICE_ID macro; never hard-code the numeric value and never
  * persist it off-device (for example in stored records or wire protocols).
  *
- * @section sensewear_device_driver_events_lifecycle Lifecycle
+ * @section senswear_device_driver_events_lifecycle Lifecycle
  *
  * device_driver_event_init() must be called once during start-up to create the backing
  * queue before any event is posted or awaited. device_driver_event_get_queue() exposes
  * the underlying Zephyr message queue for advanced integration (for example
  * adding it to a @c k_poll set).
  *
- * @section sensewear_device_driver_events_example Typical usage
+ * @section senswear_device_driver_events_example Typical usage
  *
- * Initialization, once at start-up (automatic if CONFIG_SENSEWEAR_DEVICE_DRIVER_EVENTS_AUTO_INIT is
+ * Initialization, once at start-up (automatic if CONFIG_SENSWEAR_DEVICE_DRIVER_EVENTS_AUTO_INIT is
  * enabled):
  *
  * @code{.c}
- * device_driver_event_init(CONFIG_SENSEWEAR_DEVICE_DRIVER_EVENTS_MAX);
+ * device_driver_event_init(CONFIG_SENSWEAR_DEVICE_DRIVER_EVENTS_MAX);
  * @endcode
  *
  * Producer side, from a device's deferred interrupt handler:
@@ -159,7 +159,7 @@ struct device_driver_event_t {
  *
  * Must be called once, before any other operation, to create the shared queue.
  * This is typically called automatically at system startup if
- * CONFIG_SENSEWEAR_DEVICE_DRIVER_EVENTS_AUTO_INIT is enabled.
+ * CONFIG_SENSWEAR_DEVICE_DRIVER_EVENTS_AUTO_INIT is enabled.
  *
  * @param max_events Maximum number of events the queue can hold at once.
  * @retval 0 The manager was initialized.

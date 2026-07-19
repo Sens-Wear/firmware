@@ -2,7 +2,7 @@
  * rtc.c
  *
  * @file rtc.c
- * @brief SenseWear software RTC implementation.
+ * @brief SensWear software RTC implementation.
  * @details The driver is a board-level singleton facade over the kernel wall
  *          clock (@ref SYS_CLOCK_REALTIME). Setting the time programs the wall
  *          clock through sys_clock_settime() so POSIX time() agrees; reading it
@@ -481,12 +481,12 @@ bool rtc_init(void) {
 	return true;
 }
 
-#if defined(CONFIG_SENSEWEAR_RTC_AUTO_INIT)
+#if defined(CONFIG_SENSWEAR_RTC_AUTO_INIT)
 /** System-init shim so the wall clock is correct before application code runs. */
 static int rtc_sys_init(void) {
 	(void) rtc_init();
 	return 0;
 }
 
-SYS_INIT(rtc_sys_init, APPLICATION, CONFIG_SENSEWEAR_RTC_INIT_PRIORITY);
-#endif /* CONFIG_SENSEWEAR_RTC_AUTO_INIT */
+SYS_INIT(rtc_sys_init, APPLICATION, CONFIG_SENSWEAR_RTC_INIT_PRIORITY);
+#endif /* CONFIG_SENSWEAR_RTC_AUTO_INIT */

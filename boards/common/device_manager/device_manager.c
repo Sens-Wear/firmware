@@ -3,16 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file device_manager.c
- * @brief SenseWear device manager implementation.
+ * @brief SensWear device manager implementation.
  * @details Single publisher over per-message-type zbus streams. A consumer
  *          thread drains the shared device-event queue, drives each device's
  *          interrupt handler, and translates decoded driver events into the
- *          stable @ref sensewear_device_driver_messages contract, publishing each
+ *          stable @ref senswear_device_driver_messages contract, publishing each
  *          by value onto its channel.
  *
  * This translation unit is the one place that includes both the device-driver
  * headers and the message contract; it is compiled only when
- * CONFIG_SENSEWEAR_DEVICE_MANAGER is set, so isolated device/shield test images
+ * CONFIG_SENSWEAR_DEVICE_MANAGER is set, so isolated device/shield test images
  * do not pull it in. Per-device translators are guarded by the same Kconfig
  * symbols that gate the drivers themselves.
  */
@@ -30,31 +30,31 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
 
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 #include "bhi360.h"
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_HAPTIC)
+#if defined(CONFIG_SHIELD_SENSWEAR_HAPTIC)
 #include "drv2605.h"
 #endif
-#if defined(CONFIG_SENSEWEAR_BQ25180_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ25180_DRIVER)
 #include "bq25180.h"
 #endif
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 #include "bq27427.h"
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 #include "max30101.h"
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 #include "max30208.h"
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH)
+#if defined(CONFIG_SHIELD_SENSWEAR_TOUCH)
 #include "mtch6102.h"
 #endif
-#if defined(CONFIG_SENSEWEAR_TPSM83102_DRIVER)
+#if defined(CONFIG_SENSWEAR_TPSM83102_DRIVER)
 #include "tpsm83102.h"
 #endif
-#if defined(CONFIG_SENSEWEAR_RTC_DRIVER)
+#if defined(CONFIG_SENSWEAR_RTC_DRIVER)
 #include "rtc.h"
 #endif
 
@@ -161,10 +161,10 @@ static void device_manager_publish(const struct zbus_channel* chan, const void* 
 /* ------------------------------------------------------------------------- */
 
 static struct device_manager_config_t device_manager_config_state;
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 static uint16_t device_manager_gauge_minutes; /**< RTC minutes elapsed since last gauge refresh. */
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 static uint16_t
 	device_manager_temp_minutes; /**< RTC minutes elapsed since last temperature read. */
 #endif
@@ -189,43 +189,43 @@ static bool device_manager_device_enum_valid(enum device_manager_device_type dev
 static bool device_manager_device_supported(enum device_manager_device_type device) {
 	switch (device) {
 	case device_manager_device_Bhi360:
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 		return true;
 #else
 		return false;
 #endif
 	case device_manager_device_Bq25180:
-#if defined(CONFIG_SENSEWEAR_BQ25180_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ25180_DRIVER)
 		return true;
 #else
 		return false;
 #endif
 	case device_manager_device_Bq27427:
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 		return true;
 #else
 		return false;
 #endif
 	case device_manager_device_Max30101:
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 		return true;
 #else
 		return false;
 #endif
 	case device_manager_device_Max30208:
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 		return true;
 #else
 		return false;
 #endif
 	case device_manager_device_Mtch6102:
-#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH)
+#if defined(CONFIG_SHIELD_SENSWEAR_TOUCH)
 		return true;
 #else
 		return false;
 #endif
 	case device_manager_device_Tpsm83102:
-#if defined(CONFIG_SENSEWEAR_TPSM83102_DRIVER)
+#if defined(CONFIG_SENSWEAR_TPSM83102_DRIVER)
 		return true;
 #else
 		return false;
@@ -238,44 +238,44 @@ static bool device_manager_device_supported(enum device_manager_device_type devi
 static bool device_manager_device_ready(enum device_manager_device_type device) {
 	switch (device) {
 	case device_manager_device_Bhi360:
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 		return bhi360_is_ready();
 #else
 		return false;
 #endif
 	case device_manager_device_Bq25180:
-#if defined(CONFIG_SENSEWEAR_BQ25180_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ25180_DRIVER)
 		return bq25180_is_ready();
 #else
 		return false;
 #endif
 	case device_manager_device_Bq27427:
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 		return bq27427_is_ready();
 #else
 		return false;
 #endif
 	case device_manager_device_Max30101:
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 		return max30101_is_ready();
 #else
 		return false;
 #endif
 	case device_manager_device_Max30208:
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 		return max30208_is_ready();
 #else
 		return false;
 #endif
 	case device_manager_device_Mtch6102:
-#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH)
+#if defined(CONFIG_SHIELD_SENSWEAR_TOUCH)
 		return mtch6102_is_ready();
 #else
 		return false;
 #endif
 	case device_manager_device_Tpsm83102:
-#if defined(CONFIG_SENSEWEAR_TPSM83102_DRIVER)
-		/* Devicetree-instantiated regulator: no SenseWear init/config step, so
+#if defined(CONFIG_SENSWEAR_TPSM83102_DRIVER)
+		/* Devicetree-instantiated regulator: no SensWear init/config step, so
 		 * readiness is just the Zephyr device being ready. */
 		return device_is_ready(DEVICE_DT_GET(DT_NODELABEL(tpsm83102)));
 #else
@@ -427,42 +427,42 @@ int device_manager_get_default_device_config(enum device_manager_device_type dev
 
 	switch (device) {
 	case device_manager_device_Bhi360:
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 		bhi360_get_default_config((struct bhi360_config_t*) config);
 		return 0;
 #else
 		return -ENOTSUP;
 #endif
 	case device_manager_device_Bq25180:
-#if defined(CONFIG_SENSEWEAR_BQ25180_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ25180_DRIVER)
 		bq25180_get_default_lipo_usb_charger_config((struct bq25180_config_t*) config);
 		return 0;
 #else
 		return -ENOTSUP;
 #endif
 	case device_manager_device_Bq27427:
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 		bq27427_get_default_config((struct bq27427_config_t*) config);
 		return 0;
 #else
 		return -ENOTSUP;
 #endif
 	case device_manager_device_Max30101:
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 		max30101_get_default_config((struct max30101_config_t*) config);
 		return 0;
 #else
 		return -ENOTSUP;
 #endif
 	case device_manager_device_Max30208:
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 		max30208_get_default_config((struct max30208_config_t*) config);
 		return 0;
 #else
 		return -ENOTSUP;
 #endif
 	case device_manager_device_Mtch6102:
-#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH)
+#if defined(CONFIG_SHIELD_SENSWEAR_TOUCH)
 		mtch6102_get_default_config((struct mtch6102_config_t*) config);
 		return 0;
 #else
@@ -480,7 +480,7 @@ int device_manager_config_device(enum device_manager_device_type device, const v
 
 	switch (device) {
 	case device_manager_device_Bhi360: {
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 		struct bhi360_config_t default_config;
 		const struct bhi360_config_t* imu_config = config;
 
@@ -498,7 +498,7 @@ int device_manager_config_device(enum device_manager_device_type device, const v
 #endif
 	}
 	case device_manager_device_Bq25180: {
-#if defined(CONFIG_SENSEWEAR_BQ25180_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ25180_DRIVER)
 		const struct bq25180_config_t* charger_config = (const struct bq25180_config_t*) config;
 
 		if (!bq25180_config(charger_config)) {
@@ -511,7 +511,7 @@ int device_manager_config_device(enum device_manager_device_type device, const v
 #endif
 	}
 	case device_manager_device_Bq27427: {
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 		struct bq27427_config_t local_config;
 
 		if (config == NULL) {
@@ -529,7 +529,7 @@ int device_manager_config_device(enum device_manager_device_type device, const v
 #endif
 	}
 	case device_manager_device_Max30101: {
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 		struct max30101_config_t local_config;
 		const struct max30101_config_t* ppg_config = NULL;
 
@@ -548,7 +548,7 @@ int device_manager_config_device(enum device_manager_device_type device, const v
 #endif
 	}
 	case device_manager_device_Max30208: {
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 		struct max30208_config_t local_config;
 		const struct max30208_config_t* temperature_config = NULL;
 
@@ -567,7 +567,7 @@ int device_manager_config_device(enum device_manager_device_type device, const v
 #endif
 	}
 	case device_manager_device_Mtch6102: {
-#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH)
+#if defined(CONFIG_SHIELD_SENSWEAR_TOUCH)
 		struct mtch6102_config_t local_config;
 		const struct mtch6102_config_t* touch_config = NULL;
 
@@ -590,21 +590,21 @@ int device_manager_config_device(enum device_manager_device_type device, const v
 	}
 }
 
-#if defined(CONFIG_SENSEWEAR_RTC_DRIVER)
+#if defined(CONFIG_SENSWEAR_RTC_DRIVER)
 /** Arm the RTC minute alarm when any minute-driven periodic update is active. */
 static void device_manager_refresh_minute_alarm(void) {
 	bool need = false;
 
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 	need = need || (device_manager_config_state.gauge.update_period_min > 0);
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 	need = need || (device_manager_config_state.temperature.update_period_min > 0);
 #endif
 
 	(void) rtc_enable_minute_alarm(need);
 }
-#endif /* CONFIG_SENSEWEAR_RTC_DRIVER */
+#endif /* CONFIG_SENSWEAR_RTC_DRIVER */
 
 /**
  * @brief Run one managed device's driver init.
@@ -616,43 +616,43 @@ static void device_manager_refresh_minute_alarm(void) {
 static int device_manager_init_device(enum device_manager_device_type device) {
 	switch (device) {
 	case device_manager_device_Bhi360:
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 		return bhi360_init() ? 0 : -EIO;
 #else
 		return -ENOTSUP;
 #endif
 	case device_manager_device_Bq25180:
-#if defined(CONFIG_SENSEWEAR_BQ25180_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ25180_DRIVER)
 		return bq25180_init() ? 0 : -EIO;
 #else
 		return -ENOTSUP;
 #endif
 	case device_manager_device_Bq27427:
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 		return bq27427_init() ? 0 : -EIO;
 #else
 		return -ENOTSUP;
 #endif
 	case device_manager_device_Max30101:
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 		return max30101_init();
 #else
 		return -ENOTSUP;
 #endif
 	case device_manager_device_Max30208:
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 		return max30208_init();
 #else
 		return -ENOTSUP;
 #endif
 	case device_manager_device_Mtch6102:
-#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH)
+#if defined(CONFIG_SHIELD_SENSWEAR_TOUCH)
 		return mtch6102_init();
 #else
 		return -ENOTSUP;
 #endif
 	case device_manager_device_Tpsm83102:
-#if defined(CONFIG_SENSEWEAR_TPSM83102_DRIVER)
+#if defined(CONFIG_SENSWEAR_TPSM83102_DRIVER)
 		/* Instantiated and initialized by devicetree at boot; nothing to do. */
 		return 0;
 #else
@@ -673,25 +673,25 @@ int device_manager_config(const struct device_manager_config_t* config) {
 
 	/* Reject up front if a requested feature's device did not initialize, before
 	 * any state is changed. */
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 	if (config->imu.phy_streams_enabled && !bhi360_is_ready()) {
 		LOG_ERR("device manager: IMU streaming requested but IMU not ready");
 		return -ENODEV;
 	}
 #endif
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 	if (config->gauge.update_period_min > 0 && !bq27427_is_ready()) {
 		LOG_ERR("device manager: gauge cadence requested but gauge not ready");
 		return -ENODEV;
 	}
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 	if (config->temperature.update_period_min > 0 && !max30208_is_ready()) {
 		LOG_ERR("device manager: temperature cadence requested but temperature not ready");
 		return -ENODEV;
 	}
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 	if (config->ppg.sampling_enabled && !max30101_is_ready()) {
 		LOG_ERR("device manager: PPG sampling requested but PPG not ready");
 		return -ENODEV;
@@ -726,7 +726,7 @@ int device_manager_config(const struct device_manager_config_t* config) {
 
 	device_manager_config_state = *config;
 
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 	if (device_manager_config_state.imu.phy_streams_enabled) {
 		/* Physical streams reuse the shared FIFO timer. Release any slow idle-drain
 		 * period first so starting the streams cannot fail with -EBUSY when the
@@ -742,20 +742,20 @@ int device_manager_config(const struct device_manager_config_t* config) {
 	}
 #endif
 
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 	device_manager_gauge_minutes = 0;
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 	device_manager_temp_minutes = 0;
 #endif
-#if defined(CONFIG_SENSEWEAR_RTC_DRIVER)
+#if defined(CONFIG_SENSWEAR_RTC_DRIVER)
 	device_manager_refresh_minute_alarm();
 #endif
 	return 0;
 }
 
 int device_manager_set_imu_phy_streams_enabled(bool enabled, uint32_t drain_period_ms) {
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 	if (!bhi360_is_ready()) {
 		LOG_ERR("device manager: IMU not ready");
 		return -ENODEV;
@@ -779,7 +779,7 @@ int device_manager_set_imu_phy_streams_enabled(bool enabled, uint32_t drain_peri
 }
 
 int device_manager_set_ppg_sampling_enabled(bool enabled) {
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 	if (enabled == device_manager_config_state.ppg.sampling_enabled) {
 		return 0;
 	}
@@ -811,7 +811,7 @@ int device_manager_set_ppg_sampling_enabled(bool enabled) {
 }
 
 int device_manager_set_ppg_per_sample_irq(bool per_sample_irq) {
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 	if (device_manager_config_state.ppg.sampling_enabled) {
 		return -EBUSY;
 	}
@@ -833,7 +833,7 @@ bool device_manager_is_ppg_per_sample_irq(void) {
 }
 
 int device_manager_set_touch_sampling_enabled(bool enabled) {
-#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH)
+#if defined(CONFIG_SHIELD_SENSWEAR_TOUCH)
 	if (enabled) {
 		return mtch6102_start();
 	}
@@ -847,7 +847,7 @@ int device_manager_set_touch_sampling_enabled(bool enabled) {
 }
 
 int device_manager_set_imu_drain_period(uint32_t period_ms) {
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 	if (!bhi360_is_ready()) {
 		LOG_ERR("device manager: IMU not ready");
 		return -ENODEV;
@@ -861,7 +861,7 @@ int device_manager_set_imu_drain_period(uint32_t period_ms) {
 }
 
 int device_manager_set_gauge_update_period(uint16_t minutes) {
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 	if (minutes > 0 && !bq27427_is_ready()) {
 		LOG_ERR("device manager: gauge not ready");
 		return -ENODEV;
@@ -869,14 +869,14 @@ int device_manager_set_gauge_update_period(uint16_t minutes) {
 	device_manager_gauge_minutes = 0;
 #endif
 	device_manager_config_state.gauge.update_period_min = minutes;
-#if defined(CONFIG_SENSEWEAR_RTC_DRIVER)
+#if defined(CONFIG_SENSWEAR_RTC_DRIVER)
 	device_manager_refresh_minute_alarm();
 #endif
 	return 0;
 }
 
 int device_manager_set_body_temperature_update_period(uint16_t minutes) {
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 	if (minutes > 0 && !max30208_is_ready()) {
 		LOG_ERR("device manager: temperature not ready");
 		return -ENODEV;
@@ -884,14 +884,14 @@ int device_manager_set_body_temperature_update_period(uint16_t minutes) {
 	device_manager_temp_minutes = 0;
 #endif
 	device_manager_config_state.temperature.update_period_min = minutes;
-#if defined(CONFIG_SENSEWEAR_RTC_DRIVER)
+#if defined(CONFIG_SENSWEAR_RTC_DRIVER)
 	device_manager_refresh_minute_alarm();
 #endif
 	return 0;
 }
 
 int device_manager_set_rtc_time(time_t unix_seconds) {
-#if defined(CONFIG_SENSEWEAR_RTC_DRIVER)
+#if defined(CONFIG_SENSWEAR_RTC_DRIVER)
 	if (unix_seconds < (time_t) RTC_SANITY_MIN_UNIX) {
 		return -EINVAL;
 	}
@@ -912,10 +912,10 @@ int device_manager_set_rtc_time(time_t unix_seconds) {
 /* Vibration motor control (DRV2605)                                          */
 /* ------------------------------------------------------------------------- */
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_HAPTIC)
+#if defined(CONFIG_SHIELD_SENSWEAR_HAPTIC)
 
 static const struct device* const device_manager_haptic_dev =
-	DEVICE_DT_GET(DT_ALIAS(sensewear_haptic));
+	DEVICE_DT_GET(DT_ALIAS(senswear_haptic));
 
 /* The DRV2605 streams RTP frames asynchronously from these buffers, so the
  * manager owns them (static) and only overwrites them when no pattern is
@@ -983,7 +983,7 @@ int device_manager_haptic_play_rom(const uint8_t* sequence, size_t count) {
 	}
 
 	/* Zero-fill so unused sequencer slots terminate playback, then set the
-	 * internal-trigger ROM source and copy the waveform sequence. The SenseWear
+	 * internal-trigger ROM source and copy the waveform sequence. The SensWear
 	 * haptic driver supports only the LRA library. */
 	memset(&device_manager_rom, 0, sizeof(device_manager_rom));
 	device_manager_rom.trigger = DRV2605_MODE_INTERNAL_TRIGGER;
@@ -1011,7 +1011,7 @@ bool device_manager_haptic_is_active(void) {
 		   (drv2605_is_active(device_manager_haptic_dev) > 0);
 }
 
-#endif /* CONFIG_SHIELD_SENSEWEAR_HAPTIC */
+#endif /* CONFIG_SHIELD_SENSWEAR_HAPTIC */
 
 /* ------------------------------------------------------------------------- */
 /* Per-device translators                                                     */
@@ -1021,7 +1021,7 @@ bool device_manager_haptic_is_active(void) {
 /* otherwise it translates the decoded event onto the matching stream.         */
 /* ------------------------------------------------------------------------- */
 
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 
 /** Publish one ::imu_activity_msg_t per set started/ended bit in @p bits. */
 static void device_manager_publish_activity(time_t timestamp, uint8_t sensor_id, uint16_t bits) {
@@ -1153,9 +1153,9 @@ static void device_manager_translate_imu(const struct device_driver_event_t* ev)
 	}
 }
 
-#endif /* CONFIG_SENSEWEAR_BHI360_DRIVER */
+#endif /* CONFIG_SENSWEAR_BHI360_DRIVER */
 
-#if defined(CONFIG_SENSEWEAR_BQ25180_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ25180_DRIVER)
 
 static void device_manager_translate_charger(const struct device_driver_event_t* ev) {
 	struct bq25180_charger_state_t state;
@@ -1182,9 +1182,9 @@ static void device_manager_translate_charger(const struct device_driver_event_t*
 	device_manager_publish(&chan_charger, &msg);
 }
 
-#endif /* CONFIG_SENSEWEAR_BQ25180_DRIVER */
+#endif /* CONFIG_SENSWEAR_BQ25180_DRIVER */
 
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 
 static void device_manager_translate_gauge(const struct device_driver_event_t* ev) {
 	const struct bq27427_battery_state_t* s;
@@ -1213,13 +1213,13 @@ static void device_manager_translate_gauge(const struct device_driver_event_t* e
 	device_manager_publish(&chan_battery, &msg);
 }
 
-#endif /* CONFIG_SENSEWEAR_BQ27427_DRIVER */
+#endif /* CONFIG_SENSWEAR_BQ27427_DRIVER */
 
-#if defined(CONFIG_SENSEWEAR_TPSM83102_DRIVER)
+#if defined(CONFIG_SENSWEAR_TPSM83102_DRIVER)
 
 static void device_manager_translate_regulator(const struct device_driver_event_t* ev) {
 	struct regulator_msg_t msg = {
-#if defined(CONFIG_SENSEWEAR_RTC_DRIVER)
+#if defined(CONFIG_SENSWEAR_RTC_DRIVER)
 		/* The regulator event carries no timestamp; stamp it here. */
 		.timestamp = rtc_get_timestamp_us(),
 #else
@@ -1243,9 +1243,9 @@ static void device_manager_translate_regulator(const struct device_driver_event_
 	device_manager_publish(&chan_regulator, &msg);
 }
 
-#endif /* CONFIG_SENSEWEAR_TPSM83102_DRIVER */
+#endif /* CONFIG_SENSWEAR_TPSM83102_DRIVER */
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 
 static void device_manager_translate_ppg(const struct device_driver_event_t* ev) {
 	enum max30101_event_type event = (enum max30101_event_type) ev->event_id;
@@ -1277,9 +1277,9 @@ static void device_manager_translate_ppg(const struct device_driver_event_t* ev)
 	}
 }
 
-#endif /* CONFIG_SHIELD_SENSEWEAR_PPG */
+#endif /* CONFIG_SHIELD_SENSWEAR_PPG */
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 
 static void device_manager_translate_temperature(const struct device_driver_event_t* ev) {
 	enum max30208_event_type event = (enum max30208_event_type) ev->event_id;
@@ -1311,9 +1311,9 @@ static void device_manager_translate_temperature(const struct device_driver_even
 	}
 }
 
-#endif /* CONFIG_SHIELD_SENSEWEAR_TEMPERATURE */
+#endif /* CONFIG_SHIELD_SENSWEAR_TEMPERATURE */
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH)
+#if defined(CONFIG_SHIELD_SENSWEAR_TOUCH)
 
 /** Map a decoded MTCH6102 event to a contract touch-gesture type. */
 static enum touch_gesture_type device_manager_map_touch_gesture(enum mtch6102_event_type event) {
@@ -1389,9 +1389,9 @@ static void device_manager_translate_touch(const struct device_driver_event_t* e
 	}
 }
 
-#endif /* CONFIG_SHIELD_SENSEWEAR_TOUCH */
+#endif /* CONFIG_SHIELD_SENSWEAR_TOUCH */
 
-#if defined(CONFIG_SENSEWEAR_RTC_DRIVER)
+#if defined(CONFIG_SENSWEAR_RTC_DRIVER)
 
 /** Drive minute-cadence periodic updates from the RTC minute alarm. */
 static void device_manager_handle_rtc(const struct device_driver_event_t* ev) {
@@ -1399,18 +1399,18 @@ static void device_manager_handle_rtc(const struct device_driver_event_t* ev) {
 		return;
 	}
 
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 	if (device_manager_config_state.gauge.update_period_min > 0 &&
 		++device_manager_gauge_minutes >= device_manager_config_state.gauge.update_period_min) {
 		device_manager_gauge_minutes = 0;
 		(void) bq27427_update_state(NULL);
-#if defined(CONFIG_SENSEWEAR_BQ25180_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ25180_DRIVER)
 		(void) bq25180_update_state(NULL);
 #endif
 	}
 #endif
 
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 	/* NOTE: max30208_get_samples() triggers a one-shot conversion but requires
 	 * the driver to already be in the sampling state (max30208_start()); wiring
 	 * that enable path is left to the caller. */
@@ -1423,47 +1423,47 @@ static void device_manager_handle_rtc(const struct device_driver_event_t* ev) {
 #endif
 }
 
-#endif /* CONFIG_SENSEWEAR_RTC_DRIVER */
+#endif /* CONFIG_SENSWEAR_RTC_DRIVER */
 
 /** Route one device event to its translator by producing device. */
 static void device_manager_dispatch(const struct device_driver_event_t* ev) {
 	switch (ev->device_id) {
-#if defined(CONFIG_SENSEWEAR_BHI360_DRIVER)
+#if defined(CONFIG_SENSWEAR_BHI360_DRIVER)
 	case BHI360_DEVICE_DTS_ID:
 		device_manager_translate_imu(ev);
 		break;
 #endif
-#if defined(CONFIG_SENSEWEAR_BQ25180_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ25180_DRIVER)
 	case BQ25180_DEVICE_DTS_ID:
 		device_manager_translate_charger(ev);
 		break;
 #endif
-#if defined(CONFIG_SENSEWEAR_BQ27427_DRIVER)
+#if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 	case BQ27427_DEVICE_DTS_ID:
 		device_manager_translate_gauge(ev);
 		break;
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_PPG)
+#if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 	case MAX30101_DEVICE_DTS_ID:
 		device_manager_translate_ppg(ev);
 		break;
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_TEMPERATURE)
+#if defined(CONFIG_SHIELD_SENSWEAR_TEMPERATURE)
 	case MAX30208_DEVICE_DTS_ID:
 		device_manager_translate_temperature(ev);
 		break;
 #endif
-#if defined(CONFIG_SHIELD_SENSEWEAR_TOUCH)
+#if defined(CONFIG_SHIELD_SENSWEAR_TOUCH)
 	case MTCH6102_DEVICE_DTS_ID:
 		device_manager_translate_touch(ev);
 		break;
 #endif
-#if defined(CONFIG_SENSEWEAR_TPSM83102_DRIVER)
+#if defined(CONFIG_SENSWEAR_TPSM83102_DRIVER)
 	case TPSM83102_DEVICE_DTS_ID:
 		device_manager_translate_regulator(ev);
 		break;
 #endif
-#if defined(CONFIG_SENSEWEAR_RTC_DRIVER)
+#if defined(CONFIG_SENSWEAR_RTC_DRIVER)
 	case RTC0_DEVICE_DTS_ID:
 		device_manager_handle_rtc(ev);
 		break;
