@@ -59,17 +59,33 @@ properties:
       Selects a loop gain for the feedback control. According to the datasheet,
       a value of 2 ("HIGH") is valid for most actuators.
   vib-rated-mv:
+    required: true
     type: int
-    default: 3200
     description: |
       Sets the reference voltage for full-scale output during closed-loop
-      operation. The default value is inherited from ti,drv260x.yaml in Linux.
+      operation. For an LRA this is the actuator's rated RMS voltage. The
+      driver combines this value with vib-resonant-hz and the feedback sample
+      time when programming RATED_VOLTAGE. This must come from the fitted
+      actuator's data sheet; the binding deliberately provides no motor-voltage
+      default.
   vib-overdrive-mv:
+    required: true
     type: int
-    default: 3200
     description: |
-      Sets a clamp so that the automatic overdrive is bounded. The default
-      value is inherited from ti,drv260x.yaml in Linux.
+      Sets a peak-voltage clamp so that automatic overdrive and braking are
+      bounded. For an LRA whose data sheet only specifies RMS voltage, convert
+      the permitted RMS value to its sine-wave peak before setting this
+      property. This must come from the fitted actuator's data sheet; the
+      binding deliberately provides no motor-voltage default.
+  vib-resonant-hz:
+    required: true
+    type: int
+    description: |
+      Nominal resonant frequency of an LRA. This is used to seed DRIVE_TIME
+      and to calculate the LRA RATED_VOLTAGE register. It is ignored in ERM
+      mode, but remains required so an actuator change cannot silently retain
+      an unsuitable frequency. The DRV2605 and DRV2605L support LRA frequencies
+      from 125 to 300 Hz.
   in-trig-gpios:
     type: phandle-array
     description: GPIO to trigger ROM waveforms or drive an input signal.

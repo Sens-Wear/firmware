@@ -140,12 +140,25 @@ LOG_MODULE_REGISTER(DRV2605, CONFIG_LOG_DEFAULT_LEVEL);
 #define DRV2605_POWER_UP_DELAY_US 250
 #define DRV2605_I2C_TIMEOUT_MS 100
 #define DRV2605_RTP_ACTIVE_EVENT_PERIOD K_SECONDS(1)
+#define DRV2605_AUTO_CAL_POLL_MS 10
+#define DRV2605_AUTO_CAL_TIMEOUT_MS 1500
 
-#define DRV2605_VOLTAGE_SCALE_FACTOR_MV 5600
+/* Fixed feedback timing used by the closed-loop LRA configuration. */
+#define DRV2605_LRA_SAMPLE_TIME_FIELD 3
+#define DRV2605_LRA_SAMPLE_TIME_US 300
+#define DRV2605_LRA_BLANKING_TIME_FIELD 1
+#define DRV2605_LRA_IDISS_TIME_FIELD 1
+#define DRV2605_LRA_AUTO_CAL_TIME_FIELD 3
 
-#define DRV2605_CALCULATE_VOLTAGE(_volt) ((_volt * 255) / DRV2605_VOLTAGE_SCALE_FACTOR_MV)
+/* Voltage step sizes from the DRV2605/DRV2605L data-sheet equations. */
+#define DRV2605_LRA_RATED_STEP_UV 20710U
+#define DRV2605L_LRA_RATED_STEP_UV 20580U
+#define DRV2605_ERM_RATED_STEP_UV 21330U
+#define DRV2605L_ERM_RATED_STEP_UV 21180U
+#define DRV2605_OD_CLAMP_STEP_UV 21960U
+#define DRV2605L_OD_CLAMP_STEP_UV 21220U
 
-/* The DRV2605 input rail must be driven at a fixed 3.3 V. */
+/* Board-level VDD rail for the driver IC; this is not the actuator voltage. */
 #define DRV2605_SUPPLY_VOLTAGE_UV (3600000)
 /* Rail ramp and power-on settle time before the device is accessed. */
 #define DRV2605_SUPPLY_RAMP_DELAY_MS 50
@@ -156,10 +169,9 @@ struct drv2605_config {
 	const struct device* regulator;
 	uint8_t feedback_brake_factor;
 	uint8_t loop_gain;
-	uint8_t rated_voltage;
-	uint8_t overdrive_clamp_voltage;
-	uint8_t auto_cal_time;
-	uint8_t drive_time;
+	uint16_t rated_voltage_mv;
+	uint16_t overdrive_clamp_voltage_mv;
+	uint16_t resonant_frequency_hz;
 	bool actuator_mode;
 };
 
@@ -171,6 +183,7 @@ struct drv2605_data {
 	enum drv2605_mode mode;
 	const struct gpio_dt_spec* en_gpio;
 	const struct device* regulator;
+	uint8_t device_id;
 	bool supply_enabled;
 	atomic_t rtp_active;
 	atomic_t rtp_active_seconds;
@@ -276,6 +289,97 @@ static int drv2605_i2c_update_register(const struct device* dev,
 
 	current = (current & ~mask) | (value & mask);
 	return drv2605_i2c_write_register(dev, reg, current);
+}
+
+/* Integer square root, used to evaluate the LRA rated-voltage equation without
+ * pulling floating-point support into the firmware. */
+static uint32_t drv2605_isqrt(uint32_t value) {
+	uint32_t result = 0;
+	uint32_t bit = BIT(30);
+
+	while (bit > value) {
+		bit >>= 2;
+	}
+
+	while (bit != 0U) {
+		if (value >= (result + bit)) {
+			value -= result + bit;
+			result = (result >> 1) + bit;
+		} else {
+			result >>= 1;
+		}
+		bit >>= 2;
+	}
+
+	return result;
+}
+
+static int drv2605_calculate_drive_time(const struct drv2605_config* config, uint8_t* drive_time) {
+	uint32_t half_period_us;
+	uint32_t field;
+
+	if ((config->resonant_frequency_hz < 125U) || (config->resonant_frequency_hz > 300U)) {
+		LOG_ERR("Unsupported LRA resonant frequency: %u Hz", config->resonant_frequency_hz);
+		return -EINVAL;
+	}
+
+	half_period_us = DIV_ROUND_CLOSEST(500000U, config->resonant_frequency_hz);
+	if (half_period_us <= 500U) {
+		field = 0U;
+	} else {
+		field = DIV_ROUND_CLOSEST(half_period_us - 500U, 100U);
+	}
+
+	*drive_time = (uint8_t) MIN(field, (uint32_t) DRV2605_DRIVE_TIME);
+	return 0;
+}
+
+static int drv2605_calculate_voltage_registers(const struct device* dev,
+											   uint8_t* rated_voltage,
+											   uint8_t* overdrive_clamp_voltage) {
+	const struct drv2605_config* config = dev->config;
+	const struct drv2605_data* data = dev->data;
+	const bool is_drv2605l = data->device_id == DRV2605_DEVICE_ID_DRV2605L;
+	uint32_t rated_step_uv;
+	uint32_t clamp_step_uv;
+	uint32_t rated_value;
+	uint32_t clamp_value;
+
+	clamp_step_uv = is_drv2605l ? DRV2605L_OD_CLAMP_STEP_UV : DRV2605_OD_CLAMP_STEP_UV;
+	clamp_value =
+		DIV_ROUND_CLOSEST((uint32_t) config->overdrive_clamp_voltage_mv * 1000U, clamp_step_uv);
+
+	if (config->actuator_mode == DRV2605_ACTUATOR_MODE_LRA) {
+		uint32_t feedback_window_ppm;
+		uint32_t correction_sqrt;
+
+		feedback_window_ppm =
+			(4U * DRV2605_LRA_SAMPLE_TIME_US + 300U) * config->resonant_frequency_hz;
+		if (feedback_window_ppm >= 1000000U) {
+			return -EINVAL;
+		}
+
+		/* sqrt(1 - (4 * t_sample + 300 us) * f_LRA), represented in ppm. */
+		correction_sqrt = drv2605_isqrt(1000000U - feedback_window_ppm);
+		rated_step_uv = is_drv2605l ? DRV2605L_LRA_RATED_STEP_UV : DRV2605_LRA_RATED_STEP_UV;
+		rated_value =
+			DIV_ROUND_CLOSEST((uint32_t) config->rated_voltage_mv * correction_sqrt, rated_step_uv);
+	} else {
+		rated_step_uv = is_drv2605l ? DRV2605L_ERM_RATED_STEP_UV : DRV2605_ERM_RATED_STEP_UV;
+		rated_value = DIV_ROUND_CLOSEST((uint32_t) config->rated_voltage_mv * 1000U, rated_step_uv);
+	}
+
+	if ((rated_value == 0U) || (rated_value > UINT8_MAX) || (clamp_value == 0U) ||
+		(clamp_value > UINT8_MAX)) {
+		LOG_ERR("Actuator voltage configuration is out of range: rated=%u mV, clamp=%u mV",
+				config->rated_voltage_mv,
+				config->overdrive_clamp_voltage_mv);
+		return -EINVAL;
+	}
+
+	*rated_voltage = (uint8_t) rated_value;
+	*overdrive_clamp_voltage = (uint8_t) clamp_value;
+	return 0;
 }
 
 int drv2605_is_active(const struct device* dev) {
@@ -398,6 +502,7 @@ static int drv2605_supply_on(const struct device* dev) {
 	return 0;
 }
 
+#ifdef CONFIG_PM_DEVICE
 /* Disable the dedicated supply rail if this driver enabled it. */
 static void drv2605_supply_off(const struct device* dev) {
 	struct drv2605_data* data = dev->data;
@@ -415,6 +520,7 @@ static void drv2605_supply_off(const struct device* dev) {
 
 	data->supply_enabled = false;
 }
+#endif
 
 /*
  * The drv2605_haptic_config_* helpers perform register transactions and
@@ -464,6 +570,37 @@ static inline int drv2605_haptic_config_pwm_analog(const struct device* dev, con
 	return 0;
 }
 
+static int drv2605_write_rtp_input(const struct device* dev, uint8_t value, bool cancel_on_stop) {
+	struct drv2605_data* data = dev->data;
+	bool canceled = false;
+	int ret;
+	int release_ret;
+
+	ret = drv2605_bus_lock(dev);
+	if (ret < 0) {
+		return ret;
+	}
+
+	/* Re-check after acquiring the bus. If stop_output() won the lock and
+	 * already cleared RTP_INPUT, do not re-energize the actuator with a frame
+	 * that passed the worker's earlier stop check. */
+	if (cancel_on_stop && atomic_get(&data->rtp_stop_requested)) {
+		canceled = true;
+		ret = 0;
+	} else {
+		ret = drv2605_i2c_write_register(dev, DRV2605_REG_RT_PLAYBACK_INPUT, value);
+	}
+	release_ret = drv2605_bus_release(dev);
+	if (ret < 0) {
+		return ret;
+	}
+	if (release_ret < 0) {
+		return release_ret;
+	}
+
+	return canceled ? 1 : 0;
+}
+
 static void drv2605_rtp_work_handler(struct k_work* work) {
 	struct drv2605_data* data = CONTAINER_OF(work, struct drv2605_data, rtp_work);
 	const struct drv2605_rtp_data* rtp_data = data->rtp_data;
@@ -471,13 +608,6 @@ static void drv2605_rtp_work_handler(struct k_work* work) {
 	int ret;
 	int i;
 
-	ret = drv2605_bus_lock(data->dev);
-	if (ret < 0) {
-		drv2605_post_event(drv2605_event_Error, (uint32_t) -ret);
-		atomic_set(&data->rtp_active, 0);
-		return;
-	}
-	atomic_set(&data->rtp_active, 1);
 	k_timer_start(&data->rtp_active_timer,
 				  DRV2605_RTP_ACTIVE_EVENT_PERIOD,
 				  DRV2605_RTP_ACTIVE_EVENT_PERIOD);
@@ -487,9 +617,10 @@ static void drv2605_rtp_work_handler(struct k_work* work) {
 			break;
 		}
 
-		ret = drv2605_i2c_write_register(data->dev,
-										 DRV2605_REG_RT_PLAYBACK_INPUT,
-										 rtp_data->rtp_input[i]);
+		ret = drv2605_write_rtp_input(data->dev, rtp_data->rtp_input[i], true);
+		if (ret > 0) {
+			break;
+		}
 		if (ret < 0) {
 			LOG_ERR("Failed to write DRV2605 RTP frame %d: %d", i, ret);
 			error = ret;
@@ -499,9 +630,10 @@ static void drv2605_rtp_work_handler(struct k_work* work) {
 		k_usleep(rtp_data->rtp_hold_us[i]);
 	}
 
-	if (ret == 0) {
-		(void) drv2605_i2c_write_register(data->dev, DRV2605_REG_RT_PLAYBACK_INPUT, 0);
-		(void) drv2605_bus_release(data->dev);
+	ret = drv2605_write_rtp_input(data->dev, 0, false);
+	if ((ret < 0) && (error == 0)) {
+		LOG_ERR("Failed to clear DRV2605 RTP input: %d", ret);
+		error = ret;
 	}
 
 	k_timer_stop(&data->rtp_active_timer);
@@ -519,9 +651,22 @@ static inline int drv2605_haptic_config_rtp(const struct device* dev,
 	struct drv2605_data* data = dev->data;
 	int ret;
 
-	data->rtp_data = rtp_data;
-
 	ret = drv2605_i2c_write_register(dev, DRV2605_REG_RT_PLAYBACK_INPUT, 0);
+	if (ret < 0) {
+		return ret;
+	}
+
+	/* The public API treats RTP bytes as an unsigned 0..255 amplitude. Use
+	 * closed-loop unidirectional playback so 0 is off and 255 is full scale. */
+	ret = drv2605_i2c_update_register(dev, DRV2605_REG_CONTROL2, DRV2605_BIDIR_INPUT, 0);
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = drv2605_i2c_update_register(dev,
+									  DRV2605_REG_CONTROL3,
+									  DRV2605_DATA_FORMAT_RTP,
+									  DRV2605_DATA_FORMAT_RTP);
 	if (ret < 0) {
 		return ret;
 	}
@@ -534,6 +679,7 @@ static inline int drv2605_haptic_config_rtp(const struct device* dev,
 		return ret;
 	}
 
+	data->rtp_data = rtp_data;
 	data->mode = DRV2605_MODE_RTP;
 
 	return 0;
@@ -549,15 +695,6 @@ static inline int drv2605_haptic_config_rom(const struct device* dev,
 	case DRV2605_MODE_INTERNAL_TRIGGER:
 	case DRV2605_MODE_EXTERNAL_EDGE_TRIGGER:
 	case DRV2605_MODE_EXTERNAL_LEVEL_TRIGGER:
-		ret = drv2605_i2c_update_register(dev,
-										  DRV2605_REG_MODE,
-										  DRV2605_MODE,
-										  (uint8_t) rom_data->trigger);
-		if (ret < 0) {
-			return ret;
-		}
-
-		data->mode = rom_data->trigger;
 		break;
 	default:
 		return -EINVAL;
@@ -610,12 +747,38 @@ static inline int drv2605_haptic_config_rom(const struct device* dev,
 		return ret;
 	}
 
+	/* The on-chip TS2200 LRA library is encoded for bidirectional playback. */
+	ret = drv2605_i2c_update_register(dev,
+									  DRV2605_REG_CONTROL2,
+									  DRV2605_BIDIR_INPUT,
+									  DRV2605_BIDIR_INPUT);
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = drv2605_i2c_update_register(dev, DRV2605_REG_CONTROL3, DRV2605_DATA_FORMAT_RTP, 0);
+	if (ret < 0) {
+		return ret;
+	}
+
+	/* Select the trigger only after the complete sequence is programmed. */
+	ret = drv2605_i2c_update_register(dev,
+									  DRV2605_REG_MODE,
+									  DRV2605_MODE,
+									  (uint8_t) rom_data->trigger);
+	if (ret < 0) {
+		return ret;
+	}
+
+	data->mode = rom_data->trigger;
 	return 0;
 }
 
 int drv2605_haptic_config(const struct device* dev,
 						  enum drv2605_haptics_source source,
 						  const union drv2605_config_data* config_data) {
+	struct drv2605_data* data = dev->data;
+	uint8_t go;
 	int ret;
 	int release_ret;
 
@@ -624,12 +787,33 @@ int drv2605_haptic_config(const struct device* dev,
 		return ret;
 	}
 
+	if (atomic_get(&data->rtp_active) != 0) {
+		ret = -EBUSY;
+		goto release_bus;
+	}
+
+	ret = drv2605_i2c_read_register(dev, DRV2605_REG_GO, &go);
+	if (ret < 0) {
+		goto release_bus;
+	}
+	if (FIELD_GET(DRV2605_GO, go) != 0U) {
+		ret = -EBUSY;
+		goto release_bus;
+	}
+
 	switch (source) {
 	case DRV2605_HAPTICS_SOURCE_ROM:
-		ret = drv2605_haptic_config_rom(dev, config_data->rom_data);
+		ret = (config_data == NULL) || (config_data->rom_data == NULL)
+				  ? -EINVAL
+				  : drv2605_haptic_config_rom(dev, config_data->rom_data);
 		break;
 	case DRV2605_HAPTICS_SOURCE_RTP:
-		ret = drv2605_haptic_config_rtp(dev, config_data->rtp_data);
+		ret = (config_data == NULL) || (config_data->rtp_data == NULL) ||
+				  (config_data->rtp_data->size == 0U) ||
+				  (config_data->rtp_data->rtp_hold_us == NULL) ||
+					  (config_data->rtp_data->rtp_input == NULL)
+				  ? -EINVAL
+				  : drv2605_haptic_config_rtp(dev, config_data->rtp_data);
 		break;
 	case DRV2605_HAPTICS_SOURCE_AUDIO:
 		ret = drv2605_haptic_config_audio(dev);
@@ -645,6 +829,7 @@ int drv2605_haptic_config(const struct device* dev,
 		break;
 	}
 
+release_bus:
 	release_ret = drv2605_bus_release(dev);
 	if (ret < 0) {
 		return ret;
@@ -878,8 +1063,106 @@ static int drv2605_pm_action(const struct device* dev, enum pm_device_action act
 }
 #endif
 
+static int drv2605_auto_calibrate(const struct device* dev) {
+	struct drv2605_data* data = dev->data;
+	uint8_t status;
+	uint8_t go = DRV2605_GO;
+	uint8_t compensation;
+	uint8_t back_emf;
+	uint8_t feedback;
+	int elapsed_ms;
+	int ret;
+	int mode_ret;
+
+	ret = drv2605_i2c_update_register(dev,
+									  DRV2605_REG_CONTROL4,
+									  DRV2605_AUTO_CAL_TIME,
+									  FIELD_PREP(DRV2605_AUTO_CAL_TIME,
+												 DRV2605_LRA_AUTO_CAL_TIME_FIELD));
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = drv2605_i2c_update_register(dev,
+									  DRV2605_REG_MODE,
+									  DRV2605_MODE,
+									  (uint8_t) DRV2605_MODE_AUTO_CAL);
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = drv2605_i2c_update_register(dev, DRV2605_REG_GO, DRV2605_GO, DRV2605_GO);
+	if (ret < 0) {
+		return ret;
+	}
+
+	LOG_INF("Auto-calibrating %s for the fitted LRA",
+			data->device_id == DRV2605_DEVICE_ID_DRV2605L ? "DRV2605L" : "DRV2605");
+	for (elapsed_ms = 0; elapsed_ms < DRV2605_AUTO_CAL_TIMEOUT_MS;
+		 elapsed_ms += DRV2605_AUTO_CAL_POLL_MS) {
+		k_msleep(DRV2605_AUTO_CAL_POLL_MS);
+		ret = drv2605_i2c_read_register(dev, DRV2605_REG_GO, &go);
+		if (ret < 0) {
+			return ret;
+		}
+		if (FIELD_GET(DRV2605_GO, go) == 0U) {
+			break;
+		}
+	}
+
+	if (FIELD_GET(DRV2605_GO, go) != 0U) {
+		LOG_ERR("DRV2605 auto-calibration timed out");
+		return -ETIMEDOUT;
+	}
+
+	/* DIAG_RESULT is valid after GO clears and is cleared by reading STATUS. */
+	ret = drv2605_i2c_read_register(dev, DRV2605_REG_STATUS, &status);
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = drv2605_i2c_read_register(dev, DRV2605_REG_AUTO_CAL_COMP_RESULT, &compensation);
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = drv2605_i2c_read_register(dev, DRV2605_REG_AUTO_CAL_BACK_EMF_RESULT, &back_emf);
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = drv2605_i2c_read_register(dev, DRV2605_REG_FEEDBACK_CONTROL, &feedback);
+	if (ret < 0) {
+		return ret;
+	}
+
+	mode_ret = drv2605_i2c_update_register(dev,
+										   DRV2605_REG_MODE,
+										   DRV2605_MODE,
+										   (uint8_t) DRV2605_MODE_INTERNAL_TRIGGER);
+	if (mode_ret < 0) {
+		return mode_ret;
+	}
+	data->mode = DRV2605_MODE_INTERNAL_TRIGGER;
+
+	if ((status & (DRV2605_DIAG_RESULT | DRV2605_OVER_TEMP | DRV2605_OC_DETECT)) != 0U) {
+		LOG_ERR("DRV2605 auto-calibration failed (STATUS=0x%02x)", status);
+		return -EIO;
+	}
+
+	LOG_INF("DRV2605 calibration passed: A_CAL_COMP=0x%02x, A_CAL_BEMF=0x%02x, "
+			"BEMF_GAIN=%u",
+			compensation,
+			back_emf,
+			(unsigned int) FIELD_GET(DRV2605_BEMF_GAIN, feedback));
+	return 0;
+}
+
 static int drv2605_hw_config(const struct device* dev) {
 	const struct drv2605_config* config = dev->config;
+	uint8_t rated_voltage;
+	uint8_t overdrive_clamp_voltage;
+	uint8_t drive_time;
 	uint8_t mask, value;
 	int ret;
 
@@ -894,14 +1177,19 @@ static int drv2605_hw_config(const struct device* dev) {
 		return ret;
 	}
 
-	ret = drv2605_i2c_write_register(dev, DRV2605_REG_RATED_VOLTAGE, config->rated_voltage);
+	ret = drv2605_calculate_voltage_registers(dev, &rated_voltage, &overdrive_clamp_voltage);
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = drv2605_i2c_write_register(dev, DRV2605_REG_RATED_VOLTAGE, rated_voltage);
 	if (ret < 0) {
 		return ret;
 	}
 
 	ret = drv2605_i2c_write_register(dev,
 									 DRV2605_REG_OVERDRIVE_CLAMP_VOLTAGE,
-									 config->overdrive_clamp_voltage);
+									 overdrive_clamp_voltage);
 	if (ret < 0) {
 		return ret;
 	}
@@ -910,24 +1198,59 @@ static int drv2605_hw_config(const struct device* dev) {
 	if (config->actuator_mode == DRV2605_ACTUATOR_MODE_ERM) {
 		value = DRV2605_ERM_OPEN_LOOP;
 	} else {
-		value = DRV2605_LRA_DRIVE_MODE | DRV2605_LRA_OPEN_LOOP;
+		/* Library 6 is a closed-loop LRA library. Keep auto-resonance enabled
+		 * and update its amplitude once per cycle for a symmetric waveform. */
+		value = 0;
 	}
 
 	ret = drv2605_i2c_update_register(dev, DRV2605_REG_CONTROL3, mask, value);
-	LOG_DBG("DRV2605 control3 register configured with value: 0x%02X", value);
 	if (ret < 0) {
-		LOG_ERR("Failed to configure DRV2605 control3 register: %d", ret);
 		return ret;
 	}
 
-	return 0;
+	if (config->actuator_mode != DRV2605_ACTUATOR_MODE_LRA) {
+		return 0;
+	}
+
+	ret = drv2605_calculate_drive_time(config, &drive_time);
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = drv2605_i2c_update_register(dev,
+									  DRV2605_REG_CONTROL1,
+									  DRV2605_DRIVE_TIME,
+									  FIELD_PREP(DRV2605_DRIVE_TIME, drive_time));
+	if (ret < 0) {
+		return ret;
+	}
+
+	mask = DRV2605_BIDIR_INPUT | DRV2605_SAMPLE_TIME | DRV2605_BLANKING_TIME | DRV2605_IDISS_TIME;
+	value = DRV2605_BIDIR_INPUT | FIELD_PREP(DRV2605_SAMPLE_TIME, DRV2605_LRA_SAMPLE_TIME_FIELD) |
+			FIELD_PREP(DRV2605_BLANKING_TIME, DRV2605_LRA_BLANKING_TIME_FIELD) |
+			FIELD_PREP(DRV2605_IDISS_TIME, DRV2605_LRA_IDISS_TIME_FIELD);
+	ret = drv2605_i2c_update_register(dev, DRV2605_REG_CONTROL2, mask, value);
+	if (ret < 0) {
+		return ret;
+	}
+
+	LOG_INF("LRA config: %u Hz, RATED_VOLTAGE=0x%02x, OD_CLAMP=0x%02x, DRIVE_TIME=0x%02x",
+			config->resonant_frequency_hz,
+			rated_voltage,
+			overdrive_clamp_voltage,
+			drive_time);
+
+	return drv2605_auto_calibrate(dev);
 }
 
 static int drv2605_reset(const struct device* dev) {
 	int retries = 5, ret;
 	uint8_t value;
 
-	drv2605_i2c_update_register(dev, DRV2605_REG_MODE, DRV2605_STANDBY, 0);
+	ret = drv2605_i2c_update_register(dev, DRV2605_REG_MODE, DRV2605_STANDBY, 0);
+	if (ret < 0) {
+		return ret;
+	}
 
 	ret = drv2605_i2c_update_register(dev, DRV2605_REG_MODE, DRV2605_DEV_RESET, DRV2605_DEV_RESET);
 	if (ret < 0) {
@@ -946,8 +1269,7 @@ static int drv2605_reset(const struct device* dev) {
 		}
 
 		if ((value & DRV2605_DEV_RESET) == 0U) {
-			drv2605_i2c_update_register(dev, DRV2605_REG_MODE, DRV2605_STANDBY, 0);
-			return 0;
+			return drv2605_i2c_update_register(dev, DRV2605_REG_MODE, DRV2605_STANDBY, 0);
 		}
 	}
 
@@ -955,6 +1277,7 @@ static int drv2605_reset(const struct device* dev) {
 }
 
 static int drv2605_check_devid(const struct device* dev) {
+	struct drv2605_data* data = dev->data;
 	uint8_t value;
 	int ret;
 
@@ -967,15 +1290,17 @@ static int drv2605_check_devid(const struct device* dev) {
 
 	switch (value) {
 	case DRV2605_DEVICE_ID_DRV2605:
+		LOG_INF("Found DRV2605 (device ID 0x%x)", value);
+		break;
 	case DRV2605_DEVICE_ID_DRV2605L:
+		LOG_INF("Found DRV2605L (device ID 0x%x)", value);
 		break;
 	default:
-		LOG_ERR("Invalid device ID found");
+		LOG_ERR("Unsupported DRV2605-family device ID: 0x%x", value);
 		return -ENOTSUP;
 	}
 
-	LOG_DBG("Found DRV2605, DEVID: 0x%x", value);
-
+	data->device_id = value;
 	return 0;
 }
 
@@ -1109,35 +1434,35 @@ static DEVICE_API(haptics, drv2605_driver_api) = {
 	.stop_output = &drv2605_stop_output,
 };
 
-#define HAPTICS_DRV2605_DEFINE(inst)                                                  \
-                                                                                      \
-	static const struct drv2605_config drv2605_config_##inst = {                      \
-		.i2c = SYS_I2C_DT_SPEC_GET(DT_DRV_INST(inst)),                                \
-		.in_trig_gpio = GPIO_DT_SPEC_INST_GET_OR(inst, in_trig_gpios, {}),            \
-		.regulator = COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, vin_supply),             \
-								 (DEVICE_DT_GET(DT_INST_PHANDLE(inst, vin_supply))),  \
-								 (NULL)),                                             \
-		.feedback_brake_factor = DT_INST_ENUM_IDX(inst, feedback_brake_factor),       \
-		.loop_gain = DT_INST_ENUM_IDX(inst, loop_gain),                               \
-		.actuator_mode = DT_INST_ENUM_IDX(inst, actuator_mode),                       \
-		.rated_voltage = DRV2605_CALCULATE_VOLTAGE(DT_INST_PROP(inst, vib_rated_mv)), \
-		.overdrive_clamp_voltage =                                                    \
-			DRV2605_CALCULATE_VOLTAGE(DT_INST_PROP(inst, vib_overdrive_mv)),          \
-	};                                                                                \
-                                                                                      \
-	static struct drv2605_data drv2605_data_##inst = {                                \
-		.mode = DRV2605_MODE_INTERNAL_TRIGGER,                                        \
-	};                                                                                \
-                                                                                      \
-	PM_DEVICE_DT_INST_DEFINE(inst, drv2605_pm_action);                                \
-                                                                                      \
-	DEVICE_DT_INST_DEFINE(inst,                                                       \
-						  drv2605_init,                                               \
-						  PM_DEVICE_DT_INST_GET(inst),                                \
-						  &drv2605_data_##inst,                                       \
-						  &drv2605_config_##inst,                                     \
-						  POST_KERNEL,                                                \
-						  CONFIG_HAPTICS_INIT_PRIORITY,                               \
+#define HAPTICS_DRV2605_DEFINE(inst)                                                 \
+                                                                                     \
+	static const struct drv2605_config drv2605_config_##inst = {                     \
+		.i2c = SYS_I2C_DT_SPEC_GET(DT_DRV_INST(inst)),                               \
+		.in_trig_gpio = GPIO_DT_SPEC_INST_GET_OR(inst, in_trig_gpios, {}),           \
+		.regulator = COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, vin_supply),            \
+								 (DEVICE_DT_GET(DT_INST_PHANDLE(inst, vin_supply))), \
+								 (NULL)),                                            \
+		.feedback_brake_factor = DT_INST_ENUM_IDX(inst, feedback_brake_factor),      \
+		.loop_gain = DT_INST_ENUM_IDX(inst, loop_gain),                              \
+		.actuator_mode = DT_INST_ENUM_IDX(inst, actuator_mode),                      \
+		.rated_voltage_mv = DT_INST_PROP(inst, vib_rated_mv),                        \
+		.overdrive_clamp_voltage_mv = DT_INST_PROP(inst, vib_overdrive_mv),          \
+		.resonant_frequency_hz = DT_INST_PROP(inst, vib_resonant_hz),                \
+	};                                                                               \
+                                                                                     \
+	static struct drv2605_data drv2605_data_##inst = {                               \
+		.mode = DRV2605_MODE_INTERNAL_TRIGGER,                                       \
+	};                                                                               \
+                                                                                     \
+	PM_DEVICE_DT_INST_DEFINE(inst, drv2605_pm_action);                               \
+                                                                                     \
+	DEVICE_DT_INST_DEFINE(inst,                                                      \
+						  drv2605_init,                                              \
+						  PM_DEVICE_DT_INST_GET(inst),                               \
+						  &drv2605_data_##inst,                                      \
+						  &drv2605_config_##inst,                                    \
+						  POST_KERNEL,                                               \
+						  CONFIG_HAPTICS_INIT_PRIORITY,                              \
 						  &drv2605_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(HAPTICS_DRV2605_DEFINE)

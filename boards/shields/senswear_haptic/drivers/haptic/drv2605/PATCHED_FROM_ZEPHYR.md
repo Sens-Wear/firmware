@@ -81,17 +81,29 @@ Local changes from the copied Zephyr baseline:
   through the ISR-safe post path and carries elapsed RTP seconds; `Error`
   carries the positive errno; the lifecycle events carry the active
   `drv2605_mode`.
+- The driver distinguishes DRV2605 from DRV2605L at runtime and calculates the
+  rated-voltage and overdrive-clamp registers with the detected variant's
+  formulas. LRA instances also provide their nominal resonant frequency so the
+  driver can seed `DRIVE_TIME` correctly.
+- LRA initialization uses closed-loop auto-resonance and performs auto
+  calibration after applying the actuator voltage and feedback parameters.
+- RTP uses unsigned, unidirectional closed-loop input (`0` is off, `255` is full
+  scale), while ROM playback restores the bidirectional format expected by the
+  on-chip LRA library.
+- The RTP worker locks and releases SYS_I2C for each register write instead of
+  holding the shared bus while it sleeps between frames.
 - The driver owns its supply rail. The `vin-supply` regulator is resolved from
   devicetree into `struct drv2605_config::regulator` and cached on the driver
-  object (`struct drv2605_data::regulator`). The rail is fixed at 2.2 V
+  object (`struct drv2605_data::regulator`). The board rail is fixed at 3.6 V
   (`DRV2605_SUPPLY_VOLTAGE_UV`). `drv2605_supply_init` runs MAX30101-style
   power-up checks at init (regulator readiness, and that an already-enabled
-  shared rail already sits at the fixed voltage). `drv2605_start_output` sets the
-  voltage and enables the rail (`drv2605_supply_on`, idempotent via
-  `supply_enabled`) before any bus traffic, and `PM_DEVICE_ACTION_TURN_OFF`
-  disables it (`drv2605_supply_off`). The regulator transport locks the shared
-  bus itself, so these run outside the device's SYS_I2C ownership scope. This
-  selects `REGULATOR` in `Kconfig.drv2605`.
+  shared rail already sits at the fixed voltage). `drv2605_init` then sets and
+  enables the rail (`drv2605_supply_on`, idempotent via `supply_enabled`) before
+  probe and calibration; `drv2605_start_output` idempotently ensures it remains
+  on. `PM_DEVICE_ACTION_TURN_OFF` disables it (`drv2605_supply_off`). The
+  regulator transport locks the shared bus itself, so these run outside the
+  device's SYS_I2C ownership scope. This selects `REGULATOR` in
+  `Kconfig.drv2605`.
 
 `drv2605.h`
 
@@ -101,14 +113,16 @@ Local changes from the copied Zephyr baseline:
 - Added `drv2605_rtp_is_active()` so a caller that owns the RTP buffers passed to
   `drv2605_haptic_config()` can serialise patterns and avoid reusing those
   buffers while the async worker is still streaming from them.
-
 `senswear,drv2605.yaml` (renamed from the copied `ti,drv2605.yaml`)
 
 - The `compatible` is `senswear,drv2605` instead of `ti,drv2605`.
+- The actuator properties describe LRA rated RMS voltage, peak clamp voltage,
+  and nominal resonant frequency (`vib-resonant-hz`) rather than relying on
+  generic motor defaults.
 - Removed the `en-gpios` property: the enable pin is owned by the driver via the
   daughter_if GPIO arbiter and is not described in devicetree.
 - The `vin-supply` regulator phandle is consumed by the driver to own the rail
-  (fixed 2.2 V); see the `drv2605.c` supply notes above.
+  (fixed 3.6 V); see the `drv2605.c` supply notes above.
 
 `Kconfig.drv2605`
 

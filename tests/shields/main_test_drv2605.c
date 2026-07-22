@@ -7,15 +7,14 @@
  *
  * The driver auto-initialises at POST_KERNEL (claims the daughter_if GPIO0
  * enable line, resets and configures the device), so this test first checks
- * that the haptics device is ready through the Zephyr haptics API, then uses
- * the haptics API to warm the device before applying the DRV2605 source
- * configuration, and finally exercises the two playback paths:
+ * that the haptics device is ready through the Zephyr haptics API and then
+ * exercises the two playback paths:
  *
  *   RTP - a real-time amplitude ramp streamed frame-by-frame from host buffers.
  *   ROM - a single waveform from the on-chip LRA library, triggered with the
  *         internal GO bit and played autonomously by the device.
  *
- * The test runs both patterns in sequence with a 2 s pause between cycles.
+ * The test runs both patterns in sequence with a 2 s pause after each one.
  * Build with the `test_drv2605` preset (which also enables the shield); see
  * tests/shields/README.md.
  */
@@ -26,13 +25,17 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/util.h>
 
+#include <errno.h>
+
 #include "drv2605.h"
+#include "device_driver_dts_ids.h"
+#include "device_driver_events.h"
 
-#define TEST_CYCLE_PERIOD        K_SECONDS(2)
-#define TEST_RTP_PLAY_MS         800
-#define TEST_ROM_PLAY_MS         500
+#define TEST_CYCLE_PERIOD K_SECONDS(2)
+#define TEST_PLAY_TIMEOUT_MS 2000
+#define TEST_PLAY_POLL_MS 10
 
-static const struct device *const haptic_dev = DEVICE_DT_GET(DT_ALIAS(senswear_haptic));
+static const struct device* const haptic_dev = DEVICE_DT_GET(DT_ALIAS(senswear_haptic));
 
 /*
  * RTP "buzz": ramp the amplitude up then drop to off. RTP playback runs
@@ -54,21 +57,43 @@ static struct drv2605_rom_data rom_click = {
 	.seq_regs = {1, 0},
 };
 
-static int warm_haptics_device(void)
-{
-	int ret;
+static int wait_until_idle(void) {
+	int elapsed_ms;
 
-	ret = haptics_start_output(haptic_dev);
-	if (ret < 0) {
-		printk("  HAPTICS start failed during init: %d\n", ret);
-		return ret;
+	for (elapsed_ms = 0; elapsed_ms < TEST_PLAY_TIMEOUT_MS; elapsed_ms += TEST_PLAY_POLL_MS) {
+		int active = drv2605_is_active(haptic_dev);
+
+		if (active < 0) {
+			return active;
+		}
+		if (active == 0) {
+			return 0;
+		}
+		k_msleep(TEST_PLAY_POLL_MS);
 	}
 
-	return 0;
+	return -ETIMEDOUT;
 }
 
-static int play_rtp(void)
-{
+static int drain_haptic_events(void) {
+	struct device_driver_event_t event;
+	int playback_error = 0;
+
+	while (device_driver_event_wait(K_NO_WAIT, &event)) {
+		if (event.device_id == DRV2605_DEVICE_DTS_ID) {
+			printk("  event: %s (%u)\n",
+				   drv2605_event_name((enum drv2605_event_type) event.event_id),
+				   event.v_param);
+			if ((event.event_id == drv2605_event_Error) && (playback_error == 0)) {
+				playback_error = event.v_param == 0U ? -EIO : -(int) event.v_param;
+			}
+		}
+	}
+
+	return playback_error;
+}
+
+static int play_rtp(void) {
 	const union drv2605_config_data cfg = {.rtp_data = &rtp_buzz};
 	int ret;
 
@@ -84,19 +109,23 @@ static int play_rtp(void)
 		return ret;
 	}
 
-	k_msleep(TEST_RTP_PLAY_MS);
-	ret = haptics_stop_output(haptic_dev);
+	ret = wait_until_idle();
 	if (ret < 0) {
-		printk("  RTP stop failed: %d\n", ret);
+		printk("  RTP playback failed or timed out: %d\n", ret);
+		(void) haptics_stop_output(haptic_dev);
 		return ret;
 	}
 
+	ret = drain_haptic_events();
+	if (ret < 0) {
+		printk("  RTP worker failed: %d\n", ret);
+		return ret;
+	}
 	printk("  RTP done\n");
 	return 0;
 }
 
-static int play_rom(void)
-{
+static int play_rom(void) {
 	const union drv2605_config_data cfg = {.rom_data = &rom_click};
 	int ret;
 
@@ -112,20 +141,30 @@ static int play_rom(void)
 		return ret;
 	}
 
-	/* ROM effects play autonomously on the device; allow time to finish. */
-	k_msleep(TEST_ROM_PLAY_MS);
+	ret = wait_until_idle();
+	if (ret < 0) {
+		printk("  ROM playback failed or timed out: %d\n", ret);
+		(void) haptics_stop_output(haptic_dev);
+		return ret;
+	}
+
+	/* Clear the already-low GO bit and publish the driver's Stopped event. */
 	ret = haptics_stop_output(haptic_dev);
 	if (ret < 0) {
 		printk("  ROM stop failed: %d\n", ret);
 		return ret;
 	}
 
+	ret = drain_haptic_events();
+	if (ret < 0) {
+		printk("  ROM playback reported an error: %d\n", ret);
+		return ret;
+	}
 	printk("  ROM done\n");
 	return 0;
 }
 
-int main(void)
-{
+int main(void) {
 	printk("\n=== DRV2605 haptics test (senswear_haptic shield) ===\n");
 
 	if (!device_is_ready(haptic_dev)) {
@@ -133,20 +172,21 @@ int main(void)
 		return 0;
 	}
 
-	if (warm_haptics_device() != 0) {
-		printk("DRV2605 haptics init failed\n");
-		return 0;
-	}
-
 	printk("DRV2605 ready; configuring and exercising RTP buzz and ROM click\n");
 
 	while (1) {
 		printk("RTP buzz (ramp 80 -> 160 -> 255 -> off)\n");
-		(void)play_rtp();
+		if (play_rtp() != 0) {
+			printk("DRV2605 test aborted after RTP failure\n");
+			return 0;
+		}
 		k_sleep(TEST_CYCLE_PERIOD);
 
 		printk("ROM click (LRA library, effect 1)\n");
-		(void)play_rom();
+		if (play_rom() != 0) {
+			printk("DRV2605 test aborted after ROM failure\n");
+			return 0;
+		}
 		k_sleep(TEST_CYCLE_PERIOD);
 	}
 

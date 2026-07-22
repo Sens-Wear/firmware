@@ -51,9 +51,9 @@
  * - @b Events: playback lifecycle is reported through the SensWear device-driver
  *   event queue under `DRV2605_DEVICE_DTS_ID`; see @ref drv2605_event_type.
  * - @b Supply: the `vin-supply` regulator is owned by the driver and cached on
- *   the device object. The rail is driven at the fixed 2.2 V the DRV2605
- *   requires; it is validated at init, set and enabled when output starts, and
- *   disabled on power-manager turn-off. See @ref drv2605_supply "Supply rail".
+ *   the device object. The board rail is driven at a fixed 3.6 V; it is
+ *   validated at init, set and enabled when output starts, and disabled on
+ *   power-manager turn-off. See @ref drv2605_supply "Supply rail".
  *
  * @par Features
  * - Zephyr haptics device API (`haptics_start_output()` /
@@ -66,7 +66,8 @@
  * - Lifecycle/observability events (`Starting`, `Stopped`, `PlaybackActive`,
  *   `Error`) with a once-per-second active heartbeat; drv2605_event_name()
  *   returns printable names.
- * - Driver-owned supply rail at a fixed 2.2 V (see @ref drv2605_supply).
+ * - Closed-loop LRA auto-resonance with per-actuator calibration during init.
+ * - Driver-owned supply rail at a fixed 3.6 V (see @ref drv2605_supply).
  * - Power management hooks: suspend/resume toggle the standby bit, turn-on
  *   raises the enable pin, and turn-off lowers the enable pin and disables the
  *   supply rail.
@@ -77,17 +78,16 @@
  * devicetree `vin-supply` phandle (on SensWear the shared daughter-connector
  * rail, `VDD_DAUGHTER` from the TPSM83102). The driver takes ownership of that
  * regulator rather than relying on an external power policy:
- * - @b Configured @b voltage: a fixed 2.2 V (`DRV2605_SUPPLY_VOLTAGE_UV`,
- *   2200000 µV). The part is always driven at this single voltage; there is no
- *   per-instance or per-effect voltage selection.
+ * - @b Configured @b voltage: a fixed 3.6 V (`DRV2605_SUPPLY_VOLTAGE_UV`,
+ *   3600000 microvolts). This is the driver IC supply, not the actuator drive
+ *   voltage; the latter is bounded separately by the rated and clamp registers.
  * - @b Init: the regulator handle is resolved from devicetree and cached on the
- *   device object. If the rail is already enabled (for example by a shared
- *   power manager), init requires it to already sit at 2.2 V and fails with
- *   `-EINVAL` otherwise, so the driver never drives the part off-spec.
- * - @b Start: the first `haptics_start_output()` sets the regulator to 2.2 V,
- *   enables it, and waits a fixed ramp/settle delay before any bus traffic.
- *   The enable is idempotent: a rail this driver already brought up is left
- *   untouched on subsequent starts.
+ *   device object. Initialization sets the rail to 3.6 V, enables it, and waits
+ *   for it to settle before probing and calibrating the part. If the shared rail
+ *   is already enabled, init requires it to already sit at 3.6 V and fails with
+ *   `-EINVAL` otherwise.
+ * - @b Start: each `haptics_start_output()` idempotently ensures that the rail
+ *   remains enabled. A rail this driver already brought up is left untouched.
  * - @b Turn-off: `PM_DEVICE_ACTION_TURN_OFF` disables the rail, but only if this
  *   driver was the one that enabled it.
  * - @b No @b regulator: if `vin-supply` is absent the driver treats the rail as
@@ -180,13 +180,13 @@ extern "C" {
  * @ref DRV2605_LIBRARY_LRA is to be used for closed-loop LRA motors.
  */
 enum drv2605_library {
-	DRV2605_LIBRARY_EMPTY = 0,   /**< Empty library */
-	DRV2605_LIBRARY_TS2200_A,    /**< TouchSense 2220 A library */
-	DRV2605_LIBRARY_TS2200_B,    /**< TouchSense 2220 B library */
-	DRV2605_LIBRARY_TS2200_C,    /**< TouchSense 2220 C library */
-	DRV2605_LIBRARY_TS2200_D,    /**< TouchSense 2220 D library */
-	DRV2605_LIBRARY_TS2200_E,    /**< TouchSense 2220 E library */
-	DRV2605_LIBRARY_LRA,         /**< Linear Resonance Actuator (LRA) library */
+	DRV2605_LIBRARY_EMPTY = 0, /**< Empty library */
+	DRV2605_LIBRARY_TS2200_A,  /**< TouchSense 2220 A library */
+	DRV2605_LIBRARY_TS2200_B,  /**< TouchSense 2220 B library */
+	DRV2605_LIBRARY_TS2200_C,  /**< TouchSense 2220 C library */
+	DRV2605_LIBRARY_TS2200_D,  /**< TouchSense 2220 D library */
+	DRV2605_LIBRARY_TS2200_E,  /**< TouchSense 2220 E library */
+	DRV2605_LIBRARY_LRA,	   /**< Linear Resonance Actuator (LRA) library */
 };
 
 /**
@@ -197,14 +197,14 @@ enum drv2605_library {
  * See Table 5 of the DRV2605 datasheet for more information on the various operation modes.
  */
 enum drv2605_mode {
-	DRV2605_MODE_INTERNAL_TRIGGER = 0,    /**< Internal trigger mode */
-	DRV2605_MODE_EXTERNAL_EDGE_TRIGGER,   /**< External trigger mode (edge) */
-	DRV2605_MODE_EXTERNAL_LEVEL_TRIGGER,  /**< External trigger mode (level) */
-	DRV2605_MODE_PWM_ANALOG_INPUT,        /**< PWM or Analog input mode */
-	DRV2605_MODE_AUDIO_TO_VIBE,           /**< Audio-to-vibe mode */
-	DRV2605_MODE_RTP,                     /**< RTP mode */
-	DRV2605_MODE_DIAGNOSTICS,             /**< Diagnostics mode */
-	DRV2605_MODE_AUTO_CAL,                /**< Auto-calibration mode */
+	DRV2605_MODE_INTERNAL_TRIGGER = 0,	 /**< Internal trigger mode */
+	DRV2605_MODE_EXTERNAL_EDGE_TRIGGER,	 /**< External trigger mode (edge) */
+	DRV2605_MODE_EXTERNAL_LEVEL_TRIGGER, /**< External trigger mode (level) */
+	DRV2605_MODE_PWM_ANALOG_INPUT,		 /**< PWM or Analog input mode */
+	DRV2605_MODE_AUDIO_TO_VIBE,			 /**< Audio-to-vibe mode */
+	DRV2605_MODE_RTP,					 /**< RTP mode */
+	DRV2605_MODE_DIAGNOSTICS,			 /**< Diagnostics mode */
+	DRV2605_MODE_AUTO_CAL,				 /**< Auto-calibration mode */
 };
 
 /**
@@ -214,11 +214,11 @@ enum drv2605_mode {
  * DRV2605.
  */
 enum drv2605_haptics_source {
-	DRV2605_HAPTICS_SOURCE_ROM,      /**< Playback from the pre-programmed ROM library. */
-	DRV2605_HAPTICS_SOURCE_RTP,      /**< Playback from Real-Time Playback (RTP) data stream. */
-	DRV2605_HAPTICS_SOURCE_AUDIO,    /**< Playback is generated from an audio signal. */
-	DRV2605_HAPTICS_SOURCE_PWM,      /**< Playback is driven by an external PWM signal. */
-	DRV2605_HAPTICS_SOURCE_ANALOG,   /**< Playback is driven by an external analog signal. */
+	DRV2605_HAPTICS_SOURCE_ROM,	   /**< Playback from the pre-programmed ROM library. */
+	DRV2605_HAPTICS_SOURCE_RTP,	   /**< Playback from Real-Time Playback (RTP) data stream. */
+	DRV2605_HAPTICS_SOURCE_AUDIO,  /**< Playback is generated from an audio signal. */
+	DRV2605_HAPTICS_SOURCE_PWM,	   /**< Playback is driven by an external PWM signal. */
+	DRV2605_HAPTICS_SOURCE_ANALOG, /**< Playback is driven by an external analog signal. */
 };
 
 /**
@@ -232,11 +232,11 @@ enum drv2605_haptics_source {
  *          carries the positive errno value that caused playback to stop early.
  */
 enum drv2605_event_type {
-	drv2605_event_Starting = 0,       /**< Playback start was accepted. */
-	drv2605_event_Stopped = 1,        /**< Playback stopped or completed. */
+	drv2605_event_Starting = 0,		  /**< Playback start was accepted. */
+	drv2605_event_Stopped = 1,		  /**< Playback stopped or completed. */
 	drv2605_event_PlaybackActive = 2, /**< RTP playback is still active. */
-	drv2605_event_Error = 3,          /**< Playback stopped because of an error. */
-	drv2605_event_Count,              /**< Number of valid event identifiers. */
+	drv2605_event_Error = 3,		  /**< Playback stopped because of an error. */
+	drv2605_event_Count,			  /**< Number of valid event identifiers. */
 };
 
 /**
@@ -315,14 +315,15 @@ struct drv2605_rtp_data {
 	 * Each value specifies the duration in microseconds to hold the corresponding
 	 * amplitude from the `rtp_input` array.
 	 */
-	uint32_t *rtp_hold_us;
+	uint32_t* rtp_hold_us;
 	/**
 	 * @brief Pointer to an array of RTP amplitude values.
 	 *
 	 * Each value is an 8-bit amplitude that will be written to the RTP input register (0x02).
-	 * These values can be signed or unsigned depending on device configuration.
+ * The driver configures RTP as closed-loop unsigned/unidirectional playback:
+ * 0 is off and 255 is full-scale rated amplitude.
 	 */
-	uint8_t *rtp_input;
+	uint8_t* rtp_input;
 };
 
 /**
@@ -334,9 +335,9 @@ struct drv2605_rtp_data {
  */
 union drv2605_config_data {
 	/** Pointer to ROM configuration data. Use when source is @ref DRV2605_HAPTICS_SOURCE_ROM */
-	struct drv2605_rom_data *rom_data;
+	struct drv2605_rom_data* rom_data;
 	/** Pointer to RTP configuration data. Use when source is @ref DRV2605_HAPTICS_SOURCE_RTP */
-	struct drv2605_rtp_data *rtp_data;
+	struct drv2605_rtp_data* rtp_data;
 };
 
 /**
@@ -350,8 +351,9 @@ union drv2605_config_data {
  * @retval -ENOTSUP signal source not supported
  * @retval -errno another negative error code on failure
  */
-int drv2605_haptic_config(const struct device *dev, enum drv2605_haptics_source source,
-			  const union drv2605_config_data *config_data);
+int drv2605_haptic_config(const struct device* dev,
+						  enum drv2605_haptics_source source,
+						  const union drv2605_config_data* config_data);
 
 /**
  * @brief Return a printable DRV2605 event name.
@@ -359,7 +361,7 @@ int drv2605_haptic_config(const struct device *dev, enum drv2605_haptics_source 
  * @param event_id Event identifier from @ref drv2605_event_type.
  * @return Static string for known event ids, otherwise `"Unknown"`.
  */
-const char *drv2605_event_name(enum drv2605_event_type event_id);
+const char* drv2605_event_name(enum drv2605_event_type event_id);
 
 /**
  * @brief Report whether an RTP stream is currently playing.
@@ -373,7 +375,7 @@ const char *drv2605_event_name(enum drv2605_event_type event_id);
  * @retval true RTP playback is active.
  * @retval false No RTP playback is in progress.
  */
-bool drv2605_rtp_is_active(const struct device *dev);
+bool drv2605_rtp_is_active(const struct device* dev);
 
 /**
  * @brief Report whether any haptic output is currently playing.
@@ -391,8 +393,7 @@ bool drv2605_rtp_is_active(const struct device *dev);
  * @retval 0 No playback is in progress.
  * @return A negative errno if the ROM GO-bit read (or bus lock/release) failed.
  */
-int drv2605_is_active(const struct device *dev);
-
+int drv2605_is_active(const struct device* dev);
 
 /** @} */
 
