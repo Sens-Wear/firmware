@@ -228,6 +228,7 @@ These change one knob after configuration without re-applying the whole config:
 - `device_manager_set_gauge_update_period(uint16_t minutes)`
 - `device_manager_set_body_temperature_update_period(uint16_t minutes)`
 - `device_manager_set_rtc_time(time_t unix_seconds)`
+- `device_manager_set_led_color(struct device_manager_led_color_t color)`
 
 ### Periodic (RTC-minute-driven) updates
 
@@ -432,6 +433,7 @@ if (device_manager_haptic_is_active()) {
 | `device_manager_set_gauge_update_period`        | Change fuel-gauge cadence (minutes)                |
 | `device_manager_set_body_temperature_update_period` | Change temperature cadence (minutes)           |
 | `device_manager_set_rtc_time`                   | Set wall-clock time through the RTC driver         |
+| `device_manager_set_led_color`                  | Set the 24-bit RGB indicator color (LP5562 only)   |
 | `device_manager_haptic_*`                       | Haptic playback control (haptic shield only)       |
 
 See [`device_manager.h`](device_manager.h) for full per-function contracts,

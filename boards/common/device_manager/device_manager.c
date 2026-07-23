@@ -42,6 +42,9 @@
 #if defined(CONFIG_SENSWEAR_BQ27427_DRIVER)
 #include "bq27427.h"
 #endif
+#if defined(CONFIG_SENSWEAR_LP5562_DRIVER)
+#include "led_controller.h"
+#endif
 #if defined(CONFIG_SHIELD_SENSWEAR_PPG)
 #include "max30101.h"
 #endif
@@ -68,6 +71,11 @@ LOG_MODULE_REGISTER(device_manager, CONFIG_LOG_DEFAULT_LEVEL);
 #define DEVICE_MANAGER_PUB_TIMEOUT_MS 10
 /** Upper bound on IMU samples copied from one batch event. */
 #define DEVICE_MANAGER_IMU_BATCH_MAX 16
+
+#if defined(CONFIG_SENSWEAR_LP5562_DRIVER)
+BUILD_ASSERT(sizeof(struct device_manager_led_color_t) == 3,
+			 "device_manager_led_color_t must remain a 24-bit type");
+#endif
 
 /* ------------------------------------------------------------------------- */
 /* Streams: one channel per message type                                      */
@@ -909,6 +917,25 @@ int device_manager_set_rtc_time(time_t unix_seconds) {
 }
 
 /* ------------------------------------------------------------------------- */
+/* RGB indicator control (LP5562)                                             */
+/* ------------------------------------------------------------------------- */
+
+#if defined(CONFIG_SENSWEAR_LP5562_DRIVER)
+int device_manager_set_led_color(struct device_manager_led_color_t color) {
+	union led_color_t driver_color = {
+		.leds = {
+			.red = color.red,
+			.green = color.green,
+			.blue = color.blue,
+			.white = 0,
+		},
+	};
+
+	return led_controller_turn_on_leds(0, driver_color) ? 0 : -EIO;
+}
+#endif /* CONFIG_SENSWEAR_LP5562_DRIVER */
+
+/* ------------------------------------------------------------------------- */
 /* Vibration motor control (DRV2605)                                          */
 /* ------------------------------------------------------------------------- */
 
@@ -1514,6 +1541,12 @@ int device_manager_init(void) {
 			LOG_WRN("device manager: device %d init failed (%d); ignored", device, ret);
 		}
 	}
+
+#if defined(CONFIG_SENSWEAR_LP5562_DRIVER)
+	if (!led_controller_init() || !led_controller_configure()) {
+		LOG_WRN("device manager: LP5562 LED controller init failed; ignored");
+	}
+#endif
 
 	return 0;
 }

@@ -163,6 +163,17 @@ struct device_manager_periodic_config_t {
 };
 
 /**
+ * @brief 24-bit RGB LED color.
+ * @details Each component is an independent 8-bit PWM intensity: 0 turns the
+ *          channel off and 255 selects full intensity.
+ */
+struct device_manager_led_color_t {
+	uint8_t red;   /**< Red-channel intensity. */
+	uint8_t green; /**< Green-channel intensity. */
+	uint8_t blue;  /**< Blue-channel intensity. */
+};
+
+/**
  * @brief Aggregate device-manager configuration.
  * @details A high-level view of the most important knobs; the manager maps each
  *          field onto the underlying driver calls. Members for devices that are
@@ -412,6 +423,19 @@ int device_manager_set_body_temperature_update_period(uint16_t minutes);
  * @retval -EIO The RTC driver rejected the clock update.
  */
 int device_manager_set_rtc_time(time_t unix_seconds);
+
+#if defined(CONFIG_SENSWEAR_LP5562_DRIVER)
+/**
+ * @brief Set the RGB indicator color.
+ * @details Writes the three LP5562 RGB channels from the corresponding
+ *          components of @p color. The white channel is turned off.
+ *
+ * @param color 24-bit RGB color to apply.
+ * @retval 0 The color was applied.
+ * @retval -EIO The LP5562 rejected one or more channel updates.
+ */
+int device_manager_set_led_color(struct device_manager_led_color_t color);
+#endif /* CONFIG_SENSWEAR_LP5562_DRIVER */
 
 #if defined(CONFIG_SHIELD_SENSWEAR_HAPTIC)
 /**

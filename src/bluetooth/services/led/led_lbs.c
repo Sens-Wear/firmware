@@ -1,7 +1,10 @@
+#include <errno.h>
+
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/byteorder.h>
 
+#include "device_manager.h"
 #include "led_lbs.h"
 
 LOG_MODULE_REGISTER(SENSE_WEAR_LED_SENSOR_BLUETOOTH_LOGGER);
@@ -26,7 +29,24 @@ static ssize_t update_color(struct bt_conn* conn,
 		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
 	}
 
-	led_color_state = sys_get_le32(buf);
+	uint32_t requested_color = sys_get_le32(buf);
+	struct device_manager_led_color_t color = {
+		.red = (uint8_t) (requested_color >> 16),
+		.green = (uint8_t) (requested_color >> 8),
+		.blue = (uint8_t) requested_color,
+	};
+
+#if defined(CONFIG_SENSWEAR_LP5562_DRIVER)
+	int ret = device_manager_set_led_color(color);
+#else
+	int ret = -ENOTSUP;
+#endif
+	if (ret != 0) {
+		LOG_WRN("LED color update failed: %d", ret);
+		return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
+	}
+
+	led_color_state = requested_color;
 	LOG_INF("LED color set to 0x%08x", led_color_state);
 	return len;
 }

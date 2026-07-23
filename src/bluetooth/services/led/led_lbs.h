@@ -10,9 +10,10 @@
  * @{
  *
  * The LED BLE service exposes a custom read/write color characteristic. The
- * characteristic stores a 32-bit little-endian color value. The current service
- * only owns the GATT-facing state; actuator routing can be wired behind this
- * service without changing the client-facing contract.
+ * characteristic stores a 32-bit little-endian value whose lower 24 bits use
+ * the conventional @c 0xRRGGBB layout. Successful writes are forwarded to
+ * device_manager_set_led_color(); failed driver updates are rejected and do not
+ * change the characteristic's read-back value.
  *
  * @section senswear_ble_led_example Typical usage
  *
