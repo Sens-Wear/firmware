@@ -1,0 +1,114 @@
+#include <zephyr/kernel.h>
+#include <zephyr/drivers/i2c.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/drivers/led.h>
+#include <zephyr/sys/util.h>
+
+#include "zephyr_led.h"
+
+LOG_MODULE_REGISTER(SENSE_WEAR_LED_ACTUATOR_LOGGER);
+
+#define NUM_LEDS 3
+#define BLINK_DELAY_ON 500
+#define BLINK_DELAY_OFF 500
+#define DELAY_TIME 2000
+#define COLORS_TO_SHOW 3
+#define VALUES_PER_COLOR 3
+
+
+#define LED_R 2
+#define LED_G 1
+#define LED_B 0
+
+static uint8_t colors[COLORS_TO_SHOW][VALUES_PER_COLOR] = {
+	{ 0xFF, 0x00, 0x00 }, /*< Red    */
+	{ 0x00, 0xFF, 0x00 }, /*< Green  */
+	{ 0x00, 0x00, 0xFF }, /*< Blue   */
+};
+
+static inline uint8_t scale_color_to_percent(uint8_t hex)
+{
+	return (hex * 100U) / 0xFF;
+}
+
+static int set_static_color(const struct device *dev, uint8_t r, uint8_t g,
+			    uint8_t b)
+{
+	int ret;
+
+	r = scale_color_to_percent(r);
+	g = scale_color_to_percent(g);
+	b = scale_color_to_percent(b);
+
+	ret = led_set_brightness(dev, LED_R, r);
+	if (ret) {
+		LOG_ERR("Failed to set color.");
+		return ret;
+	}
+
+	ret = led_set_brightness(dev, LED_G, g);
+	if (ret) {
+		LOG_ERR("Failed to set color.");
+		return ret;
+	}
+
+	ret = led_set_brightness(dev, LED_B, b);
+	if (ret) {
+		LOG_ERR("Failed to set color.");
+		return ret;
+	}
+
+	return 0;
+}
+
+static int turn_off_all_leds(const struct device *dev)
+{
+	for (int i = 0; i < NUM_LEDS; i++) {
+		int ret = led_set_brightness(dev, i, 0u);
+
+		if (ret) {
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
+
+// Initialize the sensor thread
+int led_actuator_init(void)
+{
+	const struct device *dev = DEVICE_DT_GET(DT_NODELABEL(lp5562));
+	int i, ret;
+
+	if (!dev) {
+		LOG_ERR("No \"ti,lp5562\" device found");
+		return 0;
+	} else if (!device_is_ready(dev)) {
+		LOG_ERR("LED device %s is not ready", dev->name);
+		return 0;
+	} else {
+		LOG_INF("Found LED device %s", dev->name);
+	}
+
+	while (1) {
+		LOG_INF("Turn on the LED.");
+		ret = set_static_color(dev,
+				colors[1][0],
+				colors[1][1],
+				colors[1][2]);
+		if (ret) {
+			return 0;
+		}
+
+		k_msleep(DELAY_TIME);
+		LOG_INF("Turn off the LED.");
+		ret = turn_off_all_leds(dev);
+		if (ret < 0) {
+			return 0;
+		}
+
+		k_msleep(DELAY_TIME);
+	}
+	return 0;
+}

@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+
+if SHIELD_SENSWEAR_TEMPERATURE
+
+config I2C
+	default y
+
+config SENSWEAR_SYS_I2C
+	default y
+
+config GPIO
+	default y
+
+config SENSOR
+	default y
+
+config SENSWEAR_TPSM83102_DRIVER
+	default y
+
+
+endif # SHIELD_SENSWEAR_TEMPERATURE

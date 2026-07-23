@@ -1,0 +1,10 @@
+identifier: SensWear/nrf54l15/cpuapp
+name: SensWear board
+vendor: SenseraTechnologies
+arch: arm
+toolchain:
+  - zephyr
+sysbuild: true
+ram: 188
+flash: 1428
+supported: []

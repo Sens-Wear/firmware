@@ -1,0 +1,17 @@
+# editors
+*.swp
+*~
+.cache/
+.tmp/
+.agents/
+# build
+/build*/
+/debug*/
+
+# clangd database symlink maintained by the top-level CMakeLists (points into
+# the active build tree).
+/compile_commands.json
+
+# local machine config (per-developer paths)
+.env
+CMakeUserPresets.json

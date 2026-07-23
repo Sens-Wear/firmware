@@ -1,0 +1,70 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "CMSIS-DAP: flash nRF54L15",
+            "type": "shell",
+            "command": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "args": [
+                "-f", "config/openocd-cmsis-dap.cfg",
+                "-f", "config/openocd-nrf54l15.cfg",
+                "-c", "init",
+                "-c", "reset init",
+                "-c", "nrf54l-load {${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.hex}",
+                "-c", "verify_image {${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.hex}",
+                "-c", "reset run",
+                "-c", "shutdown"
+            ],
+            "windows": {
+                "command": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "ST-Link/V2: flash nRF54L15",
+            "type": "shell",
+            "command": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "args": [
+                "-f", "config/openocd-stlink-v2.cfg",
+                "-f", "config/openocd-nrf54l15.cfg",
+                "-c", "init",
+                "-c", "reset init",
+                "-c", "nrf54l-load {${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.hex}",
+                "-c", "verify_image {${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.hex}",
+                "-c", "reset run",
+                "-c", "shutdown"
+            ],
+            "windows": {
+                "command": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "J-Link/OpenOCD: flash nRF54L15",
+            "type": "shell",
+            "command": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "args": [
+                "-f", "config/openocd-jlink.cfg",
+                "-f", "config/openocd-nrf54l15.cfg",
+                "-c", "init",
+                "-c", "reset init",
+                "-c", "nrf54l-load {${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.hex}",
+                "-c", "verify_image {${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.hex}",
+                "-c", "reset run",
+                "-c", "shutdown"
+            ],
+            "windows": {
+                "command": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd"
+            },
+            "problemMatcher": []
+        }
+    ],
+    "inputs": [
+        {
+            "id": "cmakeBuildDirectory",
+            "type": "command",
+            "command": "cmake.buildDirectory",
+            "args": "${workspaceFolder}"
+        }
+    ]
+}

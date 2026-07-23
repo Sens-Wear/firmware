@@ -1,0 +1,16 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  SensWear software real-time clock.
+
+  The nRF54L15 has no battery-backed calendar RTC peripheral, so wall-clock
+  timekeeping is maintained in software on top of the GRTC-backed system clock
+  (the same time base as Zephyr's SYS_CLOCK_REALTIME / POSIX time()). This node
+  exists only to give the rtc driver a devicetree identity and a generated
+  device id for the SensWear device-event manager; it owns no hardware
+  registers and consumes no bus.
+
+compatible: "senswear,rtc"
+
+include: base.yaml

@@ -1,0 +1,19 @@
+{
+    "nrf-connect.applications": [],
+    "nrf-connect.boardRoots": [
+        "${workspaceFolder}"
+    ],
+    "cmake.useCMakePresets": "always",
+    "cmake.parallelJobs": 0,
+    "cmake.cmakePath": "${env:NCS_TOOLCHAIN_ROOT}/opt/bin/cmake.exe",
+    "cortex-debug.variableUseNaturalFormat": true,
+    "cortex-debug.pyocdPath": "pyocd",
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}/build/firmware",
+        "--query-driver=${env:NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk/arm-zephyr-eabi/bin/arm-zephyr-eabi-*"
+    ],
+    "nrf-connect.debugging.bindings": {
+        "${workspaceFolder}/build": "CMSIS-DAP: flash and debug nRF54L15",
+        "${workspaceFolder}/build/firmware": "CMSIS-DAP: flash and debug nRF54L15"
+    }
+}

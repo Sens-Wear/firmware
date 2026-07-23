@@ -1,0 +1,10 @@
+CompileFlags:
+  # compile_commands.json at the project root is a symlink maintained by the
+  # top-level CMakeLists, pointing at whichever build was configured last
+  # (app or a driver test). Reconfigure a build to repoint it.
+  CompilationDatabase: .
+  Compiler: arm-zephyr-eabi-gcc
+  Remove:
+    - -fno-printf-return-value
+    - -mfp16-format=*
+    - -fno-reorder-functions

@@ -1,0 +1,315 @@
+menu "SensWear firmware"
+
+choice SENSWEAR_DAUGHTER_BOARD
+	prompt "SensWear daughter board"
+	default SENSWEAR_DAUGHTER_TOUCH if SHIELD_SENSWEAR_TOUCH
+	default SENSWEAR_DAUGHTER_PPG if SHIELD_SENSWEAR_PPG
+	default SENSWEAR_DAUGHTER_TEMPERATURE if SHIELD_SENSWEAR_TEMPERATURE
+	default SENSWEAR_DAUGHTER_HAPTIC if SHIELD_SENSWEAR_HAPTIC
+	default SENSWEAR_DAUGHTER_NONE
+
+config SENSWEAR_DAUGHTER_NONE
+	bool "No daughter board"
+
+config SENSWEAR_DAUGHTER_TOUCH
+	bool "Touch daughter board"
+
+config SENSWEAR_DAUGHTER_PPG
+	bool "PPG daughter board"
+
+config SENSWEAR_DAUGHTER_TEMPERATURE
+	bool "Temperature daughter board"
+
+config SENSWEAR_DAUGHTER_HAPTIC
+	bool "Haptic daughter board"
+
+endchoice
+
+config SENSWEAR_DAUGHTER_PRESENT
+	bool
+	default y if SENSWEAR_DAUGHTER_TOUCH
+	default y if SENSWEAR_DAUGHTER_PPG
+	default y if SENSWEAR_DAUGHTER_TEMPERATURE
+	default y if SENSWEAR_DAUGHTER_HAPTIC
+
+config SENSWEAR_SYS_I2C
+	bool "SensWear shared system I2C bus wrapper"
+	depends on I2C
+	depends on DT_HAS_SENSWEAR_SYS_I2C_ENABLED
+	default y
+	help
+	  Ownership-locking wrapper driver over a Nordic I2C controller. Devices
+	  depend on it via a `bus = <&sys_i2c>` phandle and use the sys_i2c_* API.
+
+config SENSWEAR_SYS_I2C_INIT_PRIORITY
+	int "sys_i2c init priority"
+	depends on SENSWEAR_SYS_I2C
+	default 60
+	help
+	  POST_KERNEL init priority for the sys_i2c wrapper. Must be greater than
+	  I2C_INIT_PRIORITY so the wrapped controller is initialised first.
+
+config SENSWEAR_SYS_SPI
+	bool "SensWear shared system SPI bus wrapper"
+	depends on SPI
+	depends on DT_HAS_SENSWEAR_SYS_SPI_ENABLED
+	default y
+	help
+	  Ownership-locking wrapper driver over a Nordic SPI controller. Devices
+	  depend on it via a `bus = <&sys_spi>` phandle and use the sys_spi_* API.
+
+config SENSWEAR_SYS_SPI_INIT_PRIORITY
+	int "sys_spi init priority"
+	depends on SENSWEAR_SYS_SPI
+	default 80
+	help
+	  POST_KERNEL init priority for the sys_spi wrapper. Must be greater than
+	  SPI_INIT_PRIORITY so the wrapped controller is initialised first.
+
+config SENSWEAR_M95P_DISK
+	bool "Expose the M95P EEPROM as a disk-access block device"
+	depends on SENSWEAR_M95P_DRIVER
+	depends on DISK_ACCESS
+	help
+	  Registers the M95P EEPROM with the Zephyr disk-access subsystem under
+	  the name "eeprom" so a filesystem (LittleFS over a block device) can
+	  be mounted on it. One 512-byte logical sector maps to one M95P page.
+
+config SENSWEAR_M95P_DISK_AUTOMOUNT
+	bool "Mount the M95P LittleFS filesystem at boot"
+	depends on SENSWEAR_M95P_DISK
+	depends on FILE_SYSTEM_LITTLEFS && FS_LITTLEFS_BLK_DEV
+	help
+	  Automatically mount the LittleFS filesystem on the M95P during system
+	  init. When disabled, call m95p_fs_mount() explicitly from application
+	  code.
+
+# Board driver presence. Each symbol is the single source of truth for whether
+# its driver is compiled: the per-type cmakes under boards/.../drivers gate their
+# sources directly on these CONFIG_ symbols.
+
+config SENSWEAR_BQ25180_DRIVER
+	bool "BQ25180 charger driver"
+	depends on SENSWEAR_SYS_I2C
+	default y
+	select SENSWEAR_DEVICE_DRIVER_EVENTS
+	help
+	  Build the BQ25180 charger / power-path controller driver. The driver
+	  posts interrupt activity through the device driver event manager, so it
+	  is enabled automatically.
+
+config SENSWEAR_BQ27427_DRIVER
+	bool "BQ27427 fuel-gauge driver"
+	depends on SENSWEAR_SYS_I2C
+	default y
+	select SENSWEAR_DEVICE_DRIVER_EVENTS
+	help
+	  Build the BQ27427 fuel-gauge driver. The driver posts interrupt activity
+	  through the device driver event manager, so it is enabled automatically.
+
+config SENSWEAR_BHI360_DRIVER
+	bool "BHI360 IMU driver"
+	depends on SPI
+	default y
+	help
+	  Build the BHI360 IMU driver.
+
+config SENSWEAR_LP5562_DRIVER
+	bool "LP5562 LED controller driver"
+	depends on SENSWEAR_SYS_I2C
+	default y
+	help
+	  Build the LP5562 LED controller driver.
+
+config SENSWEAR_M95P_DRIVER
+	bool "M95P EEPROM driver"
+	depends on SPI
+	default y
+	help
+	  Build the M95P serial-page EEPROM driver.
+
+config SENSWEAR_TPSM83102_DRIVER
+	bool "TPSM83102 regulator driver"
+	depends on SENSWEAR_SYS_I2C
+	default y
+	help
+	  Build the TPSM83102 buck regulator driver.
+
+config SENSWEAR_RTC_DRIVER
+	bool "Software real-time clock"
+	default y
+	select SENSWEAR_DEVICE_DRIVER_EVENTS
+	help
+	  Build the SensWear software RTC. The nRF54L15 has no battery-backed
+	  calendar RTC, so this driver maintains wall-clock time on the GRTC-backed
+	  system clock (the SYS_CLOCK_REALTIME / POSIX time() base), persists it to
+	  Settings/NVS, and exposes minute/hour/day and one-shot alarms through the
+	  device-event manager.
+
+if SENSWEAR_RTC_DRIVER
+
+config SENSWEAR_RTC_AUTO_INIT
+	bool "Seed the wall clock at system startup"
+	default y
+	help
+	  Run rtc_init() from a SYS_INIT hook at APPLICATION priority so the wall
+	  clock (and POSIX time()) is restored from Settings before application
+	  code runs. Disable to call rtc_init() manually.
+
+config SENSWEAR_RTC_INIT_PRIORITY
+	int "rtc auto-init priority"
+	depends on SENSWEAR_RTC_AUTO_INIT
+	default 90
+	help
+	  APPLICATION-phase SYS_INIT priority for the RTC. Must run after the flash
+	  and Settings backends are initialised.
+
+endif # SENSWEAR_RTC_DRIVER
+
+config SENSWEAR_DAUGHTER_IF_DRIVER
+	bool "Daughter-board connector GPIO arbiter"
+	depends on GPIO
+	default y
+	help
+	  Build the daughter-board interface driver. It aggregates the connector's
+	  shared GPIO lines and arbitrates, at runtime, which consumer driver may
+	  control each line so two drivers cannot fight over the same pin.
+
+config SENSWEAR_DEVICE_DRIVER_EVENTS
+	bool "SensWear device driver event manager"
+	help
+	  Enable the centralized device driver event manager. This provides a
+	  shared message queue for device interrupt handlers to post events that
+	  are consumed by a single event-processing thread, keeping device handling
+	  in one place and on one stack.
+
+if SENSWEAR_DEVICE_DRIVER_EVENTS
+
+config SENSWEAR_DEVICE_DRIVER_EVENTS_MAX
+	int "Maximum number of queued device driver events"
+	default 16
+	range 1 128
+	help
+	  Maximum number of events that can be queued in the device driver event
+	  manager at any given time. Each queued event consumes memory proportional
+	  to the size of struct device_driver_event_t (currently 16 bytes).
+
+config SENSWEAR_DEVICE_DRIVER_EVENTS_AUTO_INIT
+	bool "Automatically initialize device driver events at system startup"
+	default y
+	help
+	  If enabled, the device driver event manager will be automatically
+	  initialized at POST_KERNEL initialization priority with
+	  CONFIG_SENSWEAR_DEVICE_DRIVER_EVENTS_MAX events. If disabled, the
+	  application must call device_driver_event_init() manually before posting
+	  or waiting for events.
+
+endif # SENSWEAR_DEVICE_DRIVER_EVENTS
+
+config SENSWEAR_DEVICE_MANAGER
+	bool "SensWear device manager (zbus message streams)"
+	select ZBUS
+	select ZBUS_RUNTIME_OBSERVERS
+	select SENSWEAR_DEVICE_DRIVER_EVENTS
+	help
+	  Enable the device manager: a single publisher that drains the shared
+	  device event queue, drives each device's interrupt handler, and publishes
+	  decoded per-message-type streams over zbus for application actors (the BLE
+	  manager, storage, app logic, ...) to subscribe to. Leave this disabled for
+	  isolated device or shield bring-up tests, which replace the application and
+	  do not need the manager.
+
+# Driver bring-up tests (tests/drivers). All off by default. Enabling exactly
+# one replaces the application main() with the selected test main(); see
+# tests/drivers/tests.cmake. These are Kconfig symbols (not CMake options) so
+# the selection propagates from the sysbuild top-level build / a CMake preset
+# down into this image.
+
+config SENSWEAR_TEST_BQ25180_DRIVER
+	bool "Build the BQ25180 charger bring-up test"
+	help
+	  Replace the application with the BQ25180 charger driver bring-up test.
+
+config SENSWEAR_TEST_BQ27427_DRIVER
+	bool "Build the BQ27427 fuel-gauge bring-up test"
+	help
+	  Replace the application with the BQ27427 fuel-gauge driver bring-up test.
+
+config SENSWEAR_TEST_BHI360_DRIVER
+	bool "Build the BHI360 IMU bring-up test"
+	help
+	  Replace the application with the BHI360 IMU driver bring-up test.
+
+config SENSWEAR_TEST_LP5562_DRIVER
+	bool "Build the LP5562 LED controller bring-up test"
+	help
+	  Replace the application with the LP5562 LED controller bring-up test.
+
+config SENSWEAR_TEST_M95P_DRIVER
+	bool "Build the M95P EEPROM bring-up test"
+	help
+	  Replace the application with the M95P EEPROM driver bring-up test.
+
+config SENSWEAR_TEST_RTC_DRIVER
+	bool "Build the software RTC bring-up test"
+	depends on SENSWEAR_RTC_DRIVER
+	help
+	  Replace the application with the software RTC driver bring-up test
+	  (tests/drivers/main_test_rtc.c). Sets a known time, reads it back through
+	  both the rtc API and POSIX time(), and exercises the minute and one-shot
+	  alarms.
+
+config SENSWEAR_TEST_TPSM83102_DRIVER
+	bool "Build the TPSM83102 regulator bring-up test"
+	help
+	  Replace the application with the TPSM83102 regulator driver bring-up test.
+
+config SENSWEAR_TEST_DEVICE_MANAGER
+	bool "Build the device manager test"
+	select SENSWEAR_DEVICE_MANAGER
+	help
+	  Replace the application with the device manager test
+	  (tests/device_manager/main_test_device_manager.c). Enables the device manager and
+	  its zbus streams, subscribes to every stream, and drives the fuel gauge (and
+	  the haptic motor when the senswear_haptic shield is present) to exercise the
+	  publish pipeline.
+
+config SENSWEAR_TEST_DRV2605_DRIVER
+	bool "Build the DRV2605 haptics bring-up test"
+	depends on SENSWEAR_DRV2605_DRIVER
+	help
+	  Replace the application with the DRV2605 haptics driver bring-up test
+	  (tests/shields/main_test_drv2605.c). Requires the senswear_haptic shield
+	  (build with SHIELD=senswear_haptic) so the driver and its devicetree node
+	  are present.
+
+config SENSWEAR_TEST_MAX30101_DRIVER
+	bool "Build the MAX30101 PPG bring-up test"
+	depends on SHIELD_SENSWEAR_PPG
+	help
+	  Replace the application with the MAX30101 PPG driver bring-up test
+	  (tests/shields/main_test_max30101.c). Requires the senswear_ppg shield
+	  (build with SHIELD=senswear_ppg) so the driver and its devicetree node
+	  are present.
+
+config SENSWEAR_TEST_MAX30208_DRIVER
+	bool "Build the MAX30208 temperature bring-up test"
+	depends on SHIELD_SENSWEAR_TEMPERATURE
+	help
+	  Replace the application with the MAX30208 temperature driver bring-up test
+	  (tests/shields/main_test_max30208.c). Requires the senswear_temperature
+	  shield (build with SHIELD=senswear_temperature) so the driver and its
+	  devicetree node are present.
+
+config SENSWEAR_TEST_MTCH6102_DRIVER
+	bool "Build the MTCH6102 touch bring-up test"
+	depends on SHIELD_SENSWEAR_TOUCH
+	help
+	  Replace the application with the MTCH6102 touch driver bring-up test
+	  (tests/shields/main_test_mtch6102.c). Requires the senswear_touch shield
+	  (build with SHIELD=senswear_touch) so the driver and its devicetree node
+	  are present.
+
+endmenu
+
+source "Kconfig.zephyr"

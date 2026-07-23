@@ -1,0 +1,84 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Texas Instruments TPSM83102/TPSM83103 buck-boost power module with I2C-programmable output voltage.
+
+  Registers used:
+    CONTROL1 (0x02): CONVERTER_EN bit0 enables converter (AND'ed with EN pin)
+    VOUT     (0x03): output voltage code
+    CONTROL2 (0x05): FPWM and ramp/discharge settings
+
+  Output voltage code (VOUT register):
+    Vout = 1.000 + code * 0.025 V for 0x00..0xB4
+    Vout = 5.5 V for 0xB5..0xFF
+
+compatible: "ti,tpsm83102"
+
+include:
+  - name: i2c-device.yaml
+  - name: regulator.yaml
+
+properties:
+  reg:
+    required: true
+
+  enable-gpios:
+    type: phandle-array
+    required: false
+    description: Optional GPIO connected to the module EN pin.
+
+  ti,fpwm:
+    type: boolean
+    description: |
+      Force PWM operation (CONTROL2.FPWM bit7). If not set, default stays as device reset.
+
+  ti,fast-ramp-enable:
+    type: boolean
+    description: |
+      Enable fast startup compared to VOUT ramp (CONTROL2.FAST_RAMP_EN bit6).
+
+  ti,discharge-vout:
+    type: string
+    required: false
+    enum:
+      - "disable"
+      - "slow"
+      - "medium"
+      - "fast"
+    description: |
+      Output discharge strength (CONTROL2.EN_DISCH_VOUT[5:4]):
+        disable=00, slow=01 (34mA), medium=10 (67mA), fast=11 (100mA)
+
+  ti,cl-ramp-min-high:
+    type: boolean
+    description: |
+      Minimum current limit during soft-start ramp (CONTROL2.CL_RAMP_MIN bit3).
+      false = Low (500mA), true = High (2x Low)
+
+  ti,td-ramp:
+    type: int
+    required: false
+    description: |
+      Soft-start ramp time selector (CONTROL2.TD_RAMP[2:0]).
+      Valid values 0..7 map to:
+        0:0.256ms 1:0.512ms 2:1.024ms 3:1.920ms
+        4:3.584ms 5:7.552ms 6:9.600ms 7:24.320ms
+    enum: [0, 1, 2, 3, 4, 5, 6, 7]
+
+  ti,enable-scp:
+    type: boolean
+    description: |
+      Enable short circuit hiccup protection (CONTROL1.EN_SCP bit2).
+
+  ti,fast-dvs:
+    type: boolean
+    description: |
+      Enable fast DVS (CONTROL1.EN_FAST_DVS bit3).
+
+  ti,strict-reset-defaults:
+    type: boolean
+    description: |
+      Require CONTROL1, VOUT, and CONTROL2 to match datasheet reset defaults
+      during probe. This is intended for lab diagnostics only; production
+      firmware should allow existing programmed register state.

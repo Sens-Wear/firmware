@@ -1,0 +1,15 @@
+description: SensWear BQ27427 fuel gauge
+
+compatible: "senswear,bq27427"
+
+include:
+  - name: i2c-device.yaml
+
+properties:
+  reg:
+    required: true
+
+  int-gpios:
+    type: phandle-array
+    required: true
+    description: Active-low gauge interrupt GPIO.

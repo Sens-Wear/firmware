@@ -1,0 +1,103 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "CMSIS-DAP: flash and debug nRF54L15",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "arm-zephyr-eabi-gdb",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "arm-zephyr-eabi-gdb.exe",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "preLaunchTask": "CMSIS-DAP: flash nRF54L15",
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "ST-Link/V2: flash and debug nRF54L15",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "arm-zephyr-eabi-gdb",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "arm-zephyr-eabi-gdb.exe",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-stlink-v2.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "preLaunchTask": "ST-Link/V2: flash nRF54L15",
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "J-Link/OpenOCD: flash and debug nRF54L15",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "arm-zephyr-eabi-gdb",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "arm-zephyr-eabi-gdb.exe",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-jlink.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "preLaunchTask": "J-Link/OpenOCD: flash nRF54L15",
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "cmakeBuildDirectory",
+            "type": "command",
+            "command": "cmake.buildDirectory",
+            "args": "${workspaceFolder}"
+        }
+    ]
+}

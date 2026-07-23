@@ -1,0 +1,25 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Generic I2C daughter-board device on the SensWear daughter connector.
+
+  Behaves like the generic "i2c-device" binding (it includes it) -- the node is
+  still addressed by its nodelabel and reg via SYS_I2C_DT_SPEC_GET() -- but adds
+  a vin-supply phandle so the device's dependency on the shared daughter rail
+  (VDD_DAUGHTER, from the TPSM83102 regulator) is expressed in devicetree. The
+  build counts the daughter devices that reference this regulator; the connector
+  provides a single regulated rail, so at most one may be present.
+
+  Use this as the first compatible, keeping "i2c-device" as a fallback:
+    compatible = "senswear,daughter-i2c-device", "i2c-device";
+
+compatible: "senswear,daughter-i2c-device"
+
+include: i2c-device.yaml
+
+properties:
+  vin-supply:
+    type: phandle
+    description: |
+      Regulator supplying the device's input rail (VDD_DAUGHTER / TPSM83102).

@@ -1,0 +1,97 @@
+# Copyright (c) 2024 Cirrus Logic, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# SensWear local copy:
+# Copied from Zephyr/NCS v3.3.0
+#   zephyr/dts/bindings/haptics/ti,drv2605.yaml
+# See ../../../drivers/haptic/drv2605/PATCHED_FROM_ZEPHYR.md before changing
+# this file.
+#
+# SensWear local patch: the compatible is namespaced "senswear,drv2605" so the
+# node binds to the SensWear-patched DRV2605 driver instead of Zephyr's upstream
+# ti,drv2605 driver. The enable pin is not described with en-gpios; the patched
+# driver claims SENSOR_GPIO_0 through the daughter_if GPIO arbiter.
+
+description: |
+  DRV2605 Haptic Driver for ERM and LRA with built-in library and smart-loop
+  architecture.
+
+  SensWear-patched DRV2605 driver. Register access is routed through the
+  SensWear SYS_I2C ownership wrapper and the enable pin is owned through the
+  daughter_if GPIO arbiter rather than a devicetree en-gpios property.
+
+compatible: "senswear,drv2605"
+
+include: i2c-device.yaml
+
+properties:
+  actuator-mode:
+    required: true
+    type: string
+    enum:
+      - "ERM"
+      - "LRA"
+  feedback-brake-factor:
+    type: string
+    enum:
+      - "1X"
+      - "2X"
+      - "3X"
+      - "4X"
+      - "6X"
+      - "8X"
+      - "16X"
+      - "DISABLED"
+    default: "3X"
+    description: |
+      Selects the feedback gain ratio between braking gain and driving gain.
+      According to the datasheet, a value of 2 ("3X") is valid for most
+      actuators.
+  loop-gain:
+    type: string
+    enum:
+      - "LOW"
+      - "MEDIUM"
+      - "HIGH"
+      - "VERY_HIGH"
+    default: "HIGH"
+    description: |
+      Selects a loop gain for the feedback control. According to the datasheet,
+      a value of 2 ("HIGH") is valid for most actuators.
+  vib-rated-mv:
+    required: true
+    type: int
+    description: |
+      Sets the reference voltage for full-scale output during closed-loop
+      operation. For an LRA this is the actuator's rated RMS voltage. The
+      driver combines this value with vib-resonant-hz and the feedback sample
+      time when programming RATED_VOLTAGE. This must come from the fitted
+      actuator's data sheet; the binding deliberately provides no motor-voltage
+      default.
+  vib-overdrive-mv:
+    required: true
+    type: int
+    description: |
+      Sets a peak-voltage clamp so that automatic overdrive and braking are
+      bounded. For an LRA whose data sheet only specifies RMS voltage, convert
+      the permitted RMS value to its sine-wave peak before setting this
+      property. This must come from the fitted actuator's data sheet; the
+      binding deliberately provides no motor-voltage default.
+  vib-resonant-hz:
+    required: true
+    type: int
+    description: |
+      Nominal resonant frequency of an LRA. This is used to seed DRIVE_TIME
+      and to calculate the LRA RATED_VOLTAGE register. It is ignored in ERM
+      mode, but remains required so an actuator change cannot silently retain
+      an unsuitable frequency. The DRV2605 and DRV2605L support LRA frequencies
+      from 125 to 300 Hz.
+  in-trig-gpios:
+    type: phandle-array
+    description: GPIO to trigger ROM waveforms or drive an input signal.
+  vin-supply:
+    type: phandle
+    description: |
+      Regulator supplying the device's input rail. On SensWear this is the
+      shared daughter-connector rail (VDD_DAUGHTER) from the TPSM83102, so the
+      build can detect how many daughter devices depend on that single regulator.

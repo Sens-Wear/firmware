@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config SHIELD_SENSWEAR_PPG
+	def_bool $(shields_list_contains,senswear_ppg)

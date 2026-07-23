@@ -1,0 +1,25 @@
+# Copyright 2024 Cirrus Logic, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# SensWear local copy:
+# Copied from Zephyr/NCS v3.3.0
+#   zephyr/drivers/haptics/Kconfig.drv2605
+# See PATCHED_FROM_ZEPHYR.md before changing this file.
+
+config SENSWEAR_DRV2605_DRIVER
+	bool "SensWear DRV2605 haptics driver"
+	default y
+	depends on DT_HAS_SENSWEAR_DRV2605_ENABLED
+	select HAPTICS
+	select I2C
+	select GPIO
+	select REGULATOR
+	select SENSWEAR_SYS_I2C
+	select SENSWEAR_DEVICE_DRIVER_EVENTS
+	help
+	  Enable the SensWear-patched Texas Instruments DRV2605 haptics driver.
+	  This copy routes register access through the SensWear SYS_I2C ownership
+	  wrapper, owns the enable pin through the daughter_if GPIO arbiter, and
+	  posts playback lifecycle events through the SensWear device-driver event
+	  queue. It binds to the namespaced "senswear,drv2605" compatible so it
+	  replaces, rather than collides with, Zephyr's upstream ti,drv2605 driver.

@@ -1,0 +1,60 @@
+---
+# Project-wide clang-format settings.
+# K&R style is primarily represented by attached braces.
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: Latest
+
+# K&R braces: attach opening braces to declarations/control statements.
+BreakBeforeBraces: Attach
+BraceWrapping:
+  AfterClass: false
+  AfterControlStatement: Never
+  AfterEnum: false
+  AfterFunction: false
+  AfterNamespace: false
+  AfterStruct: false
+  AfterUnion: false
+  BeforeCatch: false
+  BeforeElse: false
+  IndentBraces: false
+
+IndentWidth: 4
+UseTab: Always
+TabWidth: 4
+ContinuationIndentWidth: 4
+
+# Keep common C conventions in embedded codebases.
+PointerAlignment: Left
+SpaceBeforeParens: ControlStatements
+SortIncludes: Never
+ColumnLimit: 100
+
+# Force multiline calls/declarations to place one argument/parameter per line.
+BinPackArguments: false
+BinPackParameters: false
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+
+AllowAllConstructorInitializersOnNextLine: false
+AllowShortBlocksOnASingleLine: Empty
+AlignEscapedNewlines: Left
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+IndentWrappedFunctionNames: false
+ExperimentalAutoDetectBinPacking: false
+AlwaysBreakAfterReturnType: None
+SpacesInCStyleCastParentheses: false
+SpaceAfterCStyleCast: true
+SpaceBeforeSquareBrackets: false
+SpaceBeforeRangeBasedForLoopColon: false
+SpacesInConditionalStatement: false
+SpacesInParentheses: false
+ReflowComments: true
+CommentPragmas: '^\\.+'
+PenaltyBreakBeforeFirstCallParameter: 1000
+PenaltyReturnTypeOnItsOwnLine: 1000
+PenaltyBreakAssignment: 10
+PenaltyBreakComment: 1000
+...

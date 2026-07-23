@@ -1,0 +1,10 @@
+identifier: SensWear/nrf54l15/cpuflpr
+name: SensWear board
+vendor: SenseraTechnologies
+arch: riscv
+toolchain:
+  - zephyr
+sysbuild: true
+ram: 96
+flash: 96
+supported: []

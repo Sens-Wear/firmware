@@ -1,0 +1,21 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: Apache-2.0
+
+description: SensWear shared daughter board connector
+
+compatible: "senswear,daughter-connector"
+
+include: gpio-nexus.yaml
+
+properties:
+  gpio-line-names:
+    type: string-array
+    description: Names for the exposed connector GPIO lines (per schematic).
+
+  sensor-gpios:
+    type: phandle-array
+    description: |
+      The connector GPIO lines, in line order, aggregated by the daughter_if
+      driver. Each entry references this connector's own gpio-map so the lines
+      resolve to the physical controller pins. The driver owns these specs and
+      arbitrates which consumer driver may control each line.

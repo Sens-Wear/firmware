@@ -1,0 +1,33 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	aliases {
+		senswear-daughter = &drv2605;
+		senswear-haptic = &drv2605;
+	};
+};
+
+&sys_i2c_peripheral {
+	drv2605: drv2605@5a {
+		compatible = "senswear,drv2605";
+		reg = <0x5a>;
+		/* Enable uses SENSOR_GPIO_0 / P1.14 claimed through daughter_if. */
+		status = "okay";
+		actuator-mode = "LRA";
+		loop-gain = "HIGH";
+		feedback-brake-factor = "3X";
+		label = "drv2605";
+		/*
+		 * Vybronics VG0625002U: 0.7 Vrms rated, 260 Hz.  The part
+		 * does not specify a separate overdrive rating, so bound the
+		 * peak clamp to the rated sine-wave peak (0.7 V * sqrt(2)).
+		 */
+		vib-rated-mv = <700>;
+		vib-overdrive-mv = <990>;
+		vib-resonant-hz = <260>;
+		/* Powered from the shared daughter-connector rail (VDD_DAUGHTER). */
+		vin-supply = <&tpsm83102>;
+	};
+};

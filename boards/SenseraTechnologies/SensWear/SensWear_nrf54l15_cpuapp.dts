@@ -1,0 +1,350 @@
+/dts-v1/;
+#include <nordic/nrf54l15_cpuapp.dtsi>
+#include "SensWear-pinctrl.dtsi"
+/*
+ * Flash partitioning is defined directly in DTS below (see &cpuapp_rram) rather
+ * than pulling in the vendor MCUboot partition layout
+ * (vendor/nordic/nrf54l15_cpuapp_partition.dtsi). This board runs without a
+ * bootloader, so the application owns flash from 0x0. Partition Manager is also
+ * disabled (sysbuild.conf) so this layout is authoritative.
+ */
+
+/ {
+	model = "SensWear board";
+	compatible = "SenseraTechnologies,SensWear-cpuapp";
+
+	chosen {
+		zephyr,console = &uart30;
+		zephyr,shell-uart = &uart30;
+		zephyr,code-partition = &slot0_partition;
+		zephyr,sram = &cpuapp_sram;
+		zephyr,flash = &cpuapp_rram;
+		zephyr,flash-controller = &rram_controller;
+	};
+
+	/*
+	 * Shared system buses: ownership-locking wrappers over the Nordic
+	 * controllers. Physical devices remain children of their standard Zephyr
+	 * controller nodes; board drivers route transfers through these wrappers.
+	 */
+	sys_i2c: sys_i2c {
+		compatible = "senswear,sys-i2c";
+		controller = <&i2c21>;
+		status = "okay";
+	};
+
+	sys_spi: sys_spi {
+		compatible = "senswear,sys-spi";
+		controller = <&spi00>;
+		status = "okay";
+	};
+
+	/*
+	 * Software real-time clock. The nRF54L15 has no battery-backed calendar
+	 * RTC, so this node owns no hardware; it gives the rtc driver a devicetree
+	 * identity and a generated device id for the device-event manager. Wall-
+	 * clock timekeeping runs on the GRTC-backed system clock.
+	 */
+	rtc0: rtc {
+		compatible = "senswear,rtc";
+		status = "okay";
+	};
+
+};
+
+/*
+ * Application flash layout (DTS-based, no bootloader). The 1428 KB cpuapp_rram
+ * holds the application from 0x0 (slot0_partition is the chosen code-partition,
+ * so the reset vector lives at 0x0 and the device boots it directly) and a
+ * 36 KB storage_partition at the top for Settings/NVS. The on-device LittleFS
+ * is mounted on the external M95P (a block device), so it needs no partition
+ * here. Sizes are 4 KB-erase-block aligned and sum to the full 1428 KB.
+ */
+&cpuapp_rram {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		slot0_partition: partition@0 {
+			label = "image-0";
+			reg = <0x0 DT_SIZE_K(1392)>;
+		};
+
+		storage_partition: partition@15c000 {
+			label = "storage";
+			reg = <0x15c000 DT_SIZE_K(36)>;
+		};
+	};
+};
+
+&uart30 {
+	status = "okay";
+	current-speed = <921600>;
+
+	pinctrl-0 = <&uart30_default>;
+	pinctrl-1 = <&uart30_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
+&grtc {
+	owned-channels = <0 1 2 3 4 5 6 7 8 9 10 11>;
+	/*
+	 * Channels 7-11 reserved for Zero Latency IRQs, 3-4 for FLPR.
+	 */
+	child-owned-channels = <3 4 7 8 9 10 11>;
+	status = "okay";
+};
+
+&cpuapp_sram {
+	status = "okay";
+};
+
+&clock {
+	status = "okay";
+};
+
+&gpiote20 {
+	status = "okay";
+};
+
+&gpiote30 {
+	status = "okay";
+};
+
+&gpio0 {
+	status = "okay";
+};
+
+
+&pinctrl {
+	uart30_default: uart30_default {
+		group1 {
+			psels = <NRF_PSEL(UART_RX, 0, 4)>; /* P0.04 */
+		};
+		group2 {
+			psels = <NRF_PSEL(UART_TX, 0, 3)>; /* P0.03 */
+		};
+	};
+
+	uart30_sleep: uart30_sleep {
+		group1 {
+			psels = <NRF_PSEL(UART_TX, 0, 3)>,
+				<NRF_PSEL(UART_RX, 0, 4)>;
+		};
+	};
+
+	i2c21_default: i2c21_default {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 1, 2)>,
+				<NRF_PSEL(TWIM_SCL, 1, 3)>;
+			bias-pull-up;
+		};
+	};
+
+	i2c21_sleep: i2c21_sleep {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 1, 2)>,
+			<NRF_PSEL(TWIM_SCL, 1, 3)>;
+			low-power-enable;
+		};
+	};
+
+	spi00_default: spi00_default {
+		group1 {
+			psels = <NRF_PSEL(SPIM_MISO, 2, 4)>,
+				<NRF_PSEL(SPIM_MOSI, 2, 2)>,
+				<NRF_PSEL(SPIM_SCK, 2, 1)>;
+		};
+	};
+
+	spi00_sleep: spi00_sleep {
+		group1 {
+			psels = <NRF_PSEL(SPIM_MISO, 2, 4)>,
+				<NRF_PSEL(SPIM_MOSI, 2, 2)>,
+				<NRF_PSEL(SPIM_SCK, 2, 1)>;
+			low-power-enable;
+		};
+	};
+};
+
+/ {
+	/*
+	 * Daughter-board connector GPIO mapper.
+	 *
+	 * This is intentionally not an I2C child node. The daughter boards use
+	 * the system I2C bus through their own shield nodes, while this connector
+	 * node only maps and names the shared SENSOR_GPIO_0..3 lines.
+	 */
+	daughter_board_if: daughter-board {
+		compatible = "senswear,daughter-connector";
+		#gpio-cells = <2>;
+		gpio-map-mask = <0xffffffff 0xffffffc0>;
+		gpio-map-pass-thru = <0 0x3f>;
+		gpio-map = <0 0 &gpio1 14 0>,  /* SENSOR_GPIO_0 (P1.14) */
+			   <1 0 &gpio1 13 0>,  /* SENSOR_GPIO_1 (P1.13) */
+			   <2 0 &gpio1 12 0>,  /* SENSOR_GPIO_2 (P1.12) */
+			   <3 0 &gpio1 11 0>;  /* SENSOR_GPIO_3 (P1.11) */
+		gpio-line-names = "SENSOR_GPIO_0", "SENSOR_GPIO_1",
+				  "SENSOR_GPIO_2", "SENSOR_GPIO_3";
+		/*
+		 * The connector's GPIO lines, in line order, aggregated by the
+		 * daughter_if driver which arbitrates their ownership. Resolved
+		 * through this node's own gpio-map to the physical controller.
+		 */
+		sensor-gpios = <&daughter_board_if 0 GPIO_ACTIVE_HIGH>,
+			       <&daughter_board_if 1 GPIO_ACTIVE_HIGH>,
+			       <&daughter_board_if 2 GPIO_ACTIVE_HIGH>,
+			       <&daughter_board_if 3 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
+};
+
+sys_i2c_peripheral: &i2c21 {
+	status = "okay";
+	compatible = "nordic,nrf-twim";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	pinctrl-0 = <&i2c21_default>;
+	pinctrl-1 = <&i2c21_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	/*
+	 * LP5562 RGB LED driver.
+	 */
+	lp5562: lp5562@30 {
+		compatible = "ti,lp5562";
+		reg = <0x30>;
+		enable-gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>; /* P1.04 LED_EN */
+		status = "okay";
+	};
+
+	/*
+	 * BQ27427 fuel gauge.
+	 */
+	bq27427: fuel-gauge@55 {
+		compatible = "senswear,bq27427";
+		reg = <0x55>;
+		int-gpios = <&gpio1 7 GPIO_ACTIVE_LOW>; /* P1.07 GAUGE_IRQ */
+		status = "okay";
+	};
+
+	/*
+	 * TPSM83102 buck regulator generating VDD_DAUGHTER.
+	 */
+	tpsm83102: regulator@68 {
+		compatible = "ti,tpsm83102";
+		reg = <0x68>;
+		enable-gpios = <&gpio1 6 GPIO_ACTIVE_HIGH>; /* P1.06 V_REG_EN */
+		regulator-name = "VDD_DAUGHTER";
+		regulator-min-microvolt = <1000000>;
+		regulator-max-microvolt = <5500000>;
+		status = "okay";
+	};
+
+	/*
+	 * BQ25180 charger and power-path controller.
+	 */
+	bq25180: charger@6a {
+		compatible = "senswear,bq25180";
+		reg = <0x6a>;
+		int-gpios = <&gpio1 5 GPIO_ACTIVE_LOW>;   /* P1.05 CHG_IRQ */
+		/* P1.08 PWR_KILL shares the BQ25180 TS/MR pin, which has no NTC and is
+		 * pulled to V_BAT by R4 (100k). Drive it open-drain so the host only ever
+		 * pulls it low to request shutdown and otherwise releases it (high via R4);
+		 * a push-pull high would source into the TS/MR node and corrupt the TS
+		 * reading / trigger spurious MR-wake events. */
+		kill-gpios = <&gpio1 8 (GPIO_ACTIVE_LOW | GPIO_OPEN_DRAIN)>; /* P1.08 PWR_KILL */
+		status = "okay";
+	};
+};
+
+&gpio1 {
+	status = "okay";
+
+	/*
+	 * Keep LED_EN (P1.04) low from earliest boot.
+	 */
+	lp5562_en_hog: lp5562_en_hog {
+		gpio-hog;
+		gpios = <4 GPIO_ACTIVE_LOW>;  /* P1.04 */
+		output-high;
+		line-name = "LP5562_EN";
+	};
+
+	/*
+	 * PWR_KILL (P1.08) must be released HIGH from the earliest boot so power is
+	 * held on before any driver runs. It shares the BQ25180 TS/MR pin (no NTC,
+	 * pulled to V_BAT by R4), so it is driven open-drain: output-high releases the
+	 * pin and lets R4 hold it high, rather than actively sourcing into the TS/MR
+	 * node (which corrupts the TS reading and triggers spurious MR-wake events).
+	 * The hog guarantees this power-on default; the bq25180 node also exposes the
+	 * line as kill-gpios so the driver can take it over at runtime (open-drain,
+	 * released high) and drop this hog once the driver owns it.
+	 */
+	bq25180_pwr_kill_hog: bq25180_pwr_kill_hog {
+		gpio-hog;
+		gpios = <8 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+		output-high;
+		line-name = "PWR_KILL";
+	};
+
+	/*
+	 * Keep VREG_EN (P1.06) low from earliest boot.
+	 */
+	tpsm83102_en_hog: tpsm83102_en_hog {
+		gpio-hog;
+		gpios = <6 GPIO_ACTIVE_LOW>;
+		output-high;
+		line-name = "VREG_EN";
+	};
+};
+
+&gpio2 {
+	status = "okay";
+};
+
+&uicr {
+	nfct-pins-as-gpios;
+};
+
+sys_spi_peripheral: &spi00 {
+	status = "okay";
+	pinctrl-0 = <&spi00_default>;
+	pinctrl-1 = <&spi00_sleep>;
+	pinctrl-names = "default", "sleep";
+	/*
+	 * Chip-selects are intentionally not declared here. Each peripheral owns
+	 * and drives its own CS GPIO (see its `cs-gpios` property), so the SPI
+	 * controller performs no automatic chip-select management.
+	 */
+
+	/*
+	 * M95P external non-volatile memory.
+	 */
+	m95p: eeprom@0 {
+		compatible = "senswear,m95p";
+		reg = <0>;
+		spi-max-frequency = <8000000>;
+		cs-gpios = <&gpio2 3 GPIO_ACTIVE_LOW>; /* P2.03 M95P_CS# */
+		size = <0x400000>;
+		address-width = <24>;
+		pagesize = <512>;
+		timeout = <100>;
+		status = "okay";
+	};
+
+	/*
+	 * BHI360 IMU hub.
+	 */
+	bhi360: bhi360@1 {
+		compatible = "bosch,bhi360";
+		reg = <1>;
+		spi-max-frequency = <8000000>;
+		cs-gpios = <&gpio2 5 GPIO_ACTIVE_LOW>;      /* P2.05 BHI360_CS# */
+		int-gpios = <&gpio1 9 GPIO_ACTIVE_LOW>;     /* P1.09 MPU_IRQ# */
+		reset-gpios = <&gpio2 7 GPIO_ACTIVE_LOW>;   /* P2.07 MPU_RESET */
+		gpio0-gpios = <&gpio1 10 GPIO_ACTIVE_HIGH>; /* P1.10 MPU_GPIO0 */
+		gpio1-gpios = <&gpio2 6 GPIO_ACTIVE_HIGH>;  /* P2.06 MPU_GPIO1 */
+		status = "okay";
+	};
+};

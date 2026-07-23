@@ -1,0 +1,549 @@
+{
+    "version": 5,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 23
+    },
+    "configurePresets": [
+        {
+            "name": "senswear_nrf54l15_cpuapp",
+            "displayName": "SensWear nRF54L15 (cpuapp)",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "senswear_nrf54l15_cpuapp_haptic",
+            "displayName": "SensWear nRF54L15 (cpuapp) + haptic shield",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/app/haptic",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "SHIELD": "senswear_haptic",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "senswear_nrf54l15_cpuapp_ppg",
+            "displayName": "SensWear nRF54L15 (cpuapp) + PPG shield",
+            "description": "PPG daughter board; also enables the temperature shield, as the PPG daughter carries the MAX30208.",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/app/ppg",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "SHIELD": "senswear_ppg;senswear_temperature",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "senswear_nrf54l15_cpuapp_temperature",
+            "displayName": "SensWear nRF54L15 (cpuapp) + temperature shield",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/app/temperature",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "SHIELD": "senswear_temperature",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "senswear_nrf54l15_cpuapp_touch",
+            "displayName": "SensWear nRF54L15 (cpuapp) + touch shield",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/app/touch",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "SHIELD": "senswear_touch",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_bq25180",
+            "displayName": "Test: BQ25180 charger",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/tests/bq25180",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "CONFIG_SENSWEAR_TEST_BQ25180_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_bq27427",
+            "displayName": "Test: BQ27427 fuel gauge",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/tests/bq27427",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "CONFIG_SENSWEAR_TEST_BQ27427_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_bhi360",
+            "displayName": "Test: BHI360 IMU",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/tests/bhi360",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "CONFIG_SENSWEAR_TEST_BHI360_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_lp5562",
+            "displayName": "Test: LP5562 LED controller",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/tests/lp5562",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "CONFIG_SENSWEAR_TEST_LP5562_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_m95p",
+            "displayName": "Test: M95P EEPROM",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/tests/m95p",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "CONFIG_SENSWEAR_TEST_M95P_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_tpsm83102",
+            "displayName": "Test: TPSM83102 regulator",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/tests/tpsm83102",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "CONFIG_SENSWEAR_TEST_TPSM83102_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_rtc",
+            "displayName": "Test: software RTC",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/tests/rtc",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "CONFIG_SENSWEAR_TEST_RTC_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_device_manager",
+            "displayName": "Test: device manager (base streams, no shield)",
+            "description": "Device-manager zbus stream test. Disables the fuel gauge by default because it requires a battery to be present.",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/tests/device_manager",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "CONFIG_SENSWEAR_TEST_DEVICE_MANAGER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_device_manager_haptic",
+            "displayName": "Test: device manager + haptic shield",
+            "description": "Device-manager zbus stream test for haptic shield. Disables the fuel gauge by default because it requires a battery to be present.",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/tests/device_manager_haptic",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "SHIELD": "senswear_haptic",
+                "CONFIG_SENSWEAR_TEST_DEVICE_MANAGER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_device_manager_ppg",
+            "displayName": "Test: device manager + PPG shield",
+            "description": "Device-manager zbus stream test for PPG shield. Disables the fuel gauge by default because it requires a battery to be present.",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/tests/device_manager_ppg",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "SHIELD": "senswear_ppg;senswear_temperature",
+                "CONFIG_SENSWEAR_TEST_DEVICE_MANAGER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_device_manager_temperature",
+            "displayName": "Test: device manager + temperature shield",
+            "description": "Device-manager zbus stream test for temperature shield. Disables the fuel gauge by default because it requires a battery to be present.",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/tests/device_manager_temperature",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "SHIELD": "senswear_temperature",
+                "CONFIG_SENSWEAR_TEST_DEVICE_MANAGER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_device_manager_touch",
+            "displayName": "Test: device manager + touch shield",
+            "description": "Device-manager zbus stream test for touch shield. Disables the fuel gauge by default because it requires a battery to be present.",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/tests/device_manager_touch",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "SHIELD": "senswear_touch",
+                "CONFIG_SENSWEAR_TEST_DEVICE_MANAGER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_drv2605",
+            "displayName": "Test: DRV2605 haptics (senswear_haptic shield)",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/tests/drv2605",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "SHIELD": "senswear_haptic",
+                "CONFIG_SENSWEAR_TEST_DRV2605_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_max30101",
+            "displayName": "Test: MAX30101 PPG (senswear_ppg shield)",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/tests/max30101",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "SHIELD": "senswear_ppg",
+                "CONFIG_SENSWEAR_TEST_MAX30101_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_max30208",
+            "displayName": "Test: MAX30208 temperature (senswear_temperature shield)",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/tests/max30208",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "SHIELD": "senswear_temperature",
+                "CONFIG_SENSWEAR_TEST_MAX30208_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        },
+        {
+            "name": "test_mtch6102",
+            "displayName": "Test: MTCH6102 touch (senswear_touch shield)",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/tests/mtch6102",
+            "environment": {
+                "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
+                "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
+                "ZEPHYR_SDK_INSTALL_DIR": "$penv{NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk",
+                "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                "NINJA_STATUS": "[%f/%t] ",
+                "CLICOLOR_FORCE": "1"
+            },
+            "cacheVariables": {
+                "BOARD": "SensWear/nrf54l15/cpuapp",
+                "BOARD_ROOT": "${sourceDir}",
+                "SHIELD": "senswear_touch",
+                "CONFIG_SENSWEAR_TEST_MTCH6102_DRIVER": "y",
+                "CONFIG_SHELL": "n",
+                "CONFIG_I2C_SHELL": "n"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "senswear_nrf54l15_cpuapp",
+            "configurePreset": "senswear_nrf54l15_cpuapp"
+        },
+        {
+            "name": "senswear_nrf54l15_cpuapp_haptic",
+            "configurePreset": "senswear_nrf54l15_cpuapp_haptic"
+        },
+        {
+            "name": "senswear_nrf54l15_cpuapp_ppg",
+            "configurePreset": "senswear_nrf54l15_cpuapp_ppg"
+        },
+        {
+            "name": "senswear_nrf54l15_cpuapp_temperature",
+            "configurePreset": "senswear_nrf54l15_cpuapp_temperature"
+        },
+        {
+            "name": "senswear_nrf54l15_cpuapp_touch",
+            "configurePreset": "senswear_nrf54l15_cpuapp_touch"
+        },
+        {
+            "name": "test_bq25180",
+            "configurePreset": "test_bq25180"
+        },
+        {
+            "name": "test_bq27427",
+            "configurePreset": "test_bq27427"
+        },
+        {
+            "name": "test_bhi360",
+            "configurePreset": "test_bhi360"
+        },
+        {
+            "name": "test_lp5562",
+            "configurePreset": "test_lp5562"
+        },
+        {
+            "name": "test_m95p",
+            "configurePreset": "test_m95p"
+        },
+        {
+            "name": "test_tpsm83102",
+            "configurePreset": "test_tpsm83102"
+        },
+        {
+            "name": "test_rtc",
+            "configurePreset": "test_rtc"
+        },
+        {
+            "name": "test_device_manager",
+            "configurePreset": "test_device_manager"
+        },
+        {
+            "name": "test_device_manager_haptic",
+            "configurePreset": "test_device_manager_haptic"
+        },
+        {
+            "name": "test_device_manager_ppg",
+            "configurePreset": "test_device_manager_ppg"
+        },
+        {
+            "name": "test_device_manager_temperature",
+            "configurePreset": "test_device_manager_temperature"
+        },
+        {
+            "name": "test_device_manager_touch",
+            "configurePreset": "test_device_manager_touch"
+        },
+        {
+            "name": "test_drv2605",
+            "configurePreset": "test_drv2605"
+        },
+        {
+            "name": "test_max30101",
+            "configurePreset": "test_max30101"
+        },
+        {
+            "name": "test_max30208",
+            "configurePreset": "test_max30208"
+        },
+        {
+            "name": "test_mtch6102",
+            "configurePreset": "test_mtch6102"
+        }
+    ]
+}
