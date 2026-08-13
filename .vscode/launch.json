@@ -14,9 +14,13 @@
             "objdumpPath": "arm-zephyr-eabi-objdump",
             "armToolchainPrefix": "arm-zephyr-eabi",
             "windows": {
-                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
-                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
-                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+                "serverpath": "${env:OPENOCD}",
+                "gdbPath": "${env:ZEPHYR_GDB}",
+                "objdumpPath": "${env:ZEPHYR_OBJDUMP}",
+                "debuggerArgs": [
+                    "-iex",
+                    "set remotetimeout 60"
+                ]
             },
             "configFiles": [
                 "${workspaceFolder}/config/openocd-cmsis-dap.cfg",

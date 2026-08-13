@@ -27,11 +27,10 @@ toolchain is installed somewhere else, only the variable values should change,
 not the repository files.
 
 VS Code does not automatically load `.env` into `${env:...}` substitutions.
-The checked-in OpenOCD, GDB, objdump, and nm wrappers read `.env` directly for
-flash/debug tasks. VS Code uses the `.sh` wrappers on macOS/Linux and the
-`.cmd` wrappers on Windows. For CMake, clangd, and other extension settings,
-use one of these
-workflows:
+The checked-in OpenOCD, GDB, objdump, and nm wrappers read `.env` directly.
+Each wrapper is available as `.sh` for macOS/Linux, `.cmd` for Command Prompt,
+and `.ps1` for PowerShell (except where a platform has no corresponding tool).
+For CMake, clangd, and other extension settings, use one of these workflows:
 
 ```sh
 ./config/scripts/code-with-env.sh
@@ -42,6 +41,39 @@ On Windows:
 ```bat
 config\scripts\code-with-env.cmd
 ```
+
+Or from PowerShell:
+
+```powershell
+.\config\scripts\code-with-env.ps1
+```
+
+The other PowerShell wrappers use the same calling convention and forward all
+arguments to the configured tool, for example:
+
+```powershell
+.\config\scripts\openocd-with-env.ps1 --version
+.\config\scripts\gdb-with-env.ps1 --version
+```
+
+PowerShell execution policy must permit local scripts. On a machine using the
+default `Restricted` policy, enable them for the current PowerShell process
+only, then run the wrapper:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\config\scripts\openocd-with-env.ps1 --version
+```
+
+This process-scoped setting disappears when that PowerShell window closes. If
+an organization manages execution policy, follow its approved configuration.
+
+> **Cortex-Debug:** `serverpath` and `gdbPath` require executable files, so do
+> not point those properties at either a `.cmd` or `.ps1` wrapper. Launch VS
+> Code through `code-with-env.*`, then use `${env:OPENOCD}` and
+> `${env:ZEPHYR_GDB}` in `launch.json`. When using GDB directly, retain
+> `debuggerArgs: ["-iex", "set remotetimeout 60"]` so image programming does
+> not exceed GDB's default remote timeout.
 
 If VS Code is already running, quit it first so the new window inherits the
 environment from the launcher.
