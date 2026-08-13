@@ -39,8 +39,8 @@ and explain why the upstream code must differ.
 Configure and build the base application:
 
 ```sh
-cmake --preset senswear_nrf54l15_cpuapp
-cmake --build --preset senswear_nrf54l15_cpuapp
+cmake --preset senswear_nrf54l15_cpuapp_base
+cmake --build --preset senswear_nrf54l15_cpuapp_base
 ```
 
 Shield application presets:

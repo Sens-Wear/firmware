@@ -24,4 +24,9 @@ if [ ! -x "$ZEPHYR_GDB" ]; then
     exit 1
 fi
 
-exec "$ZEPHYR_GDB" "$@"
+# OpenOCD does not service the GDB socket until the launch commands that flash
+# and verify the image have finished, which takes longer than GDB's 2 s default.
+# Without a longer timeout GDB retransmits qSupported, OpenOCD answers every
+# copy, and the replies desync ("Remote replied unexpectedly to
+# 'vMustReplyEmpty'").
+exec "$ZEPHYR_GDB" -iex "set remotetimeout 60" "$@"

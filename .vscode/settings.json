@@ -9,11 +9,35 @@
     "cortex-debug.variableUseNaturalFormat": true,
     "cortex-debug.pyocdPath": "pyocd",
     "clangd.arguments": [
-        "--compile-commands-dir=${workspaceFolder}/build/firmware",
+        "--compile-commands-dir=${workspaceFolder}/build/app/base/${workspaceFolderBasename}",
         "--query-driver=${env:NCS_TOOLCHAIN_ROOT}/opt/zephyr-sdk/arm-zephyr-eabi/bin/arm-zephyr-eabi-*"
     ],
+    // Keys must point at the *domain* (image) build folder produced by sysbuild,
+    // i.e. <binaryDir>/firmware (the CMake project name), not the top-level
+    // sysbuild binaryDir. The nRF Connect debug action resolves the sysbuild
+    // folder to its Zephyr domains first and then looks the binding up there.
+    // Only ${workspaceFolder} is substituted here; ${workspaceFolderBasename} is not.
     "nrf-connect.debugging.bindings": {
-        "${workspaceFolder}/build": "CMSIS-DAP: flash and debug nRF54L15",
-        "${workspaceFolder}/build/firmware": "CMSIS-DAP: flash and debug nRF54L15"
+        "${workspaceFolder}/build/app/base/firmware": "CMSIS-DAP: flash and debug SensWear nRF54L15 (cpuapp), base (no shield)",
+        "${workspaceFolder}/build/app/haptic/firmware": "CMSIS-DAP: flash and debug SensWear nRF54L15 (cpuapp) + haptic shield",
+        "${workspaceFolder}/build/app/ppg/firmware": "CMSIS-DAP: flash and debug SensWear nRF54L15 (cpuapp) + PPG shield",
+        "${workspaceFolder}/build/app/temperature/firmware": "CMSIS-DAP: flash and debug SensWear nRF54L15 (cpuapp) + temperature shield",
+        "${workspaceFolder}/build/app/touch/firmware": "CMSIS-DAP: flash and debug SensWear nRF54L15 (cpuapp) + touch shield",
+        "${workspaceFolder}/build/tests/bq25180/firmware": "CMSIS-DAP: flash and debug Test: BQ25180 charger",
+        "${workspaceFolder}/build/tests/bq27427/firmware": "CMSIS-DAP: flash and debug Test: BQ27427 fuel gauge",
+        "${workspaceFolder}/build/tests/bhi360/firmware": "CMSIS-DAP: flash and debug Test: BHI360 IMU",
+        "${workspaceFolder}/build/tests/lp5562/firmware": "CMSIS-DAP: flash and debug Test: LP5562 LED controller",
+        "${workspaceFolder}/build/tests/m95p/firmware": "CMSIS-DAP: flash and debug Test: M95P EEPROM",
+        "${workspaceFolder}/build/tests/tpsm83102/firmware": "CMSIS-DAP: flash and debug Test: TPSM83102 regulator",
+        "${workspaceFolder}/build/tests/rtc/firmware": "CMSIS-DAP: flash and debug Test: software RTC",
+        "${workspaceFolder}/build/tests/device_manager/firmware": "CMSIS-DAP: flash and debug Test: device manager (base streams, no shield)",
+        "${workspaceFolder}/build/tests/device_manager_haptic/firmware": "CMSIS-DAP: flash and debug Test: device manager + haptic shield",
+        "${workspaceFolder}/build/tests/device_manager_ppg/firmware": "CMSIS-DAP: flash and debug Test: device manager + PPG shield",
+        "${workspaceFolder}/build/tests/device_manager_temperature/firmware": "CMSIS-DAP: flash and debug Test: device manager + temperature shield",
+        "${workspaceFolder}/build/tests/device_manager_touch/firmware": "CMSIS-DAP: flash and debug Test: device manager + touch shield",
+        "${workspaceFolder}/build/tests/drv2605/firmware": "CMSIS-DAP: flash and debug Test: DRV2605 haptics (senswear_haptic shield)",
+        "${workspaceFolder}/build/tests/max30101/firmware": "CMSIS-DAP: flash and debug Test: MAX30101 PPG (senswear_ppg shield)",
+        "${workspaceFolder}/build/tests/max30208/firmware": "CMSIS-DAP: flash and debug Test: MAX30208 temperature (senswear_temperature shield)",
+        "${workspaceFolder}/build/tests/mtch6102/firmware": "CMSIS-DAP: flash and debug Test: MTCH6102 touch (senswear_touch shield)"
     }
 }

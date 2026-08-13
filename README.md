@@ -103,7 +103,7 @@ Tools flow described in [SETUP.md](SETUP.md#vs-code-extensions-hybrid-nrf-connec
 From the command line, flash a build directory with west:
 
 ```sh
-west flash -d build
+west flash -d build/app/base
 ```
 
 ## Bluetooth

@@ -6,10 +6,10 @@
     },
     "configurePresets": [
         {
-            "name": "senswear_nrf54l15_cpuapp",
-            "displayName": "SensWear nRF54L15 (cpuapp)",
+            "name": "senswear_nrf54l15_cpuapp_base",
+            "displayName": "SensWear nRF54L15 (cpuapp), base (no shield)",
             "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build",
+            "binaryDir": "${sourceDir}/build/app/base",
             "environment": {
                 "PATH": "$penv{NCS_TOOLCHAIN_ROOT}/bin${pathListSep}$penv{PATH}",
                 "ZEPHYR_BASE": "$penv{ZEPHYR_BASE}",
@@ -462,8 +462,8 @@
     ],
     "buildPresets": [
         {
-            "name": "senswear_nrf54l15_cpuapp",
-            "configurePreset": "senswear_nrf54l15_cpuapp"
+            "name": "senswear_nrf54l15_cpuapp_base",
+            "configurePreset": "senswear_nrf54l15_cpuapp_base"
         },
         {
             "name": "senswear_nrf54l15_cpuapp_haptic",

@@ -2,102 +2,832 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "CMSIS-DAP: flash and debug nRF54L15",
+            "name": "CMSIS-DAP: flash and debug SensWear nRF54L15 (cpuapp), base (no shield)",
             "type": "cortex-debug",
             "request": "launch",
             "servertype": "openocd",
             "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
             "cwd": "${workspaceFolder}",
-            "executable": "${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.elf",
+            "executable": "${workspaceFolder}/build/app/base/${workspaceFolderBasename}/zephyr/zephyr.elf",
             "loadFiles": [],
-            "gdbPath": "arm-zephyr-eabi-gdb",
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
             "objdumpPath": "arm-zephyr-eabi-objdump",
             "armToolchainPrefix": "arm-zephyr-eabi",
             "windows": {
                 "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
-                "gdbPath": "arm-zephyr-eabi-gdb.exe",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
                 "objdumpPath": "arm-zephyr-eabi-objdump.exe"
             },
             "configFiles": [
                 "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
                 "${workspaceFolder}/config/openocd-nrf54l15.cfg"
             ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/app/base/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/app/base/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
             "preLaunchCommands": [
                 "set mem inaccessible-by-default off",
                 "mem 0x00000000 0x00180000 ro"
             ],
-            "preLaunchTask": "CMSIS-DAP: flash nRF54L15",
             "runToEntryPoint": "main",
             "rtos": "Zephyr",
             "showDevDebugOutput": "none"
         },
         {
-            "name": "ST-Link/V2: flash and debug nRF54L15",
+            "name": "CMSIS-DAP: flash and debug SensWear nRF54L15 (cpuapp) + haptic shield",
             "type": "cortex-debug",
             "request": "launch",
             "servertype": "openocd",
             "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
             "cwd": "${workspaceFolder}",
-            "executable": "${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.elf",
+            "executable": "${workspaceFolder}/build/app/haptic/${workspaceFolderBasename}/zephyr/zephyr.elf",
             "loadFiles": [],
-            "gdbPath": "arm-zephyr-eabi-gdb",
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
             "objdumpPath": "arm-zephyr-eabi-objdump",
             "armToolchainPrefix": "arm-zephyr-eabi",
             "windows": {
                 "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
-                "gdbPath": "arm-zephyr-eabi-gdb.exe",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/app/haptic/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/app/haptic/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug SensWear nRF54L15 (cpuapp) + PPG shield",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/app/ppg/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/app/ppg/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/app/ppg/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug SensWear nRF54L15 (cpuapp) + temperature shield",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/app/temperature/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/app/temperature/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/app/temperature/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug SensWear nRF54L15 (cpuapp) + touch shield",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/app/touch/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/app/touch/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/app/touch/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug Test: BQ25180 charger",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/tests/bq25180/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/tests/bq25180/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/tests/bq25180/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug Test: BQ27427 fuel gauge",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/tests/bq27427/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/tests/bq27427/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/tests/bq27427/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug Test: BHI360 IMU",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/tests/bhi360/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/tests/bhi360/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/tests/bhi360/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug Test: LP5562 LED controller",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/tests/lp5562/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/tests/lp5562/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/tests/lp5562/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug Test: M95P EEPROM",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/tests/m95p/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/tests/m95p/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/tests/m95p/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug Test: TPSM83102 regulator",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/tests/tpsm83102/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/tests/tpsm83102/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/tests/tpsm83102/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug Test: software RTC",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/tests/rtc/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/tests/rtc/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/tests/rtc/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug Test: device manager (base streams, no shield)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/tests/device_manager/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/tests/device_manager/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/tests/device_manager/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug Test: device manager + haptic shield",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/tests/device_manager_haptic/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/tests/device_manager_haptic/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/tests/device_manager_haptic/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug Test: device manager + PPG shield",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/tests/device_manager_ppg/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/tests/device_manager_ppg/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/tests/device_manager_ppg/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug Test: device manager + temperature shield",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/tests/device_manager_temperature/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/tests/device_manager_temperature/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/tests/device_manager_temperature/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug Test: device manager + touch shield",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/tests/device_manager_touch/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/tests/device_manager_touch/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/tests/device_manager_touch/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug Test: DRV2605 haptics (senswear_haptic shield)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/tests/drv2605/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/tests/drv2605/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/tests/drv2605/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug Test: MAX30101 PPG (senswear_ppg shield)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/tests/max30101/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/tests/max30101/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/tests/max30101/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug Test: MAX30208 temperature (senswear_temperature shield)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/tests/max30208/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/tests/max30208/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/tests/max30208/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "CMSIS-DAP: flash and debug Test: MTCH6102 touch (senswear_touch shield)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/tests/mtch6102/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
+                "objdumpPath": "arm-zephyr-eabi-objdump.exe"
+            },
+            "configFiles": [
+                "${workspaceFolder}/config/openocd-cmsis-dap.cfg",
+                "${workspaceFolder}/config/openocd-nrf54l15.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/tests/mtch6102/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/tests/mtch6102/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "mem 0x00000000 0x00180000 ro"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "Zephyr",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "ST-Link/V2: flash and debug SensWear nRF54L15 (cpuapp), base (no shield)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/app/base/${workspaceFolderBasename}/zephyr/zephyr.elf",
+            "loadFiles": [],
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
+            "objdumpPath": "arm-zephyr-eabi-objdump",
+            "armToolchainPrefix": "arm-zephyr-eabi",
+            "windows": {
+                "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
                 "objdumpPath": "arm-zephyr-eabi-objdump.exe"
             },
             "configFiles": [
                 "${workspaceFolder}/config/openocd-stlink-v2.cfg",
                 "${workspaceFolder}/config/openocd-nrf54l15.cfg"
             ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/app/base/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/app/base/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
             "preLaunchCommands": [
                 "set mem inaccessible-by-default off",
                 "mem 0x00000000 0x00180000 ro"
             ],
-            "preLaunchTask": "ST-Link/V2: flash nRF54L15",
             "runToEntryPoint": "main",
             "rtos": "Zephyr",
             "showDevDebugOutput": "none"
         },
         {
-            "name": "J-Link/OpenOCD: flash and debug nRF54L15",
+            "name": "J-Link/OpenOCD: flash and debug SensWear nRF54L15 (cpuapp), base (no shield)",
             "type": "cortex-debug",
             "request": "launch",
             "servertype": "openocd",
             "serverpath": "${workspaceFolder}/config/scripts/openocd-with-env.sh",
             "cwd": "${workspaceFolder}",
-            "executable": "${input:cmakeBuildDirectory}/firmware/zephyr/zephyr.elf",
+            "executable": "${workspaceFolder}/build/app/base/${workspaceFolderBasename}/zephyr/zephyr.elf",
             "loadFiles": [],
-            "gdbPath": "arm-zephyr-eabi-gdb",
+            "gdbPath": "${workspaceFolder}/config/scripts/gdb-with-env.sh",
             "objdumpPath": "arm-zephyr-eabi-objdump",
             "armToolchainPrefix": "arm-zephyr-eabi",
             "windows": {
                 "serverpath": "${workspaceFolder}\\config\\scripts\\openocd-with-env.cmd",
-                "gdbPath": "arm-zephyr-eabi-gdb.exe",
+                "gdbPath": "${workspaceFolder}\\config\\scripts\\gdb-with-env.cmd",
                 "objdumpPath": "arm-zephyr-eabi-objdump.exe"
             },
             "configFiles": [
                 "${workspaceFolder}/config/openocd-jlink.cfg",
                 "${workspaceFolder}/config/openocd-nrf54l15.cfg"
             ],
+            "openOCDLaunchCommands": [
+                "init",
+                "reset init",
+                "nrf54l-load {${workspaceFolder}/build/app/base/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "verify_image {${workspaceFolder}/build/app/base/${workspaceFolderBasename}/zephyr/zephyr.hex}",
+                "reset halt"
+            ],
             "preLaunchCommands": [
                 "set mem inaccessible-by-default off",
                 "mem 0x00000000 0x00180000 ro"
             ],
-            "preLaunchTask": "J-Link/OpenOCD: flash nRF54L15",
             "runToEntryPoint": "main",
             "rtos": "Zephyr",
             "showDevDebugOutput": "none"
-        }
-    ],
-    "inputs": [
-        {
-            "id": "cmakeBuildDirectory",
-            "type": "command",
-            "command": "cmake.buildDirectory",
-            "args": "${workspaceFolder}"
         }
     ]
 }

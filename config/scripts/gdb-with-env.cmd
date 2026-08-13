@@ -19,5 +19,10 @@ if not exist "%ZEPHYR_GDB%" (
     exit /b 1
 )
 
-"%ZEPHYR_GDB%" %*
+rem OpenOCD does not service the GDB socket until the launch commands that flash
+rem and verify the image have finished, which takes longer than GDB's 2 s
+rem default. Without a longer timeout GDB retransmits qSupported, OpenOCD
+rem answers every copy, and the replies desync ("Remote replied unexpectedly to
+rem 'vMustReplyEmpty'").
+"%ZEPHYR_GDB%" -iex "set remotetimeout 60" %*
 exit /b %ERRORLEVEL%

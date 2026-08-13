@@ -99,12 +99,16 @@ root, and toolchain come from `CMakePresets.json`, which reads the `.env`
 variables. With the environment loaded:
 
 ```sh
-cmake --preset senswear_nrf54l15_cpuapp
-cmake --build build
+cmake --preset senswear_nrf54l15_cpuapp_base
+cmake --build --preset senswear_nrf54l15_cpuapp_base
 ```
 
-The active board is `SensWear/nrf54l15/cpuapp`; the build output lands in
-`build/firmware/` (the sysbuild image domain matches the CMake `project()` name).
+The active board is `SensWear/nrf54l15/cpuapp`; the shield-less ("base") build
+output lands in `build/app/base/`, alongside the per-shield builds in
+`build/app/<shield>/`. Under sysbuild the image is nested one level deeper, in a
+directory named after the application directory — `build/app/base/firmware/` for
+a checkout in `firmware/` — because sysbuild derives the image (domain) name
+from that directory's basename, not from the CMake `project()` name.
 
 For one-off local CMake overrides, create `CMakeUserPresets.json`; it is
 ignored by git.
@@ -113,9 +117,11 @@ ignored by git.
 
 The Run and Debug selector provides three launch configurations:
 
-- `CMSIS-DAP: flash and debug nRF54L15`
-- `ST-Link/V2: flash and debug nRF54L15`
-- `J-Link: flash and debug nRF54L15`
+- `CMSIS-DAP: flash and debug SensWear nRF54L15 (cpuapp), base (no shield)`
+- `ST-Link/V2: flash and debug SensWear nRF54L15 (cpuapp), base (no shield)`
+- `J-Link/OpenOCD: flash and debug SensWear nRF54L15 (cpuapp), base (no shield)`
+
+(plus one CMSIS-DAP configuration per shield application and per bring-up test)
 
 The `CMSIS-DAP` configuration drives any CMSIS-DAP-class probe through OpenOCD's
 `cmsis-dap` interface driver, so any debugger exposing a CMSIS-DAP interface
@@ -132,9 +138,12 @@ These require a CMake configure preset to be selected in CMake Tools (see the
 hybrid-flow section above): the profiles obtain the active build directory from
 the CMake Tools extension. The OpenOCD profiles use probe-specific adapter files
 and a shared nRF54L15 target file under `config/`, and flash
-`firmware/zephyr/zephyr.hex` from that build before Cortex-Debug attaches. The debugger uses the matching
-`firmware/zephyr/zephyr.elf`; this also supports the driver-test presets under
-`build/tests/`. The J-Link profile programs the selected ELF through the SEGGER
+`<image>/zephyr/zephyr.hex` from that build before Cortex-Debug attaches. The debugger uses the matching
+`<image>/zephyr/zephyr.elf`; this also supports the driver-test presets under
+`build/tests/`. `<image>` is the sysbuild image directory, named after the
+application directory — the launch configurations spell it
+`${workspaceFolderBasename}` so a checkout under any directory name resolves
+correctly without editing this file. The J-Link profile programs the selected ELF through the SEGGER
 GDB server.
 
 The selected OpenOCD installation must provide:
@@ -144,3 +153,34 @@ interface/cmsis-dap.cfg
 interface/stlink.cfg
 target/nordic/nrf54l.cfg
 ```
+
+## Debugging from the command line with west
+
+`board.cmake` registers three west runners: `nrfutil` (the default for
+`west flash`), `jlink` (the default for `west debug`), and `openocd`. The
+OpenOCD runner reuses the same adapter and target configs as the launch
+configurations, so it programs RRAM through the `nrf54l-load` proc rather than
+OpenOCD's flash-bank path, which does not exist for this part:
+
+```sh
+west flash -d build/app/base --runner openocd
+west debug -d build/app/base --runner openocd
+```
+
+`west attach`, `west debugserver`, and `west rtt` accept the same runner. The
+OpenOCD binary comes from `config/scripts/openocd-with-env.sh`, which reads
+`OPENOCD`/`OPENOCD_SCRIPTS` from `.env` at run time — the runner is not bound to
+whichever `openocd` happens to be on `PATH`.
+
+Unlike the launch configurations, which offer one entry per probe, west binds
+the adapter config at configure time. It defaults to CMSIS-DAP; select another
+probe when configuring the build directory:
+
+```sh
+cmake --preset senswear_nrf54l15_cpuapp_base -DSENSWEAR_OPENOCD_INTERFACE=stlink-v2
+```
+
+Under sysbuild, CMake cache variables are not forwarded to the image, so export
+`SENSWEAR_OPENOCD_INTERFACE` in the environment instead. The value names a
+`config/openocd-<value>.cfg` adapter file, and configuration fails if that file
+does not exist.
