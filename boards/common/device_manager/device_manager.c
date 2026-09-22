@@ -69,8 +69,6 @@ LOG_MODULE_REGISTER(device_manager, CONFIG_LOG_DEFAULT_LEVEL);
 #define DEVICE_MANAGER_THREAD_PRIO 7
 /** Timeout for acquiring a channel when publishing, in milliseconds. */
 #define DEVICE_MANAGER_PUB_TIMEOUT_MS 10
-/** Upper bound on IMU samples copied from one batch event. */
-#define DEVICE_MANAGER_IMU_BATCH_MAX 16
 
 #if defined(CONFIG_SENSWEAR_LP5562_DRIVER)
 BUILD_ASSERT(sizeof(struct device_manager_led_color_t) == 3,
@@ -1087,53 +1085,90 @@ static void device_manager_publish_activity(time_t timestamp, uint8_t sensor_id,
 	}
 }
 
+static int device_manager_imu_batch_count(const struct device_driver_event_t* ev,
+										  int copied,
+										  const char* name) {
+	if (copied < 0) {
+		LOG_WRN("IMU %s batch copy failed (%d)", name, copied);
+		return 0;
+	}
+	if ((uint32_t) copied != ev->v_param) {
+		LOG_WRN("IMU %s batch count mismatch: event %u, copied %d", name, ev->v_param, copied);
+	}
+	return (ev->v_param < (uint32_t) copied) ? (int) ev->v_param : copied;
+}
+
+/* Only the device-manager thread translates events. */
+/* Keep the full-capacity scratch buffer off its 2 KiB stack. */
+static union {
+	struct bhi360_quat_data_t quaternion[BHI360_MAX_SAMPLES_PER_IRQ];
+	struct bhi360_lacc_data_t acceleration[BHI360_MAX_SAMPLES_PER_IRQ];
+	struct bhi360_gyro_data_t gyro[BHI360_MAX_SAMPLES_PER_IRQ];
+} imu_batch;
+
+static void device_manager_translate_imu(const struct device_driver_event_t* ev);
+
+static void device_manager_imu_batch_callback(enum bhi360_event_type type, uint32_t count) {
+	/* Handle the batch before a queued IRQ can reset the driver's cache. */
+	struct device_driver_event_t batch_event = {
+		.event_id = (uint32_t) type,
+		.v_param = count,
+	};
+	device_manager_translate_imu(&batch_event);
+}
+
 static void device_manager_translate_imu(const struct device_driver_event_t* ev) {
 	switch ((enum bhi360_event_type) ev->event_id) {
-	case bhi360_event_Irq:
-		(void) bhi360_irq_handler();
+	case bhi360_event_Irq: {
+		int ret = bhi360_irq_handler_with_batch_callback(device_manager_imu_batch_callback);
+		if (ret != 0 && ret != -ENODEV) {
+			LOG_WRN("IMU FIFO drain failed (%d)", ret);
+		}
 		break;
+	}
 	case bhi360_event_QuaternionBatch: {
-		struct bhi360_quat_data_t buf[DEVICE_MANAGER_IMU_BATCH_MAX];
-		int n = bhi360_copy_quaternion(buf, ARRAY_SIZE(buf));
+		int copied = bhi360_copy_quaternion(imu_batch.quaternion, BHI360_MAX_SAMPLES_PER_IRQ);
+		int n = device_manager_imu_batch_count(ev, copied, "quaternion");
 
 		for (int i = 0; i < n; ++i) {
 			struct imu_quaternion_msg_t msg = {
-				.timestamp = buf[i].timestamp,
-				.x = buf[i].x,
-				.y = buf[i].y,
-				.z = buf[i].z,
-				.w = buf[i].w,
-				.accuracy = buf[i].accuracy,
+				.timestamp = imu_batch.quaternion[i].timestamp,
+				.x = imu_batch.quaternion[i].x,
+				.y = imu_batch.quaternion[i].y,
+				.z = imu_batch.quaternion[i].z,
+				.w = imu_batch.quaternion[i].w,
+				.accuracy = imu_batch.quaternion[i].accuracy,
 			};
 			device_manager_publish(&chan_imu_quaternion, &msg);
 		}
 		break;
 	}
 	case bhi360_event_LinearAccelerationBatch: {
-		struct bhi360_lacc_data_t buf[DEVICE_MANAGER_IMU_BATCH_MAX];
-		int n = bhi360_copy_linear_acceleration(buf, ARRAY_SIZE(buf));
+		int copied =
+			bhi360_copy_linear_acceleration(imu_batch.acceleration, BHI360_MAX_SAMPLES_PER_IRQ);
+		int n = device_manager_imu_batch_count(ev, copied, "acceleration");
 
 		for (int i = 0; i < n; ++i) {
 			struct imu_accel_msg_t msg = {
-				.timestamp = buf[i].timestamp,
-				.x = buf[i].x,
-				.y = buf[i].y,
-				.z = buf[i].z,
+				.timestamp = imu_batch.acceleration[i].timestamp,
+				.x = imu_batch.acceleration[i].x,
+				.y = imu_batch.acceleration[i].y,
+				.z = imu_batch.acceleration[i].z,
 			};
 			device_manager_publish(&chan_imu_accel, &msg);
 		}
 		break;
 	}
 	case bhi360_event_GyroBatch: {
-		struct bhi360_gyro_data_t buf[DEVICE_MANAGER_IMU_BATCH_MAX];
-		int n = bhi360_copy_gyro(buf, ARRAY_SIZE(buf));
+		int copied = bhi360_copy_gyro(imu_batch.gyro, BHI360_MAX_SAMPLES_PER_IRQ);
+		int n = device_manager_imu_batch_count(ev, copied, "gyro");
 
 		for (int i = 0; i < n; ++i) {
 			struct imu_gyro_msg_t msg = {
-				.timestamp = buf[i].timestamp,
-				.x = buf[i].x,
-				.y = buf[i].y,
-				.z = buf[i].z,
+				.timestamp = imu_batch.gyro[i].timestamp,
+				.x = imu_batch.gyro[i].x,
+				.y = imu_batch.gyro[i].y,
+				.z = imu_batch.gyro[i].z,
 			};
 			device_manager_publish(&chan_imu_gyro, &msg);
 		}

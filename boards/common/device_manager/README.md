@@ -82,7 +82,7 @@ forever:
         select translator by ev.device_id
         translator(ev):
             if ev is a raw INT/timer event:
-                drive the driver's handler (decodes, posts decoded events back)
+                drive the driver's handler (decodes, delivers IMU batches now)
             else:
                 build the contract message and publish it by value
 ```
@@ -91,12 +91,14 @@ Two event shapes flow through the queue:
 
 1. **Raw interrupt / timer events** (e.g. `bhi360_event_Irq`, `mtch6102_Irq`,
    `max30208_TimerIrq`). The translator calls that driver's handler
-   (`bhi360_irq_handler()`, `mtch6102_irq_handler()`, `max30208_get_samples()`,
-   …) **from the consumer thread**, which reads the hardware and posts decoded
-   events back onto the same queue. They are handled on a later loop iteration.
-2. **Decoded data events** (e.g. `bhi360_event_QuaternionBatch`,
-   `max30208_event_SampleReady`). The translator maps them to the contract
-   message and publishes.
+   (`bhi360_irq_handler_with_batch_callback()`, `mtch6102_irq_handler()`,
+   `max30208_get_samples()`, …) **from the consumer thread**, which reads the
+   hardware. Most decoded events are queued for a later loop iteration, but
+   high-rate IMU batches are translated immediately, before another queued IRQ
+   can reset the driver's sample cache. BHI360 low-rate and meta-events still
+   use the queue.
+2. **Queued decoded data events** (e.g. `max30208_event_SampleReady`).
+   The translator maps them to the contract message and publishes.
 
 This is why interrupt handling is safe to do work in: GPIO/timer callbacks in
 the drivers only *post* an event from ISR context; the actual bus I/O and
@@ -452,3 +454,10 @@ return codes, and preconditions.
   `test_device_manager_temperature`, and `test_device_manager_touch`. It drives
   the full pipeline: init, configure, subscribe ready streams, and print decoded
   messages.
+- To validate high-rate IMU streaming on hardware, build and flash the base
+  application, enable IMU streaming, and capture at least one 10-minute IMU-only
+  run and one 10-minute IMU+PPG run. Compare per-channel sensor-production,
+  device-manager-publication, GATT-submission, and receiver counts using a
+  profiling build; check the device log for `IMU * batch count mismatch` and
+  `* sample dropped` warnings. A compile-only test cannot establish that sample
+  delivery is lossless on a physical board.

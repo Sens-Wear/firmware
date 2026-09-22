@@ -317,6 +317,9 @@
 #include "bhi3_defs.h"
 #include "bhy2.h"
 
+/** Maximum number of samples of one high-rate stream cached by a FIFO drain. */
+#define BHI360_MAX_SAMPLES_PER_IRQ 64U
+
 /**
  * @brief BHI360 event type enumeration.
  *
@@ -652,6 +655,20 @@ bool bhi360_config(const struct bhi360_config_t* config);
  * @pre Called from thread context, not ISR.
  */
 int bhi360_irq_handler(void);
+
+/** Called synchronously for each nonempty high-rate batch after a FIFO drain. */
+typedef void (*bhi360_batch_callback_t)(enum bhi360_event_type event, uint32_t count);
+
+/**
+ * @brief Drain the FIFO and deliver high-rate batches before returning.
+ * @details Unlike bhi360_irq_handler(), this invokes @p callback directly
+ *          instead of queuing high-rate batch events. The callback must copy
+ *          or consume each driver-owned batch before another drain can reset it.
+ *          Low-rate and meta-events still use the device-driver event queue.
+ * @param callback Consumer called in the caller's thread for each nonempty batch.
+ * @return The same status values as bhi360_irq_handler().
+ */
+int bhi360_irq_handler_with_batch_callback(bhi360_batch_callback_t callback);
 
 /**
  * @brief Enable high-rate physical sensor streams.

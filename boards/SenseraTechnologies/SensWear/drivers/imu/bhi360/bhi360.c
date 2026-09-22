@@ -120,19 +120,6 @@ LOG_MODULE_REGISTER(bhi360, CONFIG_LOG_DEFAULT_LEVEL);
 #define BHI360_TIME_SYNC_INIT_DELAY_MS 5
 
 /**
- * @brief Maximum number of high-rate samples cached per FIFO drain.
- * @details A single bhi360_irq_handler() pass can decode several samples of the
- *          same high-rate stream (quaternion, accelerometer, gyroscope). Each
- *          decoded sample is stored in its own slot so the pointer published in
- *          a posted event stays valid until the next FIFO drain, instead of
- *          being overwritten by the next sample in the same batch. At 100 Hz with
- *          a 100 ms report latency a batch holds roughly ten samples per stream;
- *          this bound leaves comfortable headroom. Excess samples in an unusually
- *          large batch are dropped with a warning.
- */
-#define BHI360_MAX_SAMPLES_PER_IRQ 32U
-
-/**
  * @brief Sensor configuration descriptor used during enable/disable passes.
  * @details Each entry binds a BHY2 virtual-sensor ID to a desired output rate,
  *          latency budget, a human-readable name for logging, and the FIFO
@@ -1412,7 +1399,7 @@ int bhi360_stop_periodic_timer(void) {
 	return 0;
 }
 
-int bhi360_irq_handler(void) {
+static int bhi360_irq_handler_impl(bhi360_batch_callback_t batch_callback) {
 	if (!bhi360.state.bits.initialized || !bhi360.state.bits.configured) {
 		return -ENODEV;
 	}
@@ -1449,19 +1436,32 @@ int bhi360_irq_handler(void) {
 		return -EIO;
 	}
 
-	/* Post one summary event per high-rate stream that produced samples this drain.
-	 * v_param carries the number of samples; p_param points at the first element of
-	 * the driver-owned array, which stays valid until the next drain. */
+	/* Deliver batches before another queued IRQ can reset the cache. With no
+	 * callback, preserve the standalone driver's summary-event behavior. */
 	if (quat_count > 0U) {
-		bhi360_post_event(bhi360_event_QuaternionBatch, (uint32_t) quat_count, bhi360.quat_data);
+		if (batch_callback != NULL) {
+			batch_callback(bhi360_event_QuaternionBatch, (uint32_t) quat_count);
+		} else {
+			bhi360_post_event(bhi360_event_QuaternionBatch,
+							  (uint32_t) quat_count,
+							  bhi360.quat_data);
+		}
 	}
 	if (lacc_count > 0U) {
-		bhi360_post_event(bhi360_event_LinearAccelerationBatch,
-						  (uint32_t) lacc_count,
-						  bhi360.lacc_data);
+		if (batch_callback != NULL) {
+			batch_callback(bhi360_event_LinearAccelerationBatch, (uint32_t) lacc_count);
+		} else {
+			bhi360_post_event(bhi360_event_LinearAccelerationBatch,
+							  (uint32_t) lacc_count,
+							  bhi360.lacc_data);
+		}
 	}
 	if (gyro_count > 0U) {
-		bhi360_post_event(bhi360_event_GyroBatch, (uint32_t) gyro_count, bhi360.gyro_data);
+		if (batch_callback != NULL) {
+			batch_callback(bhi360_event_GyroBatch, (uint32_t) gyro_count);
+		} else {
+			bhi360_post_event(bhi360_event_GyroBatch, (uint32_t) gyro_count, bhi360.gyro_data);
+		}
 	}
 
 	if (bhi360.quat_skipped_count > 0) {
@@ -1491,6 +1491,17 @@ int bhi360_irq_handler(void) {
 
 	LOG_DBG("bhi360_irq_handler() finished processing. ");
 	return 0;
+}
+
+int bhi360_irq_handler(void) {
+	return bhi360_irq_handler_impl(NULL);
+}
+
+int bhi360_irq_handler_with_batch_callback(bhi360_batch_callback_t callback) {
+	if (callback == NULL) {
+		return -EINVAL;
+	}
+	return bhi360_irq_handler_impl(callback);
 }
 
 /**
