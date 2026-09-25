@@ -10,7 +10,7 @@ drivers (which also require the shield to be enabled).
 | `main_test_drv2605.c` | DRV2605 haptics (senswear_haptic shield) | check haptics ready → configure/play an RTP amplitude ramp → wait 2 s → configure/play ROM LRA effect 1 → wait 2 s |
 | `main_test_max30101.c` | MAX30101 PPG (senswear_ppg shield) | power VDD_DAUGHTER (5.0 V) → probe and configure → start wrist-HR sampling → drain interrupt-driven IR/Red/Green samples with IRQ-anchored timestamps from the internal stream |
 | `main_test_max30208.c` | MAX30208 temperature (senswear_temperature shield) | probe and configure the FIFO → start timer-paced sampling → drain temperature samples from the internal stream on each `max30208_TimerIrq`, stamped at the conversion time |
-| `main_test_mtch6102.c` | MTCH6102 touch (senswear_touch shield) | verify the shared bus → probe and configure (defaults) → start acquisition → drain interrupt-driven touch/gesture events and print the decoded position on each `mtch6102_Irq` |
+| `main_test_mtch6102.c` | MTCH6102 touch (senswear_touch shield) | verify the shared bus → probe and configure (defaults) → start acquisition → drain SYNC/recovery frame requests and print host-decoded linear touch/gesture events (see [touch validation](../../boards/shields/senswear_touch/README.md)) |
 
 ## Building a test
 

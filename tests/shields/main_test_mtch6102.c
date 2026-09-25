@@ -5,34 +5,14 @@
  * Bring-up test for the SensWear MTCH6102 touch driver on the senswear_touch
  * shield.
  *
- * The MTCH6102 sits on the daughter-board connector, so it owns the TPSM83102
- * (VDD_DAUGHTER) rail through its devicetree vin-supply phandle; the driver
- * powers that rail itself when acquisition starts. The test brings the
- * controller up through the driver lifecycle:
+ * init() powers and probes the controller, config() selects acquisition,
+ * and start() enables SYNC frame-complete events plus recovery polling.
+ * The consumer handles coalesced mtch6102_Irq requests and prints host-decoded
+ * slider position/gestures from immutable, owned sample events. Every sample
+ * is released after printing. See boards/shields/senswear_touch/README.md for
+ * physical mapping and the complete hardware validation procedure.
  *
- *   mtch6102_init()   - verify the shared bus, validate the rail, probe the
- *                       firmware ID, claim the daughter_if INT/SYNC lines, and
- *                       arm the INT interrupt
- *   mtch6102_config() - apply the SensWear default configuration (NULL =
- *                       defaults); the I2C address register is never written
- *   mtch6102_start()  - power the rail; the INT line is already armed, so the
- *                       device begins asserting INT on touch
- *
- * Acquisition is interrupt driven. The MTCH6102 INT line posts ::mtch6102_Irq
- * from ISR context; a dedicated consumer thread drains the shared device-event
- * queue and, on that event, calls mtch6102_irq_handler() to read the touch and
- * gesture state. The handler classifies the sample and publishes a decoded
- * `mtch6102_event_*` identifier, carrying the raw TOUCH_STATE byte in `v_param`
- * and a pointer to the decoded ::touch_sensor_sample in `p_param`, which the
- * consumer prints. This mirrors the consumer-thread structure used by the
- * tests/shields MAX30101 bring-up test.
- *
- * As a bench fallback (in case the INT line is not wired on the rig) the handler
- * is also polled whenever the event wait times out; it republishes a decoded
- * event so the test still makes progress.
- *
- * Build with the `test_mtch6102` preset (which also enables the shield); see
- * tests/shields/README.md.
+ * Build with the test_mtch6102 preset; this is an on-target test.
  */
 
 #include <zephyr/device.h>
@@ -43,7 +23,8 @@
 #include "mtch6102.h"
 #include "device_driver_events.h"
 #include "device_driver_dts_ids.h"
-#include "zephyr/drivers/regulator.h"
+#include "sys_i2c.h"
+#include "tpsm83102_registers.h"
 
 #define TEST_EVENT_WAIT_MS 1000
 #define TEST_EVENT_THREAD_PRIO 7
@@ -52,10 +33,56 @@
 K_THREAD_STACK_DEFINE(test_event_stack, TEST_EVENT_STACK_SIZE);
 static struct k_thread test_event_thread;
 
-/* Print the decoded touch sample carried by a classified MTCH6102 event. The
- * driver delivers the sample by pointer in p_param; it lives in the driver's
- * static context and is valid until the next interrupt read, so it is safe to
- * read here in the consumer thread. */
+/* Only run after a failed probe in this isolated bring-up image. These reads
+ * do not change rail
+ * settings or device addresses. The scan reads one byte
+ * at each non-reserved address; it may
+ * consume pending peripheral status.
+ */
+static void print_probe_diagnostics(void) {
+	static struct sys_i2c_dt_spec bus = SYS_I2C_DT_SPEC_GET(DT_NODELABEL(tpsm83102));
+	const uint8_t registers[] = {
+		tpsm83102_register_CONTROL1,
+		tpsm83102_register_VOUT,
+		tpsm83102_register_CONTROL2,
+	};
+	int ret = sys_i2c_lock(&bus, K_MSEC(100));
+	if (ret != 0) {
+		printk("diagnostic bus lock failed: %d\n", ret);
+		return;
+	}
+	for (size_t i = 0; i < ARRAY_SIZE(registers); ++i) {
+		uint8_t value = 0;
+		ret = sys_i2c_write_read(&bus, &registers[i], 1, &value, 1);
+		printk("regulator register 0x%02x: ret=%d value=0x%02x\n", registers[i], ret, value);
+	}
+	ret = sys_i2c_release(&bus);
+	if (ret != 0) {
+		printk("diagnostic bus release failed: %d\n", ret);
+		return;
+	}
+	for (uint16_t address = 0x08; address <= 0x77; ++address) {
+		bus.config.addr = address;
+		ret = sys_i2c_lock(&bus, K_MSEC(100));
+		if (ret != 0) {
+			printk("scan bus lock failed: %d\n", ret);
+			break;
+		}
+		uint8_t value;
+		int read_ret = sys_i2c_read(&bus, &value, 1);
+		ret = sys_i2c_release(&bus);
+		if (read_ret == 0) {
+			printk("I2C read ACK at 0x%02x\n", address);
+		}
+		if (ret != 0) {
+			printk("scan bus release failed: %d\n", ret);
+			break;
+		}
+	}
+	printk("Probe diagnostics complete; regulator readback is not a voltage measurement.\n");
+}
+
+/* The queued event owns this immutable sample until the consumer releases it. */
 static void print_sample(const struct device_driver_event_t* event) {
 	const struct touch_sensor_sample_t* sample =
 		(const struct touch_sensor_sample_t*) event->p_param;
@@ -87,8 +114,7 @@ static void mtch6102_event_consumer_thread(void* a, void* b, void* c) {
 			}
 
 			if (event.event_id == mtch6102_Irq) {
-				/* INT asserted: read the touch/gesture state and publish a
-				 * decoded event, delivered to this loop on the next wait. */
+				/* Read the completed acquisition frame and publish its host sample. */
 				mtch6102_irq_handler();
 				continue;
 			}
@@ -98,12 +124,7 @@ static void mtch6102_event_consumer_thread(void* a, void* b, void* c) {
 				   mtch6102_event_name((enum mtch6102_event_type) event.event_id),
 				   event.v_param);
 			print_sample(&event);
-		} else {
-			/* No interrupt arrived; poll the handler so the test still makes
-			 * progress on rigs where INT is not wired. The handler publishes a
-			 * decoded event, which the next wait will deliver. */
-			// printk("Polling mtch6102_irq_handler()...\n");
-			// mtch6102_irq_handler();
+			mtch6102_release_sample((const struct touch_sensor_sample_t*) event.p_param);
 		}
 	}
 }
@@ -139,13 +160,10 @@ static bool start_mtch6102_event_consumer(void) {
 int main(void) {
 	printk("\n=== MTCH6102 touch test (senswear_touch shield) ===\n");
 
-	/* The driver owns the VDD_DAUGHTER rail and validates its state during
-	 * init; start from a known-off rail so init powers it cleanly. */
-	const struct device* const regulator = DEVICE_DT_GET(DT_NODELABEL(tpsm83102));
-	regulator_disable(regulator);
-
-	if (mtch6102_init() != 0) {
-		printk("mtch6102_init() failed\n");
+	int ret = mtch6102_init();
+	if (ret != 0) {
+		printk("mtch6102_init() failed: %d\n", ret);
+		print_probe_diagnostics();
 		return 0;
 	}
 

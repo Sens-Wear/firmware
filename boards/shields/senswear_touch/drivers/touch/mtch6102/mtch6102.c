@@ -3,32 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @file mtch6102.c
- * @brief SensWear MTCH6102 touch controller driver implementation.
- * @details The driver is a daughter-board singleton. Its connection is derived
- *          from `DT_ALIAS(senswear_touch)`, while all transfers are routed
- *          through @ref senswear_sys_i2c. Public hardware operations own the
- *          shared bus for their complete register sequence and finish with
- *          sys_i2c_release(). The INT and SYNC lines are claimed from the
- *          daughter-board GPIO arbiter so ownership stays centralized.
+ * @brief SensWear MTCH6102 acquisition and host slider decoding.
  *
- * Register helpers in this file intentionally do not lock. They may only be
- * called from a high-level operation that already owns the shared bus.
- *
- * The driver never reprograms the MTCH6102 I2C address: the address is fixed
- * by the devicetree `reg` property, and mtch6102_apply_config() skips the
- * I2CAddr configuration register so no configuration can move the device off
- * its default address.
- *
- * Like the MAX30101 PPG driver, the MTCH6102 does not expose a per-driver
- * callback. Its INT-pin GPIO callback posts ::mtch6102_Irq from ISR context, and
- * mtch6102_irq_handler() runs from thread context to read the touch/gesture
- * state and publish decoded events through the shared device-event manager. The
- * implementation is organized into explicit probe, GPIO, regulator,
- * configuration, event-classification, and interrupt sections so it reads like
- * the other SensWear board drivers.
+ * SYNC frame completion schedules bounded, coalesced thread-context reads.
+ * Public operations serialize through mtch6102_mutex; register helpers run
+ * only while their caller owns SYS_I2C. Events own immutable pool samples.
+ * See mtch6102.h and the shield README for mapping, lifecycle and ownership.
  */
 
 #include "mtch6102.h"
+#include "mtch6102_slider.h"
 #include "rtc.h"
 #include "sys_i2c.h"
 #include "daughter_if.h"
@@ -44,6 +28,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
+#include <zephyr/sys/atomic.h>
 
 LOG_MODULE_REGISTER(mtch6102, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -66,6 +51,16 @@ BUILD_ASSERT(DT_NODE_HAS_PROP(MTCH6102_NODE, vin_supply),
 /** Maximum time to wait for shared-bus ownership, in milliseconds. */
 #define MTCH6102_I2C_TIMEOUT 100
 
+/* Recovery polling is independent of the shared event queue. No I2C in ISR. */
+#define MTCH6102_RECOVERY_MS 100
+K_MUTEX_DEFINE(mtch6102_mutex);
+K_MEM_SLAB_DEFINE(mtch6102_samples, sizeof(struct touch_sensor_sample_t), 8, 8);
+static atomic_t sampling;
+static atomic_t irq_pending;
+static atomic_t frame_sequence;
+static void mtch6102_recovery_tick(struct k_timer* timer);
+K_TIMER_DEFINE(mtch6102_recovery_timer, mtch6102_recovery_tick, NULL);
+
 /**
  * @brief Internal driver lifecycle flags.
  * @details Packs the driver's progress through init, configuration, and
@@ -81,7 +76,7 @@ union mtch6102_state_t {
 		unsigned int bDeviceFound : 1;	  /**< The probe matched a supported MTCH6102. */
 		unsigned int bConfigured : 1;	  /**< The register configuration has been applied. */
 		unsigned int bSampling : 1;		  /**< Interrupt-driven acquisition is active. */
-		unsigned int bIrqConfigured : 1;  /**< The INT line is claimed and its callback armed. */
+		unsigned int bIrqConfigured : 1;  /**< The SYNC frame callback is armed. */
 		unsigned int bSyncConfigured : 1; /**< The SYNC line is claimed and configured as input. */
 		unsigned int bSupplyEnabled : 1;  /**< This driver enabled the supply rail. */
 	} bits;
@@ -99,17 +94,19 @@ static struct mtch6102_t {
 	const struct gpio_dt_spec* irq_gpio; /**< INT line, claimed from the daughter-board arbiter. */
 	const struct gpio_dt_spec*
 		sync_gpio;					 /**< SYNC line, claimed from the daughter-board arbiter. */
-	struct gpio_callback irq_cb;	 /**< GPIO callback registered on the INT line. */
+	struct gpio_callback irq_cb;	 /**< GPIO callback registered on SYNC. */
 	union mtch6102_state_t state;	 /**< Lifecycle flags. */
 	struct mtch6102_config_t config; /**< Cached register configuration to apply. */
 	struct touch_sensor_sample_t
 		last_sample; /**< Most recently decoded sample, published per event. */
-	time_t
-		irq_timestamp; /**< Timestamp of the last interrupt in microseconds since the Unix epoch. */
+	struct mtch6102_slider_config slider_config;
+	struct mtch6102_slider_state slider;
+	atomic_val_t last_frame_sequence;
+	int64_t last_read_ms;
+	bool sample_valid;
 } mtch6102 = {
 	.device = SYS_I2C_DT_SPEC_GET(MTCH6102_NODE),
 	.regulator = DEVICE_DT_GET(DT_PHANDLE(MTCH6102_NODE, vin_supply)),
-	.irq_timestamp = -1, /**< No interrupt has been received yet. */
 	/* All remaining members are zero-initialized by static storage duration. */
 };
 
@@ -201,33 +198,6 @@ enum mtch6102_event_type mtch6102_sample_event(const struct touch_sensor_sample_
 	return mtch6102_event_TouchReleased;
 }
 
-/**
- * @brief Decode a raw touch-register burst into a ::mtch6102_position.
- * @details Expects the four bytes read starting at ::mtch6102_touch_TOUCHSTATE:
- *          rx[0] TOUCHSTATE, rx[1] TOUCHX MSB, rx[2] TOUCHY MSB, and rx[3] the
- *          packed X/Y low-nibble byte. The 12-bit coordinates are reassembled as
- *          `(MSB << 4) | low nibble`; when no touch is present the coordinates
- *          are forced to zero.
- *
- * @param pos Destination position structure.
- * @param rx  Four-byte touch-register burst starting at TOUCHSTATE.
- */
-static void mtch6102_decode_position(struct mtch6102_position* pos, const uint8_t rx[4]) {
-	union mtch6102_touchstate_register_t touch_state = {.value = rx[0]};
-
-	pos->touch_state = (uint8_t) touch_state.value;
-	pos->touched = touch_state.bits.tch != 0U;
-
-	if (!pos->touched) {
-		pos->x = 0U;
-		pos->y = 0U;
-		return;
-	}
-
-	pos->x = ((uint16_t) rx[1] << 4) | (uint16_t) (rx[3] & 0x0FU);
-	pos->y = ((uint16_t) rx[2] << 4) | (uint16_t) ((rx[3] >> 4) & 0x0FU);
-}
-
 /** Acquire shared-I2C ownership for one high-level touch operation. */
 static inline bool mtch6102_bus_lock(void) {
 	int ret = sys_i2c_lock(&mtch6102.device, K_MSEC(MTCH6102_I2C_TIMEOUT));
@@ -267,10 +237,11 @@ static inline int mtch6102_write_register(uint8_t reg, uint8_t value) {
  *          `bDeviceFound` state flags as a side effect. The caller must already
  *          own the shared bus.
  *
- * @retval true  A supported MTCH6102 responded with a matching ID.
- * @retval false The read failed or the ID did not match.
+ * @retval 0 A supported MTCH6102 responded with a matching ID.
+ * @retval -ENODEV The firmware ID did not match.
+ * @return The original negative errno if the I2C read failed.
  */
-static bool mtch6102_probe(void) {
+static int mtch6102_probe(void) {
 	uint8_t core[4] = {0U};
 	uint8_t start_reg = mtch6102_core_FWMajor;
 	int ret;
@@ -281,7 +252,7 @@ static bool mtch6102_probe(void) {
 	if (ret != 0) {
 		LOG_WRN("MTCH6102 probe failed (%d)", ret);
 		mtch6102.state.bits.bDeviceFound = 0U;
-		return false;
+		return ret;
 	}
 
 	/* Accept the observed MTCH6102 firmware family and application ID.
@@ -302,7 +273,7 @@ static bool mtch6102_probe(void) {
 				core[3]);
 	}
 
-	return mtch6102.state.bits.bDeviceFound != 0U;
+	return mtch6102.state.bits.bDeviceFound != 0U ? 0 : -ENODEV;
 }
 
 /* Defined in the interrupt section below; registered by mtch6102_gpio_init(). */
@@ -311,19 +282,8 @@ static void mtch6102_irq_callback(const struct device* dev,
 								  uint32_t pins);
 
 /**
- * @brief Claim, configure, and arm the daughter-board SYNC and INT lines.
- * @details Claims both connector lines from the @ref senswear_daughter_if
- *          arbiter (SYNC first, then INT), configures each as an input, registers
- *          the INT-pin GPIO callback, and arms the falling-edge interrupt (the
- *          MTCH6102 INT pin is open-collector and active-low, so the callback is
- *          in place before the interrupt is enabled). On any failure every line
- *          claimed within the call is released and the cached handles are
- *          cleared, so the driver is left with no partially owned GPIOs.
- *
- * @retval 0 Both lines were claimed and configured and the INT interrupt armed.
- * @retval -ENODEV A connector line could not be claimed.
- * @return A negative errno from the GPIO driver if pin configuration, callback
- *         registration, or interrupt arming failed.
+ * @brief Claim INT/SYNC as inputs and arm the SYNC frame-complete callback.
+ * On failure, release all connector lines claimed by this call.
  */
 static int mtch6102_gpio_init(void) {
 	int ret;
@@ -369,10 +329,13 @@ static int mtch6102_gpio_init(void) {
 		return ret;
 	}
 
-	gpio_init_callback(&mtch6102.irq_cb, mtch6102_irq_callback, BIT(mtch6102.irq_gpio->pin));
-	ret = gpio_add_callback(mtch6102.irq_gpio->port, &mtch6102.irq_cb);
+	/* SYNC falls after EVERY acquisition frame, even when the controller's
+	 * 2D decoder does not see a touch. INT alone misses single-bank touches.
+	 * Microchip DS40001750A section 5.3 explicitly supports host decoding. */
+	gpio_init_callback(&mtch6102.irq_cb, mtch6102_irq_callback, BIT(mtch6102.sync_gpio->pin));
+	ret = gpio_add_callback(mtch6102.sync_gpio->port, &mtch6102.irq_cb);
 	if (ret != 0) {
-		LOG_ERR("MTCH6102 interrupt callback add failed (%d)", ret);
+		LOG_ERR("MTCH6102 SYNC callback add failed (%d)", ret);
 		(void) daughter_if_gpio_release(MTCH6102_IRQ_LINE);
 		(void) daughter_if_gpio_release(MTCH6102_SYNC_LINE);
 		mtch6102.irq_gpio = NULL;
@@ -381,10 +344,10 @@ static int mtch6102_gpio_init(void) {
 		return ret;
 	}
 
-	ret = gpio_pin_interrupt_configure_dt(mtch6102.irq_gpio, GPIO_INT_EDGE_FALLING);
+	ret = gpio_pin_interrupt_configure_dt(mtch6102.sync_gpio, GPIO_INT_EDGE_FALLING);
 	if (ret != 0) {
-		LOG_ERR("MTCH6102 interrupt arm failed (%d)", ret);
-		gpio_remove_callback(mtch6102.irq_gpio->port, &mtch6102.irq_cb);
+		LOG_ERR("MTCH6102 SYNC interrupt arm failed (%d)", ret);
+		gpio_remove_callback(mtch6102.sync_gpio->port, &mtch6102.irq_cb);
 		(void) daughter_if_gpio_release(MTCH6102_IRQ_LINE);
 		(void) daughter_if_gpio_release(MTCH6102_SYNC_LINE);
 		mtch6102.irq_gpio = NULL;
@@ -403,10 +366,9 @@ static int mtch6102_gpio_init(void) {
 
 /**
  * @brief Validate the dedicated MTCH6102 supply rail and cache its regulator.
- * @details Mirrors the DRV2605 / MAX30101 power-up checks: an already-live shared
- *          rail must already sit at the fixed ::MTCH6102_SUPPLY_VOLTAGE_UV the
- *          MTCH6102 requires, otherwise driving it later risks damaging the part
- *          or another device on the rail. When the rail is not yet enabled the
+ * @details An already-live shared rail must already sit at the board-specific
+ *          ::MTCH6102_SUPPLY_VOLTAGE_UV. Retuning another owner's live rail could
+ *          violate its device requirements. When the rail is not yet enabled the
  *          output voltage is programmed once here so a later enable brings it up
  *          at the correct level.
  *
@@ -495,171 +457,175 @@ static int mtch6102_supply_on(void) {
 	return 0;
 }
 
-/**
- * @brief Disable the dedicated supply rail if this driver enabled it.
- * @details A no-op when no regulator is configured or the rail was not enabled by
- *          this driver, so it never disturbs a rail owned elsewhere.
- */
-static void mtch6102_supply_off(void) {
-	if (mtch6102.regulator == NULL || !mtch6102.state.bits.bSupplyEnabled) {
+/* Coalesce frame notifications so a slow consumer cannot fill the event queue
+ * with redundant reads. A failed post is retried by the next frame/timer. */
+static void mtch6102_request_sample(void) {
+	if (!atomic_get(&sampling) || !atomic_cas(&irq_pending, 0, 1)) {
 		return;
 	}
-
-	(void) regulator_disable(mtch6102.regulator);
-	mtch6102.state.bits.bSupplyEnabled = 0U;
-}
-
-int mtch6102_start(void) {
-	int ret;
-
-	if (!mtch6102.state.bits.bInitialized) {
-		ret = mtch6102_init();
-		if (ret != 0) {
-			return ret;
-		}
-	}
-
-	if (mtch6102.state.bits.bSampling != 0U) {
-		return 0;
-	}
-
-	if (mtch6102.state.bits.bConfigured == 0U) {
-		ret = mtch6102_config(&mtch6102.config);
-		if (ret != 0) {
-			LOG_ERR("MTCH6102 configuration failed (%d)", ret);
-			return ret;
-		}
-	}
-
-	ret = mtch6102_supply_on();
+	int ret = device_driver_event_post_isr(MTCH6102_DEVICE_DTS_ID, mtch6102_Irq, 0, 0);
 	if (ret != 0) {
-		LOG_ERR("MTCH6102 supply power-on failed (%d)", ret);
-		return ret;
+		atomic_clear(&irq_pending);
 	}
-
-	/* The INT line is armed once in mtch6102_init(); powering the rail is
-	 * all that is needed to begin receiving touch interrupts. */
-	mtch6102.state.bits.bSampling = 1U;
-	return 0;
-}
-/* ------------------------------------------------------------------------- */
-/* Event publication                                                          */
-/* ------------------------------------------------------------------------- */
-
-/**
- * @brief Publish a decoded event through the shared device-event manager.
- * @details Thread-context variant. Posts with K_NO_WAIT and drops the return
- *          value: event delivery is best-effort and never blocks the caller.
- *
- * @param event   Decoded ::mtch6102_event_type to publish.
- * @param v_param Scalar payload (the raw TOUCH_STATE byte).
- * @param p_param Pointer payload (the decoded ::touch_sensor_sample).
- */
-static inline void mtch6102_post_event(enum mtch6102_event_type event,
-									   uint32_t v_param,
-									   uintptr_t p_param) {
-	(void) device_driver_event_post(MTCH6102_DEVICE_DTS_ID,
-									(uint32_t) event,
-									v_param,
-									p_param,
-									K_NO_WAIT);
 }
 
-/**
- * @brief Publish an event from ISR context.
- * @details ISR-safe variant used by the GPIO callback to post ::mtch6102_Irq.
- *          Carries no pointer payload and drops the return value.
- *
- * @param event   Event identifier to publish, ::mtch6102_Irq at INT time.
- * @param v_param Scalar payload (the interrupting pin mask).
- */
-static inline void mtch6102_post_event_isr(enum mtch6102_event_type event, uint32_t v_param) {
-	(void) device_driver_event_post_isr(MTCH6102_DEVICE_DTS_ID,
-										(uint32_t) event,
-										v_param,
-										(uintptr_t) NULL);
+static void mtch6102_recovery_tick(struct k_timer* timer) {
+	ARG_UNUSED(timer);
+	mtch6102_request_sample();
 }
 
-/** GPIO ISR that posts the raw interrupt notification event. */
 static void mtch6102_irq_callback(const struct device* dev,
 								  struct gpio_callback* cb,
 								  uint32_t pins) {
 	ARG_UNUSED(dev);
 	ARG_UNUSED(cb);
-
-	mtch6102.irq_timestamp = rtc_get_timestamp_us();
-	mtch6102_post_event_isr(mtch6102_Irq, pins);
+	ARG_UNUSED(pins);
+	atomic_inc(&frame_sequence);
+	mtch6102_request_sample();
 }
 
-/**
- * @brief Read and decode a full touch/gesture sample.
- * @details Acquires the shared bus, reads the six-byte burst from
- *          ::mtch6102_touch_TOUCHSTATE (position plus GESTURE_STATE), decodes the
- *          position into @p sample, stores the raw gesture byte, and releases the
- *          bus. Unlike the register helpers, this routine owns the bus for its
- *          own transfer.
- *
- * @param sample Destination sample structure.
- * @retval 0 The sample was read and decoded.
- * @retval -EINVAL @p sample was NULL.
- * @retval -EIO The shared bus could not be acquired.
- * @return A negative errno if the I2C transfer failed.
- */
-static int mtch6102_read_sample(struct touch_sensor_sample_t* sample) {
-	uint8_t gesture_state;
-	uint8_t start_reg = mtch6102_touch_TOUCHSTATE;
-	uint8_t rx[6] = {0U};
-	int ret;
-
-	if (sample == NULL) {
-		return -EINVAL;
+static int mtch6102_start_locked(void) {
+	int ret = mtch6102_init();
+	if (ret != 0 || atomic_get(&sampling)) {
+		return ret;
 	}
-
+	if (!mtch6102.state.bits.bConfigured) {
+		ret = mtch6102_config(&mtch6102.config);
+		if (ret != 0) {
+			return ret;
+		}
+	}
 	if (!mtch6102_bus_lock()) {
 		return -EIO;
 	}
-
-	ret = sys_i2c_write_read(&mtch6102.device, &start_reg, 1, rx, sizeof(rx));
+	ret = mtch6102_write_register(mtch6102_core_MODE, (uint8_t) mtch6102.config.mode.value);
+	if (!mtch6102_bus_unlock() && ret == 0) {
+		ret = -EIO;
+	}
 	if (ret != 0) {
-		LOG_ERR("MTCH6102 I2C touch read failed (%d)", ret);
-		mtch6102_bus_unlock();
 		return ret;
 	}
-
-	mtch6102_decode_position(&sample->position, rx);
-	gesture_state = rx[4];
-	sample->gesture_state = gesture_state;
-	sample->timestamp = (mtch6102.irq_timestamp == -1) ? rtc_get_timestamp_us()
-													   : mtch6102.irq_timestamp;
-
-	mtch6102_bus_unlock();
+	mtch6102_slider_reset(&mtch6102.slider);
+	mtch6102.sample_valid = false;
+	mtch6102.last_read_ms = k_uptime_get();
+	mtch6102.last_frame_sequence = atomic_get(&frame_sequence);
+	mtch6102.state.bits.bSampling = 1U;
+	atomic_set(&sampling, 1);
+	k_timer_start(&mtch6102_recovery_timer,
+				  K_MSEC(MTCH6102_RECOVERY_MS),
+				  K_MSEC(MTCH6102_RECOVERY_MS));
+	mtch6102_request_sample();
 	return 0;
 }
 
-int mtch6102_irq_handler(void) {
-	enum mtch6102_event_type event;
+/* All reads occur between SYNC frames. Reject a burst if acquisition overlapped
+ * it, rather than mixing electrode values from different frames. */
+static int mtch6102_read_sample(struct touch_sensor_sample_t* sample) {
+	uint8_t status[6];
+	uint8_t sensors[MTCH6102_SLIDER_ELECTRODES];
+	uint8_t reg = mtch6102_touch_TOUCHSTATE;
+	atomic_val_t sequence = atomic_get(&frame_sequence);
+	int64_t now_ms = k_uptime_get();
 	int ret;
 
-	if (!mtch6102.state.bits.bInitialized) {
+	if (mtch6102.sample_valid && sequence == mtch6102.last_frame_sequence &&
+		now_ms - mtch6102.last_read_ms < MTCH6102_RECOVERY_MS) {
 		return -EAGAIN;
 	}
-
-	ret = mtch6102_read_sample(&mtch6102.last_sample);
+	if (!mtch6102_bus_lock()) {
+		return -EIO;
+	}
+	ret = gpio_pin_get_raw(mtch6102.sync_gpio->port, mtch6102.sync_gpio->pin);
+	if (ret > 0) {
+		ret = -EAGAIN;
+	} else if (ret == 0) {
+		ret = sys_i2c_write_read(&mtch6102.device, &reg, 1, status, sizeof(status));
+		if (ret == 0) {
+			reg = mtch6102_acquisition_SENSORVALUES_RX0;
+			ret = sys_i2c_write_read(&mtch6102.device, &reg, 1, sensors, sizeof(sensors));
+		}
+		if (ret == 0) {
+			ret = gpio_pin_get_raw(mtch6102.sync_gpio->port, mtch6102.sync_gpio->pin);
+			if (ret > 0 || sequence != atomic_get(&frame_sequence)) {
+				ret = -EAGAIN;
+			}
+		}
+	}
+	if (!mtch6102_bus_unlock() && ret == 0) {
+		ret = -EIO;
+	}
 	if (ret != 0) {
-		LOG_ERR("MTCH6102 sample read failed: %d", ret);
 		return ret;
 	}
 
-	event = mtch6102_sample_event(&mtch6102.last_sample);
-	LOG_DBG("MTCH6102 sample event: %s", mtch6102_event_name(event));
-
-	if (event != mtch6102_event_Invalid) {
-		mtch6102_post_event(event,
-							mtch6102.last_sample.position.touch_state,
-							(uintptr_t) &mtch6102.last_sample);
-	}
-
+	struct mtch6102_slider_output output;
+	/* A long bus/consumer outage must not turn a stale finger into a hold or
+	 * join two unrelated contacts into a swipe or double tap. */
+	bool reset = now_ms - mtch6102.last_read_ms > 4 * MTCH6102_RECOVERY_MS;
+	mtch6102_slider_process(&mtch6102.slider,
+							&mtch6102.slider_config,
+							sensors,
+							status[0],
+							(uint64_t) now_ms,
+							reset,
+							&output);
+	sample->timestamp = rtc_get_timestamp_us();
+	sample->position = output.position;
+	sample->gesture_state = output.gesture;
+	mtch6102.last_frame_sequence = sequence;
+	mtch6102.last_read_ms = now_ms;
 	return 0;
+}
+
+void mtch6102_release_sample(const struct touch_sensor_sample_t* sample) {
+	if (sample != NULL) {
+		k_mem_slab_free(&mtch6102_samples, (void*) sample);
+	}
+}
+
+static int mtch6102_irq_handler_locked(void) {
+	struct touch_sensor_sample_t sample;
+	struct touch_sensor_sample_t* queued_sample;
+	int ret;
+
+	atomic_clear(&irq_pending);
+	if (!atomic_get(&sampling)) {
+		return -EAGAIN;
+	}
+	/* Reserve ownership before advancing the gesture state. */
+	ret = k_mem_slab_alloc(&mtch6102_samples, (void**) &queued_sample, K_NO_WAIT);
+	if (ret != 0) {
+		return ret;
+	}
+	ret = mtch6102_read_sample(&sample);
+	if (ret != 0) {
+		mtch6102_release_sample(queued_sample);
+		if (ret != -EAGAIN) {
+			LOG_WRN("MTCH6102 sample read failed (%d); acquisition will retry", ret);
+		}
+		return ret;
+	}
+	bool publish = !mtch6102.sample_valid || sample.position.touched ||
+				   mtch6102.last_sample.position.touched ||
+				   sample.gesture_state != mtch6102_gesture_None;
+	mtch6102.last_sample = sample;
+	mtch6102.sample_valid = true;
+	if (!publish) {
+		mtch6102_release_sample(queued_sample);
+		return 0;
+	}
+	*queued_sample = sample;
+	ret = device_driver_event_post(MTCH6102_DEVICE_DTS_ID,
+								   mtch6102_sample_event(&sample),
+								   sample.position.touch_state,
+								   (uintptr_t) queued_sample,
+								   K_NO_WAIT);
+	if (ret != 0) {
+		mtch6102_release_sample(queued_sample);
+		/* Retry the latest state even if the lost event was a release. */
+		mtch6102.sample_valid = false;
+	}
+	return ret;
 }
 
 void mtch6102_get_default_config(struct mtch6102_config_t* config) {
@@ -788,95 +754,148 @@ static int mtch6102_apply_config(const struct mtch6102_config_t* config) {
 		LOG_ERR("MTCH6102 CMD write failed (%d)", ret);
 		return ret;
 	}
-
-	return 0;
+	/* CFG self-clears on completion (DS40001750A section 8). Wait before
+	 * reporting readiness to the application. */
+	int64_t deadline = k_uptime_get() + 250;
+	uint8_t pending;
+	reg = mtch6102_core_CMD;
+	do {
+		ret = sys_i2c_write_read(&mtch6102.device, &reg, 1, &pending, 1);
+		if (ret != 0) {
+			LOG_ERR("MTCH6102 configuration completion read failed (%d)", ret);
+			return ret;
+		}
+		if ((pending & BIT(5)) == 0) {
+			return 0;
+		}
+		k_msleep(5);
+	} while (k_uptime_get() < deadline);
+	LOG_ERR("MTCH6102 configuration completion timed out");
+	return -ETIMEDOUT;
 }
 
-int mtch6102_config(const struct mtch6102_config_t* config) {
+static int mtch6102_config_locked(const struct mtch6102_config_t* config) {
+	struct mtch6102_config_t next;
+	struct mtch6102_slider_config slider;
 	int ret;
 
 	if (!mtch6102.state.bits.bInitialized) {
-		LOG_ERR("MTCH6102 not initialized");
-		return -EINVAL;
+		/* Retry initialization with configuration after a transient probe failure.
+		 * The public entry point uses the same recursive driver mutex. */
+		ret = mtch6102_init();
+		if (ret != 0) {
+			return ret;
+		}
 	}
-
-	if (mtch6102.state.bits.bSampling != 0U) {
-		LOG_ERR("MTCH6102 is currently sampling");
+	if (atomic_get(&sampling)) {
 		return -EBUSY;
 	}
-
 	if (config == NULL) {
-		mtch6102_get_default_config(&mtch6102.config);
+		mtch6102_get_default_config(&next);
 	} else {
-		memcpy(&mtch6102.config, config, sizeof(mtch6102.config));
+		next = *config;
 	}
-
+	mtch6102_slider_config_defaults(&slider);
+#define CFG(reg) next.configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_##reg)]
+	/* This shield wires all 15 channels; the controller requires >=3 per
+	 * bank. Reject configurations that silently disable physical pads. */
+	slider.x_channels = CFG(NumberOfXChannels);
+	if (slider.x_channels < 3 || CFG(NumberOfYChannels) < 3 ||
+		slider.x_channels + CFG(NumberOfYChannels) != MTCH6102_SLIDER_ELECTRODES ||
+		next.mode.value < 1 || next.mode.value > 3 || (next.cmd.value & ~BIT(5)) != 0) {
+		LOG_ERR("MTCH6102 invalid configuration: X=%u Y=%u MODE=0x%x CMD=0x%x",
+				slider.x_channels,
+				CFG(NumberOfYChannels),
+				next.mode.value,
+				next.cmd.value);
+		return -EINVAL;
+	}
+	slider.threshold_x = CFG(TouchThreshX);
+	slider.threshold_y = CFG(TouchThreshY);
+	slider.hysteresis = CFG(Hysteresis);
+	slider.debounce_down = CFG(DebounceDown);
+	slider.debounce_up = CFG(DebounceUp);
+	slider.tap_distance = CFG(TapDistance);
+	slider.double_tap_distance = CFG(DistanceBetweenTaps);
+	slider.swipe_distance = CFG(HorizontalSwipeDistance);
+	slider.swipe_hold_boundary = CFG(SwipeHoldBoundary);
+	/* Host gesture timing is in monotonic milliseconds, independent of
+	 * active/idle scan periods. See the slider defaults and shield README. */
+#undef CFG
+	if (!mtch6102_slider_config_valid(&slider)) {
+		LOG_ERR("MTCH6102 invalid slider thresholds or gesture distances");
+		return -EINVAL;
+	}
 	ret = mtch6102_supply_on();
 	if (ret != 0) {
-		LOG_ERR("MTCH6102 supply power-on failed (%d)", ret);
 		return ret;
 	}
-
 	if (!mtch6102_bus_lock()) {
-		LOG_ERR("MTCH6102 failed to lock SYS_I2C bus");
 		return -EIO;
 	}
-
-	ret = mtch6102_apply_config(&mtch6102.config);
-	mtch6102_bus_unlock();
+	mtch6102.state.bits.bConfigured = 0U;
+	ret = mtch6102_apply_config(&next);
+	if (!mtch6102_bus_unlock() && ret == 0) {
+		ret = -EIO;
+	}
 	if (ret != 0) {
-		LOG_ERR("MTCH6102 configuration failed (%d)", ret);
 		return ret;
 	}
-
+	mtch6102.config = next;
+	mtch6102.slider_config = slider;
+	mtch6102_slider_reset(&mtch6102.slider);
+	mtch6102.sample_valid = false;
 	mtch6102.state.bits.bConfigured = 1U;
-	mtch6102.state.bits.bSampling = 0U;
-	mtch6102_post_event_isr(mtch6102_Irq, 0);
 	return 0;
 }
 
 bool mtch6102_is_ready(void) {
-	return mtch6102.state.bits.bInitialized && mtch6102.state.bits.bDeviceFound &&
-		   mtch6102.state.bits.bConfigured;
+	k_mutex_lock(&mtch6102_mutex, K_FOREVER);
+	bool ready = mtch6102.state.bits.bInitialized && mtch6102.state.bits.bDeviceFound &&
+				 mtch6102.state.bits.bConfigured;
+	k_mutex_unlock(&mtch6102_mutex);
+	return ready;
 }
 
 int mtch6102_get_position(struct mtch6102_position* pos) {
-	uint8_t start_reg = mtch6102_touch_TOUCHSTATE;
-	uint8_t rx[4] = {0U};
-	int ret;
-
 	if (pos == NULL) {
-		LOG_ERR("MTCH6102 position pointer is NULL");
 		return -EINVAL;
 	}
-
-	if (!mtch6102_bus_lock()) {
-		LOG_ERR("MTCH6102 failed to lock SYS_I2C bus");
-		return -EIO;
+	k_mutex_lock(&mtch6102_mutex, K_FOREVER);
+	int ret = -EAGAIN;
+	if (mtch6102.sample_valid && atomic_get(&sampling)) {
+		*pos = mtch6102.last_sample.position;
+		ret = pos->touched ? 0 : -ENODATA;
 	}
-
-	ret = sys_i2c_write_read(&mtch6102.device, &start_reg, 1, rx, sizeof(rx));
-	mtch6102_bus_unlock();
-	if (ret != 0) {
-		LOG_ERR("MTCH6102 failed reading touch position (%d)", ret);
-		return ret;
-	}
-
-	mtch6102_decode_position(pos, rx);
-	if (!pos->touched) {
-		LOG_WRN("MTCH6102 no touch detected");
-		return -ENODATA;
-	}
-
-	return 0;
+	k_mutex_unlock(&mtch6102_mutex);
+	return ret;
 }
 
 void mtch6102_stop(void) {
+	k_mutex_lock(&mtch6102_mutex, K_FOREVER);
+	atomic_clear(&sampling);
+	k_timer_stop(&mtch6102_recovery_timer);
 	mtch6102.state.bits.bSampling = 0U;
-	mtch6102_supply_off();
+	mtch6102.sample_valid = false;
+	mtch6102_slider_reset(&mtch6102.slider);
+	/* Keep the rail powered: the unpowered controller can hold shared I2C.
+	 * Standby (DS40001750A section 7) stops sensing and baseline updates. */
+	if (mtch6102.state.bits.bInitialized) {
+		int ret = -EIO;
+		if (mtch6102_bus_lock()) {
+			ret = mtch6102_write_register(mtch6102_core_MODE, 0U);
+			if (!mtch6102_bus_unlock() && ret == 0) {
+				ret = -EIO;
+			}
+		}
+		if (ret != 0) {
+			LOG_ERR("MTCH6102 standby failed (%d)", ret);
+		}
+	}
+	k_mutex_unlock(&mtch6102_mutex);
 }
 
-int mtch6102_init(void) {
+static int mtch6102_init_locked(void) {
 	int ret;
 
 	if (mtch6102.state.bits.bInitialized) {
@@ -903,8 +922,10 @@ int mtch6102_init(void) {
 		LOG_ERR("MTCH6102 failed to lock SYS_I2C bus");
 		return -EIO;
 	}
-	ret = mtch6102_probe() ? 0 : -ENODEV;
-	mtch6102_bus_unlock();
+	ret = mtch6102_probe();
+	if (!mtch6102_bus_unlock() && ret == 0) {
+		ret = -EIO;
+	}
 	if (ret != 0) {
 		LOG_ERR("MTCH6102 probe failed (%d)", ret);
 		return ret;
@@ -920,4 +941,34 @@ int mtch6102_init(void) {
 	mtch6102.state.bits.bInitialized = 1U;
 	mtch6102.state.bits.bConfigured = 0U;
 	return 0;
+}
+
+/* Lifecycle and frame processing may be requested by different threads. The
+ * recursive Zephyr mutex also permits start -> init/config safely. */
+int mtch6102_init(void) {
+	k_mutex_lock(&mtch6102_mutex, K_FOREVER);
+	int ret = mtch6102_init_locked();
+	k_mutex_unlock(&mtch6102_mutex);
+	return ret;
+}
+
+int mtch6102_config(const struct mtch6102_config_t* config) {
+	k_mutex_lock(&mtch6102_mutex, K_FOREVER);
+	int ret = mtch6102_config_locked(config);
+	k_mutex_unlock(&mtch6102_mutex);
+	return ret;
+}
+
+int mtch6102_start(void) {
+	k_mutex_lock(&mtch6102_mutex, K_FOREVER);
+	int ret = mtch6102_start_locked();
+	k_mutex_unlock(&mtch6102_mutex);
+	return ret;
+}
+
+int mtch6102_irq_handler(void) {
+	k_mutex_lock(&mtch6102_mutex, K_FOREVER);
+	int ret = mtch6102_irq_handler_locked();
+	k_mutex_unlock(&mtch6102_mutex);
+	return ret;
 }

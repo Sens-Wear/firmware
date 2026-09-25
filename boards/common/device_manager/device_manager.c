@@ -1424,9 +1424,10 @@ static void device_manager_translate_touch(const struct device_driver_event_t* e
 		return;
 	}
 
-	switch (event) {
-	case mtch6102_event_TouchDetected:
-	case mtch6102_event_TouchReleased: {
+	/* A gesture frame also carries a position/release. Publish both so a
+	 * click or swipe cannot
+	 * leave the continuous touch stream stuck down. */
+	{
 		struct touch_msg_t msg = {
 			.timestamp = sample->timestamp,
 			.touched = sample->position.touched,
@@ -1435,24 +1436,20 @@ static void device_manager_translate_touch(const struct device_driver_event_t* e
 			.touch_state = sample->position.touch_state,
 		};
 		device_manager_publish(&chan_touch, &msg);
-		break;
 	}
-	default: {
+	{
 		enum touch_gesture_type gesture = device_manager_map_touch_gesture(event);
 
-		if (gesture == touch_gesture_None) {
-			break;
+		if (gesture != touch_gesture_None) {
+			struct touch_gesture_msg_t msg = {
+				.timestamp = sample->timestamp,
+				.gesture = gesture,
+				.gesture_state = sample->gesture_state,
+			};
+			device_manager_publish(&chan_touch_gesture, &msg);
 		}
-
-		struct touch_gesture_msg_t msg = {
-			.timestamp = sample->timestamp,
-			.gesture = gesture,
-			.gesture_state = sample->gesture_state,
-		};
-		device_manager_publish(&chan_touch_gesture, &msg);
-		break;
 	}
-	}
+	mtch6102_release_sample(sample);
 }
 
 #endif /* CONFIG_SHIELD_SENSWEAR_TOUCH */

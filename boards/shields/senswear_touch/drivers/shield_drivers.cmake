@@ -3,6 +3,7 @@
 # SensWear touch shield drivers.
 list(APPEND SHIELD_DRIVER_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/touch/mtch6102/mtch6102.c
+    ${CMAKE_CURRENT_LIST_DIR}/touch/mtch6102/mtch6102_slider.c
 )
 
 list(APPEND SHIELD_DRIVER_INCLUDE_DIRS
