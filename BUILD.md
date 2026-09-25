@@ -142,9 +142,12 @@ three pieces:
 - `drivers/shield_drivers.cmake` — the shield's driver source(s).
 
 Selecting a shield also drives the `SENSWEAR_DAUGHTER_BOARD` choice in `Kconfig`
-(e.g. `SHIELD_SENSWEAR_PPG` ⇒ `default SENSWEAR_DAUGHTER_PPG`), which is what
-`src/app.cmake` keys on to add that daughter board's BLE bridge and GATT
-service sources.
+(e.g. `SHIELD_SENSWEAR_PPG` ⇒ `default SENSWEAR_DAUGHTER_PPG`).
+`src/bluetooth/services/services.cmake` gates the haptic, PPG, and touch GATT
+services on that choice. Temperature is gated independently on its shield, so
+the PPG application preset includes both PPG and temperature services. Core
+services include firmware identity and capabilities; their feature mask follows
+both these service gates and the supporting device-manager drivers.
 
 | Shield | Daughter device | `Kconfig.defconfig` turns on | Shield driver source |
 | --- | --- | --- | --- |
@@ -158,11 +161,12 @@ service sources.
 All checks run in the top-level `CMakeLists.txt` after `find_package(Zephyr)`:
 
 1. **At most one device on the shared daughter rail.** The daughter connector
-   exposes a single regulated rail (TPSM83102 / `VDD_DAUGHTER`). CMake walks the
-   `sys_i2c_peripheral` bus in the parsed devicetree and counts the `okay`
-   children whose `vin-supply` resolves to the `tpsm83102` node. **More than one
-   is a `FATAL_ERROR`.** The surviving count is published to the application as
-   the `SENSWEAR_NUM_SHIELDS` compile definition.
+   exposes a single regulated rail (TPSM83102 / `VDD_DAUGHTER`). CMake checks
+   the known daughter-device node labels in the parsed devicetree and counts
+   the `okay` devices whose `vin-supply` resolves to the `tpsm83102` node.
+   **More than one is a `FATAL_ERROR`.** Separately, `SENSWEAR_NUM_SHIELDS`
+   counts selected `CONFIG_SHIELD_SENSWEAR_*` flags; this can be two for PPG
+   plus temperature without violating regulator ownership.
 
 2. **Exactly one bring-up test.** A board-driver test and a shield test both
    defining `main()` is a `FATAL_ERROR`. Within `tests/drivers/tests.cmake` and
@@ -184,16 +188,17 @@ multiples outright. The real constraint is
 validation check #1: **at most one enabled `okay` device may draw on the shared
 `tpsm83102` rail.**
 
-Every current shield's daughter device declares `vin-supply = <&tpsm83102>`, so
-**any two SensWear shields enabled together trip the fatal regulator check** —
-in practice exactly one daughter shield at a time. The
-`SENSWEAR_DAUGHTER_BOARD` Kconfig `choice` reinforces this on the application
-side: only one `SENSWEAR_DAUGHTER_*` (and thus one set of bridge/service
-sources) can be selected.
+Haptic, PPG, and touch declare `vin-supply = <&tpsm83102>`, so selecting more
+than one of those regulator-dependent devices trips the fatal check. The
+temperature overlay deliberately declares no regulator ownership. It may
+coexist with PPG, and `senswear_nrf54l15_cpuapp_ppg` selects both shields for
+the MAX30101 and MAX30208 on that daughter board.
 
-Two shields could only legally coexist if at most one of them enabled a
-regulator-dependent device on that rail (e.g. a temperature sensor shield which 
-is powered independently, or with its device left `disabled`).
+The `SENSWEAR_DAUGHTER_BOARD` Kconfig `choice` still allows only one
+`SENSWEAR_DAUGHTER_*` selection for the haptic/PPG/touch services; the
+temperature service follows its independent shield flag. The metadata shield
+mask therefore records all selected shields, while its feature mask also
+checks which services and producers are compiled.
 
 ## Tests: selection and how it reaches Kconfig
 

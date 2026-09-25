@@ -33,6 +33,7 @@ function(add_ble_service_dir service_name)
 endfunction()
 
 # Core services (always built).
+add_ble_service_dir(device_info)
 add_ble_service_dir(imu)
 add_ble_service_dir(led)
 add_ble_service_dir(power)
