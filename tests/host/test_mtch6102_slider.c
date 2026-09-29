@@ -15,6 +15,10 @@ struct fixture {
 static void init(struct fixture* f) {
 	memset(f, 0, sizeof(*f));
 	mtch6102_slider_config_defaults(&f->config);
+	/* Geometry and gesture timing tests isolate those behaviors from the
+	 * frame-count debounce, which is exercised with defaults separately. */
+	f->config.debounce_down = 1U;
+	f->config.debounce_up = 1U;
 	mtch6102_slider_reset(&f->state);
 	assert(mtch6102_slider_config_valid(&f->config));
 }
@@ -91,28 +95,28 @@ static void test_centroid(void) {
 
 	/* Exact threshold and release threshold must have nonzero centroid weight. */
 	init(&f);
-	f.values[0] = 55U;
+	f.values[0] = f.config.threshold_x;
 	frame(&f, 0U);
 	assert(f.output.position.touched);
-	f.values[0] = 51U;
+	f.values[0] = f.config.threshold_x - f.config.hysteresis;
 	frame(&f, 10U);
 	assert(f.output.position.touched);
-	f.values[0] = 50U;
+	f.values[0] = f.config.threshold_x - f.config.hysteresis - 1U;
 	frame(&f, 20U);
 	assert(!f.output.position.touched);
 	init(&f);
-	f.values[14] = 40U;
+	f.values[14] = f.config.threshold_y;
 	frame(&f, 0U);
 	assert(f.output.position.touched);
-	f.values[14] = 36U;
+	f.values[14] = f.config.threshold_y - f.config.hysteresis;
 	frame(&f, 10U);
 	assert(f.output.position.touched);
-	f.values[14] = 35U;
+	f.values[14] = f.config.threshold_y - f.config.hysteresis - 1U;
 	frame(&f, 20U);
 	assert(!f.output.position.touched);
 	init(&f);
-	f.values[0] = 54U;
-	f.values[14] = 39U;
+	f.values[0] = f.config.threshold_x - 1U;
+	f.values[14] = f.config.threshold_y - 1U;
 	frame(&f, 0U);
 	assert(!f.output.position.touched);
 	release(&f, 10U);
@@ -121,18 +125,24 @@ static void test_centroid(void) {
 static void test_debounce_and_status(void) {
 	struct fixture f;
 	init(&f);
-	f.config.debounce_down = 2U;
-	f.config.debounce_up = 2U;
+	mtch6102_slider_config_defaults(&f.config);
 	set_pad(&f, 3U, 40U);
-	frame(&f, 0U);
-	assert(!f.output.position.touched);
-	frame(&f, 10U);
+	uint64_t now_ms = 0U;
+	for (uint8_t i = 1U; i < f.config.debounce_down; ++i) {
+		frame(&f, now_ms);
+		now_ms += 20U;
+		assert(!f.output.position.touched);
+	}
+	frame(&f, now_ms);
 	assert(f.output.position.touched);
 	memset(f.values, 0, sizeof(f.values));
-	frame(&f, 20U);
-	assert(f.output.position.touched);
-	assert(f.output.position.x == 3U * MTCH6102_SLIDER_PITCH);
-	frame(&f, 30U);
+	for (uint8_t i = 1U; i < f.config.debounce_up; ++i) {
+		now_ms += 20U;
+		frame(&f, now_ms);
+		assert(f.output.position.touched);
+		assert(f.output.position.x == 3U * MTCH6102_SLIDER_PITCH);
+	}
+	frame(&f, now_ms + 20U);
 	assert(!f.output.position.touched);
 
 	/* Even a set hardware TCH bit cannot synthesize a host touch from zeros. */
@@ -140,6 +150,108 @@ static void test_debounce_and_status(void) {
 	mtch6102_slider_process(&f.state, &f.config, f.values, 0xFFU, 0U, false, &f.output);
 	assert(!f.output.position.touched);
 	assert(f.output.position.touch_state == 0xFFU);
+}
+
+static void test_spatial_hysteresis_release(void) {
+	struct fixture f;
+	init(&f);
+	f.config.debounce_up = 2U;
+	touch(&f, 2U, 0U);
+	memset(f.values, 0, sizeof(f.values));
+	/* Mirrors the recorded connector-side release: X falls below release
+	 * while a distant Y electrode remains exactly at its release threshold.
+	 * Keep the previous coordinate during debounce, then report release.
+	 */
+	f.values[f.config.physical_to_rx[2]] = f.config.threshold_x - f.config.hysteresis - 1U;
+	f.values[12] = f.config.threshold_y - f.config.hysteresis;
+	frame(&f, 20U);
+	assert(f.output.position.touched);
+	assert(f.output.position.x == 2U * MTCH6102_SLIDER_PITCH);
+	frame(&f, 40U);
+	assert(!f.output.position.touched);
+	assert(f.output.position.x == 0U);
+	frame(&f, 40U + f.config.double_tap_ms + 1U);
+	assert(f.output.gesture == mtch6102_gesture_SingleClick);
+}
+
+static void test_spatial_hysteresis_hold_and_remote_activation(void) {
+	struct fixture f;
+	init(&f);
+	touch(&f, 4U, 0U);
+	memset(f.values, 0, sizeof(f.values));
+	f.values[4] = f.config.threshold_x - f.config.hysteresis;
+	f.values[14] = f.config.threshold_y - 1U;
+	frame(&f, f.config.tap_hold_ms);
+	/* The remote signal has more release-threshold excess, but has not
+	 * activated. It cannot steal the local hold or synthesize a swipe.
+	 */
+	assert(f.output.position.touched);
+	assert(f.output.position.x == 4U * MTCH6102_SLIDER_PITCH);
+	assert(f.output.gesture == mtch6102_gesture_ClickAndHold);
+
+	f.values[14] = f.config.threshold_y;
+	frame(&f, f.config.tap_hold_ms + 20U);
+	assert(f.output.position.touched);
+	assert(f.output.position.x == MTCH6102_SLIDER_MAX_X);
+
+	/* A fully activated distant contact competes with unchanged scoring.
+	 * Do not penalize its strength merely because it is outside the window.
+	 */
+	init(&f);
+	touch(&f, 4U, 0U);
+	memset(f.values, 0, sizeof(f.values));
+	f.values[4] = f.config.threshold_x + 1U;
+	f.values[14] = f.config.threshold_y + 2U;
+	frame(&f, 20U);
+	assert(f.output.position.touched);
+	assert(f.output.position.x == MTCH6102_SLIDER_MAX_X);
+	release(&f, 40U);
+	assert(f.output.gesture == mtch6102_gesture_RightSwipe);
+}
+
+static void test_spatial_hysteresis_sweeps(void) {
+	struct fixture f;
+	for (uint8_t direction = 0U; direction < 2U; ++direction) {
+		init(&f);
+		touch(&f, direction == 0U ? 0U : 14U, 0U);
+		/* Local handoff remains valid at the release threshold, including
+		 * the RX1/RX2 permutation and both directions across the X/Y seam.
+		 */
+		for (uint8_t step = 1U; step < MTCH6102_SLIDER_ELECTRODES; ++step) {
+			uint8_t pad = direction == 0U ? step : 14U - step;
+			uint8_t rx = f.config.physical_to_rx[pad];
+			memset(f.values, 0, sizeof(f.values));
+			f.values[rx] =
+				(rx < f.config.x_channels ? f.config.threshold_x : f.config.threshold_y) -
+				f.config.hysteresis;
+			frame(&f, step * 20U);
+			assert(f.output.position.touched);
+			assert(f.output.position.x == pad * MTCH6102_SLIDER_PITCH);
+		}
+		release(&f, 300U);
+		assert(f.output.gesture ==
+			   (direction == 0U ? mtch6102_gesture_RightSwipe : mtch6102_gesture_LeftSwipe));
+	}
+
+	/* Keep centroid interpolation at the bank seam, then let the contact
+	 * continue toward the next physical pad from the interpolated position.
+	 */
+	init(&f);
+	touch(&f, 11U, 0U);
+	memset(f.values, 0, sizeof(f.values));
+	f.values[11] = f.config.threshold_x - f.config.hysteresis;
+	f.values[12] = f.config.threshold_y - f.config.hysteresis;
+	frame(&f, 20U);
+	assert(f.output.position.x == 11U * MTCH6102_SLIDER_PITCH + MTCH6102_SLIDER_PITCH / 2U);
+	f.values[11] = 0U;
+	frame(&f, 40U);
+	assert(f.output.position.touched);
+	assert(f.output.position.x == 12U * MTCH6102_SLIDER_PITCH);
+	f.values[12] = 0U;
+	f.values[13] = f.config.threshold_y - f.config.hysteresis;
+	frame(&f, 60U);
+	assert(f.output.position.touched);
+	assert(f.output.position.x == 13U * MTCH6102_SLIDER_PITCH);
 }
 
 static void test_taps(void) {
@@ -282,6 +394,9 @@ int main(void) {
 	test_electrodes();
 	test_centroid();
 	test_debounce_and_status();
+	test_spatial_hysteresis_release();
+	test_spatial_hysteresis_hold_and_remote_activation();
+	test_spatial_hysteresis_sweeps();
 	test_taps();
 	test_hold_and_swipes();
 	test_reset_and_time();

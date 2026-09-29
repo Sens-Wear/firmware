@@ -12,11 +12,11 @@ void mtch6102_slider_config_defaults(struct mtch6102_slider_config* config) {
 	config->physical_to_rx[1] = 2U;
 	config->physical_to_rx[2] = 1U;
 	config->x_channels = 12U;
-	config->threshold_x = 55U;
-	config->threshold_y = 40U;
-	config->hysteresis = 4U;
-	config->debounce_down = 1U;
-	config->debounce_up = 1U;
+	config->threshold_x = MTCH6102_SLIDER_DEFAULT_THRESHOLD_X;
+	config->threshold_y = MTCH6102_SLIDER_DEFAULT_THRESHOLD_Y;
+	config->hysteresis = MTCH6102_SLIDER_DEFAULT_HYSTERESIS;
+	config->debounce_down = MTCH6102_SLIDER_DEFAULT_DEBOUNCE_DOWN;
+	config->debounce_up = MTCH6102_SLIDER_DEFAULT_DEBOUNCE_UP;
 	config->tap_distance = 25U;
 	config->double_tap_distance = 64U;
 	config->swipe_distance = 64U;
@@ -66,6 +66,16 @@ static bool locate(const struct mtch6102_slider_config* config,
 	uint8_t peak = 0U;
 	for (uint8_t pad = 0; pad < MTCH6102_SLIDER_ELECTRODES; ++pad) {
 		uint8_t rx = config->physical_to_rx[pad];
+		/* Hysteresis sustains the existing contact and its immediate physical
+		 * neighbours. A distant pad must reach its activation threshold before
+		 * it can take over; otherwise residual signal can prolong a release
+		 * and move the coordinate to the other end of the strip. This gates
+		 * eligibility only, preserving peak ranking for qualifying pads.
+		 */
+		if (touched && distance(pad * MTCH6102_SLIDER_PITCH, *x) > MTCH6102_SLIDER_PITCH &&
+			values[rx] < threshold(config, rx)) {
+			continue;
+		}
 		int level = threshold(config, rx) - (touched ? config->hysteresis : 0U);
 		int strength = values[rx] - level;
 		if (strength > best) {

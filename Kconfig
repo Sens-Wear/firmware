@@ -25,6 +25,27 @@ config SENSWEAR_DAUGHTER_HAPTIC
 
 endchoice
 
+choice SENSWEAR_TOUCH_ENCLOSURE
+	prompt "Touch electrode enclosure"
+	depends on SHIELD_SENSWEAR_TOUCH
+	default SENSWEAR_TOUCH_RING_ENCLOSURE
+	help
+	  Select the build-time touch thresholds for the assembled touch board.
+	  The controller and host slider decoder use the same selected thresholds.
+	  Acquisition timing, filtering and gesture settings are unchanged.
+
+config SENSWEAR_TOUCH_RING_ENCLOSURE
+	bool "With ring enclosure (X=16, Y=6)"
+	help
+	  Use the more sensitive thresholds measured with the 1-2 mm resin ring.
+
+config SENSWEAR_TOUCH_NO_ENCLOSURE
+	bool "Without enclosure (X=55, Y=40)"
+	help
+	  Use the original bare-board thresholds for directly exposed electrodes.
+
+endchoice
+
 config SENSWEAR_DAUGHTER_PRESENT
 	bool
 	default y if SENSWEAR_DAUGHTER_TOUCH

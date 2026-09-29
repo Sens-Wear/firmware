@@ -104,6 +104,11 @@ static struct mtch6102_t {
 	atomic_val_t last_frame_sequence;
 	int64_t last_read_ms;
 	bool sample_valid;
+#if defined(CONFIG_SENSWEAR_TEST_MTCH6102_DRIVER)
+	struct mtch6102_diagnostic_snapshot diagnostic;
+	bool diagnostic_valid;
+	bool diagnostic_wait_for_frame;
+#endif
 } mtch6102 = {
 	.device = SYS_I2C_DT_SPEC_GET(MTCH6102_NODE),
 	.regulator = DEVICE_DT_GET(DT_PHANDLE(MTCH6102_NODE, vin_supply)),
@@ -507,6 +512,10 @@ static int mtch6102_start_locked(void) {
 	}
 	mtch6102_slider_reset(&mtch6102.slider);
 	mtch6102.sample_valid = false;
+#if defined(CONFIG_SENSWEAR_TEST_MTCH6102_DRIVER)
+	mtch6102.diagnostic_valid = false;
+	mtch6102.diagnostic_wait_for_frame = true;
+#endif
 	mtch6102.last_read_ms = k_uptime_get();
 	mtch6102.last_frame_sequence = atomic_get(&frame_sequence);
 	mtch6102.state.bits.bSampling = 1U;
@@ -523,11 +532,21 @@ static int mtch6102_start_locked(void) {
 static int mtch6102_read_sample(struct touch_sensor_sample_t* sample) {
 	uint8_t status[6];
 	uint8_t sensors[MTCH6102_SLIDER_ELECTRODES];
+#if defined(CONFIG_SENSWEAR_TEST_MTCH6102_DRIVER)
+	struct mtch6102_diagnostic_snapshot diagnostic = {0};
+#endif
 	uint8_t reg = mtch6102_touch_TOUCHSTATE;
 	atomic_val_t sequence = atomic_get(&frame_sequence);
 	int64_t now_ms = k_uptime_get();
 	int ret;
 
+#if defined(CONFIG_SENSWEAR_TEST_MTCH6102_DRIVER)
+	/* A new frame must complete after start/rebaselining. Otherwise the
+	 * sensor values could still describe the previous baseline or run. */
+	if (mtch6102.diagnostic_wait_for_frame && sequence == mtch6102.last_frame_sequence) {
+		return -EAGAIN;
+	}
+#endif
 	if (mtch6102.sample_valid && sequence == mtch6102.last_frame_sequence &&
 		now_ms - mtch6102.last_read_ms < MTCH6102_RECOVERY_MS) {
 		return -EAGAIN;
@@ -544,6 +563,27 @@ static int mtch6102_read_sample(struct touch_sensor_sample_t* sample) {
 			reg = mtch6102_acquisition_SENSORVALUES_RX0;
 			ret = sys_i2c_write_read(&mtch6102.device, &reg, 1, sensors, sizeof(sensors));
 		}
+#if defined(CONFIG_SENSWEAR_TEST_MTCH6102_DRIVER)
+		/* Calibration images capture the baseline and pre-decoding signal too.
+		 * Keep these reads inside the same SYNC/sequence coherence check; a
+		 * failed or overlapped burst must never replace the previous snapshot. */
+		if (ret == 0) {
+			reg = mtch6102_acquisition_RAWVALUES_RX0_L;
+			ret = sys_i2c_write_read(&mtch6102.device,
+									 &reg,
+									 1,
+									 diagnostic.raw_values,
+									 sizeof(diagnostic.raw_values));
+		}
+		if (ret == 0) {
+			reg = mtch6102_acquisition_BASEVALUES_RX0_L;
+			ret = sys_i2c_write_read(&mtch6102.device,
+									 &reg,
+									 1,
+									 diagnostic.base_values,
+									 sizeof(diagnostic.base_values));
+		}
+#endif
 		if (ret == 0) {
 			ret = gpio_pin_get_raw(mtch6102.sync_gpio->port, mtch6102.sync_gpio->pin);
 			if (ret > 0 || sequence != atomic_get(&frame_sequence)) {
@@ -574,6 +614,21 @@ static int mtch6102_read_sample(struct touch_sensor_sample_t* sample) {
 	sample->gesture_state = output.gesture;
 	mtch6102.last_frame_sequence = sequence;
 	mtch6102.last_read_ms = now_ms;
+#if defined(CONFIG_SENSWEAR_TEST_MTCH6102_DRIVER)
+	diagnostic.sample = *sample;
+	diagnostic.uptime_ms = (uint64_t) now_ms;
+	diagnostic.frame_sequence = (uint32_t) sequence;
+	memcpy(diagnostic.sensor_values, sensors, sizeof(diagnostic.sensor_values));
+	memcpy(diagnostic.sensor_compensation,
+		   mtch6102.diagnostic.sensor_compensation,
+		   sizeof(diagnostic.sensor_compensation));
+	memcpy(diagnostic.config_values,
+		   mtch6102.diagnostic.config_values,
+		   sizeof(diagnostic.config_values));
+	mtch6102.diagnostic = diagnostic;
+	mtch6102.diagnostic_valid = true;
+	mtch6102.diagnostic_wait_for_frame = false;
+#endif
 	return 0;
 }
 
@@ -644,22 +699,30 @@ void mtch6102_get_default_config(struct mtch6102_config_t* config) {
 	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_NumberOfXChannels)] = 0x0CU;
 	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_NumberOfYChannels)] = 0x03U;
 	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_ScanCount)] = 0x06U;
-	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_TouchThreshX)] = 0x37U;
-	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_TouchThreshY)] = 0x28U;
+	/* Use the build-selected enclosure thresholds in both controller and host. */
+	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_TouchThreshX)] =
+		MTCH6102_SLIDER_DEFAULT_THRESHOLD_X;
+	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_TouchThreshY)] =
+		MTCH6102_SLIDER_DEFAULT_THRESHOLD_Y;
 	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_ActivePeriodL)] = 0x85U;
 	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_ActivePeriodH)] = 0x02U;
-	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_IdlePeriodL)] = 0x4CU;
-	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_IdlePeriodH)] = 0x06U;
+	/* Native 2D TCH rarely asserts on a 1D strip. Keep idle acquisition near
+	 * 20 ms as well, so host decoding does not fall back to 50 ms frames. */
+	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_IdlePeriodL)] = 0x85U;
+	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_IdlePeriodH)] = 0x02U;
 	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_IdleTimeout)] = 0x10U;
-	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_Hysteresis)] = 0x04U;
-	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_DebounceUp)] = 0x01U;
-	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_DebounceDown)] = 0x01U;
-	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_BaseIntervalL)] = 0x0AU;
+	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_Hysteresis)] =
+		MTCH6102_SLIDER_DEFAULT_HYSTERESIS;
+	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_DebounceUp)] =
+		MTCH6102_SLIDER_DEFAULT_DEBOUNCE_UP;
+	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_DebounceDown)] =
+		MTCH6102_SLIDER_DEFAULT_DEBOUNCE_DOWN;
+	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_BaseIntervalL)] = 0xC8U;
 	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_BaseIntervalH)] = 0x00U;
-	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_BasePosFilter)] = 0x14U;
-	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_BaseNegFilter)] = 0x14U;
+	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_BasePosFilter)] = 0x01U;
+	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_BaseNegFilter)] = 0x01U;
 	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_FilterType)] = 0x02U;
-	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_FilterStrength)] = 0x01U;
+	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_FilterStrength)] = 0x03U;
 	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_BaseFilterType)] = 0x01U;
 	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_BaseFilterStrength)] = 0x05U;
 	config->configuration[MTCH6102_CONFIGURATION_INDEX(mtch6102_config_LargeActivationThreshL)] =
@@ -834,7 +897,30 @@ static int mtch6102_config_locked(const struct mtch6102_config_t* config) {
 		return -EIO;
 	}
 	mtch6102.state.bits.bConfigured = 0U;
+#if defined(CONFIG_SENSWEAR_TEST_MTCH6102_DRIVER)
+	mtch6102.diagnostic_valid = false;
+#endif
 	ret = mtch6102_apply_config(&next);
+#if defined(CONFIG_SENSWEAR_TEST_MTCH6102_DRIVER)
+	if (ret == 0) {
+		/* These coefficients can survive in controller storage. Observe them
+		 * once per configuration without adding to every frame's bus traffic. */
+		uint8_t reg = mtch6102_compensation_SENSORCOMP_RX0;
+		ret = sys_i2c_write_read(&mtch6102.device,
+								 &reg,
+								 1,
+								 mtch6102.diagnostic.sensor_compensation,
+								 sizeof(mtch6102.diagnostic.sensor_compensation));
+		if (ret == 0) {
+			reg = mtch6102_config_NumberOfXChannels;
+			ret = sys_i2c_write_read(&mtch6102.device,
+									 &reg,
+									 1,
+									 mtch6102.diagnostic.config_values,
+									 sizeof(mtch6102.diagnostic.config_values));
+		}
+	}
+#endif
 	if (!mtch6102_bus_unlock() && ret == 0) {
 		ret = -EIO;
 	}
@@ -871,12 +957,85 @@ int mtch6102_get_position(struct mtch6102_position* pos) {
 	return ret;
 }
 
+#if defined(CONFIG_SENSWEAR_TEST_MTCH6102_DRIVER)
+int mtch6102_get_diagnostic_snapshot(struct mtch6102_diagnostic_snapshot* snapshot) {
+	if (snapshot == NULL) {
+		return -EINVAL;
+	}
+	int ret = k_mutex_lock(&mtch6102_mutex, K_MSEC(250));
+	if (ret != 0) {
+		return ret;
+	}
+	ret = -EAGAIN;
+	if (mtch6102.diagnostic_valid && atomic_get(&sampling)) {
+		*snapshot = mtch6102.diagnostic;
+		ret = 0;
+	}
+	k_mutex_unlock(&mtch6102_mutex);
+	return ret;
+}
+
+int mtch6102_force_baseline(void) {
+	int ret = k_mutex_lock(&mtch6102_mutex, K_MSEC(250));
+	if (ret != 0) {
+		return ret;
+	}
+	if (!mtch6102.state.bits.bConfigured || !atomic_get(&sampling)) {
+		ret = -EAGAIN;
+		goto out;
+	}
+	ret = sys_i2c_lock(&mtch6102.device, K_MSEC(MTCH6102_I2C_TIMEOUT));
+	if (ret != 0) {
+		goto out;
+	}
+	/* A failed write can still have reached the device. Never keep a cached
+	 * contact or gesture across a possibly changed baseline. */
+	mtch6102.sample_valid = false;
+	mtch6102.diagnostic_valid = false;
+	mtch6102.diagnostic_wait_for_frame = true;
+	mtch6102_slider_reset(&mtch6102.slider);
+	ret = mtch6102_write_register(mtch6102_core_CMD, BIT(0));
+	if (ret == 0) {
+		uint8_t reg = mtch6102_core_CMD;
+		uint8_t pending;
+		int64_t deadline = k_uptime_get() + 250;
+		do {
+			if (k_uptime_get() >= deadline) {
+				ret = -ETIMEDOUT;
+				break;
+			}
+			ret = sys_i2c_write_read(&mtch6102.device, &reg, 1, &pending, 1);
+			if (ret != 0 || (pending & BIT(0)) == 0U) {
+				break;
+			}
+			if (k_uptime_get() >= deadline) {
+				ret = -ETIMEDOUT;
+				break;
+			}
+			k_msleep(5);
+		} while (true);
+	}
+	int release_ret = sys_i2c_release(&mtch6102.device);
+	if (ret == 0) {
+		ret = release_ret;
+	}
+	mtch6102.last_read_ms = k_uptime_get();
+	mtch6102.last_frame_sequence = atomic_get(&frame_sequence);
+out:
+	k_mutex_unlock(&mtch6102_mutex);
+	return ret;
+}
+#endif
+
 void mtch6102_stop(void) {
 	k_mutex_lock(&mtch6102_mutex, K_FOREVER);
 	atomic_clear(&sampling);
 	k_timer_stop(&mtch6102_recovery_timer);
 	mtch6102.state.bits.bSampling = 0U;
 	mtch6102.sample_valid = false;
+#if defined(CONFIG_SENSWEAR_TEST_MTCH6102_DRIVER)
+	mtch6102.diagnostic_valid = false;
+#endif
 	mtch6102_slider_reset(&mtch6102.slider);
 	/* Keep the rail powered: the unpowered controller can hold shared I2C.
 	 * Standby (DS40001750A section 7) stops sensing and baseline updates. */

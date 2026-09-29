@@ -8,6 +8,21 @@
 #define MTCH6102_SLIDER_PITCH 64U
 #define MTCH6102_SLIDER_MAX_X ((MTCH6102_SLIDER_ELECTRODES - 1U) * MTCH6102_SLIDER_PITCH)
 
+/* Kconfig selects shared controller/host thresholds. Standalone host builds
+ * default to the ring profile, matching the firmware's Kconfig default.
+ * These values are signal counts, not capacitance or physical distance.
+ * See the shield README for measured enclosure limitations. */
+#if defined(CONFIG_SENSWEAR_TOUCH_NO_ENCLOSURE)
+#define MTCH6102_SLIDER_DEFAULT_THRESHOLD_X 55U
+#define MTCH6102_SLIDER_DEFAULT_THRESHOLD_Y 40U
+#else
+#define MTCH6102_SLIDER_DEFAULT_THRESHOLD_X 16U
+#define MTCH6102_SLIDER_DEFAULT_THRESHOLD_Y 6U
+#endif
+#define MTCH6102_SLIDER_DEFAULT_HYSTERESIS 3U
+#define MTCH6102_SLIDER_DEFAULT_DEBOUNCE_UP 2U
+#define MTCH6102_SLIDER_DEFAULT_DEBOUNCE_DOWN 2U
+
 /* SENSORVALUES are positive, baseline-subtracted channel signals. The map is
  * indexed by physical pad order, beginning at x=0, and contains RX indices.
  */
@@ -55,7 +70,7 @@ struct mtch6102_slider_output {
 	uint8_t gesture;
 };
 
-/* Defaults retain the existing RX-bank thresholds and use the SensWear touch
+/* Defaults use the measured RX-bank thresholds and the SensWear touch
  * board's connector-to-tip pad order (RX0, RX2, RX1, RX3, ..., RX14).
  * Gesture times are explicit host-side milliseconds, independent of the
  * controller's gesture configuration register encoding.

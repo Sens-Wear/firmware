@@ -32,9 +32,9 @@
  * releases sys_i2c. The I2C address is fixed by devicetree and never rewritten.
  * The driver claims daughter_if_GPIO2 (SYNC) and GPIO3 (INT) as inputs. Only
  * SYNC is armed for interrupts. init() enables the 1.8 V supply before
- * probing. stop() selects controller standby and retains rail power to avoid
- * an unpowered controller holding the shared I2C lines. start() restores the
- * configured mode and resets host gesture state.
+ * probing. stop() selects
+ * controller standby and retains rail power to avoid an unpowered controller holding the shared I2C
+ * lines. start() restores the configured mode and resets host gesture state.
  *
  * The public BLE layouts remain unchanged. The legacy Y slot is reserved zero;
  * gesture enum values and UUIDs retain their existing encodings.
@@ -54,10 +54,14 @@
 
 /**
  * @brief Touch-board supply voltage matching its 1.8 V signal domain, in microvolts.
- * @details RESET and I2C are pulled to 1.8 V; SYNC connects directly to the
- *          1.8 V MCU. At the old 2.8 V supply, RESET and I2C high levels were
- *          below the MTCH6102 guaranteed thresholds (0.8/0.7 times VDD).
- *          DS40001750A tables 18-1/18-2 permit 1.8 V operation. Verify actual
+ * @details
+ * RESET and I2C are pulled to 1.8 V; SYNC connects directly to the
+ *          1.8 V MCU. At the
+ * old 2.8 V supply, RESET and I2C high levels were
+ *          below the MTCH6102 guaranteed
+ * thresholds (0.8/0.7 times VDD).
+ *          DS40001750A tables 18-1/18-2 permit 1.8 V operation.
+ * Verify actual
  *          VDD/ripple on the assembled board because this is the lower limit.
  */
 #define MTCH6102_SUPPLY_VOLTAGE_UV (1800000)
@@ -98,6 +102,54 @@ struct touch_sensor_sample_t {
 	struct mtch6102_position position; /**< Host position and raw controller status. */
 	uint8_t gesture_state;			   /**< Host gesture using MTCH6102 gesture codes. */
 };
+
+#if defined(CONFIG_SENSWEAR_TEST_MTCH6102_DRIVER)
+/** Test-image snapshot of one coherent acquisition frame, in RX channel order.
+ * RAWVALUES and
+ * BASEVALUES retain the bytes in increasing register-address order.
+ * frame_sequence counts SYNC
+ * falling edges and wraps at 32 bits; it is not an
+ * event counter. Idle frames also refresh this
+ * snapshot. No BLE layout changes.
+ */
+struct mtch6102_diagnostic_snapshot {
+	struct touch_sensor_sample_t sample;
+	uint64_t uptime_ms;
+	uint32_t frame_sequence;
+	uint8_t sensor_values[15];		 /**< SENSORVALUES, registers 0x80 through 0x8e. */
+	uint8_t raw_values[30];			 /**< RAWVALUES, registers 0x90 through 0xad. */
+	uint8_t base_values[30];		 /**< BASEVALUES, registers 0xb0 through 0xcd. */
+	uint8_t sensor_compensation[15]; /**< SENSORCOMP read back at configuration, RX0..RX14. */
+	uint8_t config_values[36];		 /**< Configuration RAM 0x20..0x43 after CFG completes. */
+};
+
+/** Copy the latest coherent diagnostic frame; performs no I2C access.
+ * Returns -EINVAL for NULL
+ * or -EAGAIN until a valid frame follows start,
+ * configuration, or baseline recalibration. Thread
+ * context only.
+ */
+int mtch6102_get_diagnostic_snapshot(struct mtch6102_diagnostic_snapshot* snapshot);
+
+/** Force the current sensor readings into the baseline using CMD.BS.
+ * The caller must ensure no
+ * finger is on or near the assembled sensing surface.
+ * Sampling must already be active; standby
+ * cannot acquire a new baseline.
+ * Does not alter thresholds, scan count, compensation, supply, or
+ * NVRAM.
+ * Serializes with configuration/acquisition and uses a 250 ms polling deadline
+ * after
+ * the command write, plus bounded mutex/bus and I2C transfer latency.
+ * Invalidates cached samples
+ * and resets host gestures before issuing the command.
+ * Returns -EAGAIN when not
+ * sampling/configured, -ETIMEDOUT when BS remains set,
+ * or a negative transport/lock errno.
+ * Thread context only.
+ */
+int mtch6102_force_baseline(void);
+#endif
 
 /** Number of bytes in the MTCH6102 configuration register block. */
 #define MTCH6102_CONFIGURATION_REGISTER_COUNT \

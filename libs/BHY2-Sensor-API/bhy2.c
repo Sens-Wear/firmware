@@ -118,7 +118,6 @@ static int8_t bhy2_get_and_process_fifo_support(uint8_t *int_status,
                                                 struct bhy2_dev *dev)
 {
     uint32_t bytes_read = 0;
-    int8_t temp_rslt = BHY2_OK;
 
     while ((*int_status || fifo_temp->remain_length) && (*rslt == BHY2_OK))
     {
@@ -149,7 +148,7 @@ static int8_t bhy2_get_and_process_fifo_support(uint8_t *int_status,
         *int_status = 0;
     }
 
-    return temp_rslt;
+    return *rslt;
 
 }
 
@@ -1541,35 +1540,29 @@ static int8_t get_callback_info(uint8_t sensor_id, struct bhy2_fifo_parse_callba
 {
 
     int8_t rslt = BHY2_OK;
-    uint8_t i = 0, j;
+    uint8_t j;
 
     if ((dev != NULL) && (info != NULL))
     {
+        /* SensWear: an unregistered event must not reuse the previous callback. */
+        memset(info, 0, sizeof(*info));
         for (j = 0; j < BHY2_MAX_SIMUL_SENSORS; j++)
         {
             if (sensor_id == dev->table[j].sensor_id)
             {
                 *info = dev->table[j];
-                i = j;
                 break;
             }
         }
 
-        if (i == BHY2_MAX_SIMUL_SENSORS)
+        if ((sensor_id >= BHY2_SPECIAL_SENSOR_ID_OFFSET) && (dev->event_size[sensor_id] == 0))
         {
-            rslt = BHy2_E_INSUFFICIENT_MAX_SIMUL_SENSORS;
+            dev->event_size[sensor_id] = bhy2_sysid_event_size[sensor_id - BHY2_SPECIAL_SENSOR_ID_OFFSET];
         }
-        else
-        {
-            if ((sensor_id >= BHY2_SPECIAL_SENSOR_ID_OFFSET) && (dev->event_size[sensor_id] == 0))
-            {
-                dev->event_size[sensor_id] = bhy2_sysid_event_size[sensor_id - BHY2_SPECIAL_SENSOR_ID_OFFSET];
-            }
 
-            if ((sensor_id == 0) && (dev->event_size[sensor_id] == 0))
-            {
-                dev->event_size[sensor_id] = 1;
-            }
+        if ((sensor_id == 0) && (dev->event_size[sensor_id] == 0))
+        {
+            dev->event_size[sensor_id] = 1;
         }
     }
     else
@@ -1612,7 +1605,7 @@ static int8_t get_time_stamp(enum bhy2_fifo_type source, uint64_t **time_stamp, 
 
 static int8_t parse_fifo_support(struct bhy2_fifo_buffer *fifo_buf)
 {
-    uint8_t i;
+    uint32_t i;
 
     if (fifo_buf->read_length)
     {
@@ -1709,7 +1702,18 @@ static int8_t parse_fifo(enum bhy2_fifo_type source, struct bhy2_fifo_buffer *fi
                 break;
             default:
                 rslt = get_callback_info(tmp_sensor_id, &info, dev);
-                rslt = check_return_value(rslt);
+                if (rslt != BHY2_OK)
+                {
+                    return rslt;
+                }
+
+                /* SensWear: reject an unknown frame before invoking a callback.
+                 * A zero size would otherwise leave read_pos unchanged forever. */
+                if (dev->event_size[tmp_sensor_id] == 0)
+                {
+                    return BHY2_E_INVALID_EVENT_SIZE;
+                }
+
                 rslt = get_buffer_status(fifo_p, dev->event_size[tmp_sensor_id], &status); /*lint !e838 suppressing
                                                                                             * previously assigned value
                                                                                             * not used info */
